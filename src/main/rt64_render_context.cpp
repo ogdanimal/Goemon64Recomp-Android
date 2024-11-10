@@ -397,16 +397,6 @@ float zelda64::renderer::RT64Context::get_resolution_scale() const {
     }
 }
 
-void zelda64::renderer::RT64Context::load_shader_cache(std::span<const char> cache_binary) {
-    // TODO figure out how to avoid a copy here.
-    std::istringstream cache_stream{std::string{cache_binary.data(), cache_binary.size()}};
-
-    if (!app->rasterShaderCache->loadOfflineList(cache_stream)) {
-       printf("Failed to preload shader cache!\n");
-       assert(false);
-    }
-}
-
 RT64::UserConfiguration::Antialiasing zelda64::renderer::RT64MaxMSAA() {
     return device_max_msaa;
 }

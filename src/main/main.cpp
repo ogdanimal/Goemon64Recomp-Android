@@ -331,6 +331,7 @@ std::vector<recomp::GameEntry> supported_games = {
         .internal_name = "ZELDA MAJORA'S MASK",
         .game_id = u8"mm.n64.us.1.0",
         .mod_game_id = "mm",
+        .save_type = recomp::SaveType::Flashram,
         .is_enabled = true,
         .entrypoint_address = get_entrypoint_address(),
         .entrypoint = recomp_entrypoint,
@@ -679,7 +680,6 @@ int main(int argc, char** argv) {
     printf("\n");
 
     recomp::start(
-        64 * 1024 * 1024, // 64MB to have plenty of room for loading mods
         project_version,
         {},
         rsp_callbacks,
