@@ -28,6 +28,7 @@ if (WIN32)
 endif()
 
 set(RT64_STATIC TRUE)
+set(RT64_SDL_WINDOW_VULKAN TRUE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
 
 # set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
@@ -246,6 +247,8 @@ endif()
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     find_package(SDL2 REQUIRED)
     find_package(X11 REQUIRED)
+
+    add_compile_definitions("RT64_SDL_WINDOW_VULKAN")
 
     # Generate icon_bytes.c from the app icon PNG.
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h

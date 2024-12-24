@@ -200,11 +200,8 @@ zelda64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::rendere
     RT64::Application::Core appCore{};
 #if defined(_WIN32)
     appCore.window = window_handle.window;
-#elif defined(__ANDROID__)
-    assert(false && "Unimplemented");
-#elif defined(__linux__)
-    appCore.window.display = window_handle.display;
-    appCore.window.window = window_handle.window;
+#elif defined(__linux__) || defined(__ANDROID__)
+    appCore.window = window_handle;
 #elif defined(__APPLE__)
     appCore.window.window = window_handle.window;
     appCore.window.view = window_handle.view;
