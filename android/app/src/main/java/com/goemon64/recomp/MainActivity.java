@@ -66,6 +66,18 @@ public class MainActivity extends SDLActivity {
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // Immersive flags set in onCreate()/onResume() run before the window
+        // first gains focus, so Android drops them and the status/navigation
+        // bars stay visible on launch. Re-apply once we actually have focus
+        // (the documented Android requirement for sticky immersive mode).
+        if (hasFocus) {
+            hideSystemUI();
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         nativeDestroy();
         super.onDestroy();
