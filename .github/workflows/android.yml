@@ -39,12 +39,12 @@ jobs:
       N64RECOMP_COMMIT: '81213c1831fab2521a6a5459c67b63437d67e253'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
       - name: ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+        uses: hendrikmuhs/ccache-action@v1.2.23
         with:
           key: android-arm64-${{ env.N64RECOMP_COMMIT }}
 
@@ -96,13 +96,13 @@ jobs:
             RecompiledPatches/patches_bin.c RecompiledPatches/patches_bin.h
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install pinned NDK + CMake
         run: |
@@ -114,7 +114,7 @@ jobs:
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Goemon64-android-debug-${{ github.sha }}
           path: android/app/build/outputs/apk/debug/*.apk
