@@ -14,6 +14,21 @@ namespace goemon64 {
     void open_file_dialog_multiple(std::function<void(bool success, const std::list<std::filesystem::path>& paths)> callback);
     void show_error_message_box(const char *title, const char *message);
 
+// Android: app-private data directory, set by MainActivity.nativeInit().
+// Implemented in android_glue.cpp; used by get_program_path().
+#ifdef __ANDROID__
+    const std::filesystem::path& android_program_path();
+    std::filesystem::path android_rom_path();
+
+    // TEMPORARY Bug-6 crash diagnostics (android_diag.cpp). Remove with the fix.
+    namespace diag {
+        enum Phase : int { Foreground = 0, Background = 1, Resuming = 2 };
+        void install_crash_handler();
+        void set_rdram_base(const void* base);
+        void set_phase(int phase);
+    }
+#endif
+
 // Apple specific methods that usually require Objective-C. Implemented in support_apple.mm.
 #ifdef __APPLE__
     void dispatch_on_ui_thread(std::function<void()> func);

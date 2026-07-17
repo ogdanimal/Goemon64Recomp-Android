@@ -6,7 +6,12 @@
 #include "recomp_input.h"
 #include "goemon_config.h"
 #include "recomp_ui.h"
+#include "goemon_support.h"
 #include "SDL.h"
+#if defined(__ANDROID__)
+#include "SDL_syswm.h"
+#include "goemon_render.h"
+#endif
 #include "promptfont.h"
 #include "GamepadMotion.hpp"
 
@@ -291,6 +296,48 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
         // Always queue button up events to avoid missing them during binding.
         recompui::queue_event(*event);
         break;
+#if defined(__ANDROID__)
+    // Android background/resume lifecycle. Pause the emulation on background so
+    // no threads run against the destroyed surface; resume it on foreground.
+    // WILLENTERBACKGROUND is delivered before SDL may block the main thread, so
+    // it's the reliable place to pause. (Surface recreation on resume is driven
+    // separately from the gfx thread; see rt64_render_context.)
+    case SDL_APP_WILLENTERBACKGROUND:
+        goemon64::diag::set_phase(goemon64::diag::Background);
+        ultramodern::set_app_paused(true);
+        queue_if_enabled(event);
+        break;
+    case SDL_APP_WILLENTERFOREGROUND:
+        goemon64::diag::set_phase(goemon64::diag::Resuming);
+        queue_if_enabled(event);
+        break;
+    case SDL_APP_DIDENTERFOREGROUND: {
+        goemon64::diag::set_phase(goemon64::diag::Foreground);
+        // Fetch the fresh ANativeWindow SDL created for the resumed surface and
+        // publish it for the gfx thread to rebuild the Vulkan surface. By
+        // DIDENTERFOREGROUND SDL has already run surfaceCreated/surfaceChanged,
+        // so wmInfo.info.android.window is the new, valid window.
+        //
+        // ID 1 is SDL's first-created window (RT64 uses the same idiom in
+        // rt64_application_window.cpp). This handler can't run before the game's
+        // single window exists, and the app never creates a second window. The
+        // null check below means a wrong/absent window just skips the publish:
+        // the surface stays stale (black) and recovers on the next resume, no deref.
+        SDL_Window* win = SDL_GetWindowFromID(1);
+        if (win != nullptr) {
+            SDL_SysWMinfo wmInfo;
+            SDL_VERSION(&wmInfo.version);
+            if (SDL_GetWindowWMInfo(win, &wmInfo) && wmInfo.info.android.window != nullptr) {
+                goemon64::renderer::android_publish_resume_window(wmInfo.info.android.window);
+            }
+        }
+        // Unpause only after publishing the new window, so the VI thread's first
+        // post-resume frame drives a present that rebuilds the surface.
+        ultramodern::set_app_paused(false);
+        queue_if_enabled(event);
+        break;
+    }
+#endif
     default:
         queue_if_enabled(event);
         break;

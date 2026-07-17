@@ -16,6 +16,12 @@ namespace goemon64 {
     namespace renderer {
         inline const std::string special_option_texture_pack_enabled = "_recomp_texture_pack_enabled";
 
+#if defined(__ANDROID__)
+        // Publish a fresh ANativeWindow (from the SDL/main thread) for the gfx
+        // thread to pick up on resume. Defined in rt64_render_context.cpp.
+        void android_publish_resume_window(void* native_window);
+#endif
+
         class RT64Context final : public ultramodern::renderer::RendererContext {
         public:
             ~RT64Context() override;

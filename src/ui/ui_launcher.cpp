@@ -4,7 +4,9 @@
 #include "librecomp/game.hpp"
 #include "ultramodern/ultramodern.hpp"
 #include "RmlUi/Core.h"
+#if !defined(__ANDROID__)
 #include "nfd.h"
+#endif
 #include <filesystem>
 
 static std::string version_string;
@@ -15,7 +17,10 @@ bool mm_rom_valid = false;
 extern std::vector<recomp::GameEntry> supported_games;
 
 void select_rom() {
+#if !defined(__ANDROID__)
     nfdnchar_t* native_path = nullptr;
+    (void)native_path;
+#endif
     goemon64::open_file_dialog([](bool success, const std::filesystem::path& path) {
         if (success) {
             recomp::RomValidationError rom_error = recomp::select_rom(path, supported_games[0].game_id);

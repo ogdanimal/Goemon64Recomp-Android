@@ -3,6 +3,12 @@
 #include <variant>
 #include <algorithm>
 
+#if defined(__ANDROID__)
+// Needed to pull the ANativeWindow out of the SDL_Window for RT64's RenderWindow.
+#include "SDL2/SDL.h"
+#include "SDL2/SDL_syswm.h"
+#endif
+
 #define HLSL_CPU
 #include "hle/rt64_application.h"
 #include "rt64_render_hooks.h"
@@ -15,9 +21,34 @@
 #include "recomp_ui.h"
 #include "concurrentqueue.h"
 
+#if defined(__ANDROID__)
+#include "goemon_support.h"
+#endif
+
 static RT64::UserConfiguration::Antialiasing device_max_msaa = RT64::UserConfiguration::Antialiasing::None;
 static bool sample_positions_supported = false;
 static bool high_precision_fb_enabled = false;
+
+#if defined(__ANDROID__)
+#include <atomic>
+// Fresh ANativeWindow published by the SDL/main thread on resume and consumed
+// by the gfx thread (in update_screen) to hand down to the swap chain. Using a
+// global atomic avoids the main thread needing a reference to the gfx-thread-
+// owned RendererContext; each hop is touched only by its owning thread.
+//
+// Ordering: publish stores with release, consume exchanges with acq_rel. The
+// ANativeWindow it points at is fully constructed by SDL before this store
+// (SDL ran surfaceCreated/surfaceChanged synchronously on the UI thread prior
+// to DIDENTERFOREGROUND), so release/acquire on the pointer is sufficient to
+// hand a valid window to the gfx thread on ARM's weak memory model.
+static std::atomic<void*> g_pending_resume_window{nullptr};
+
+namespace goemon64::renderer {
+    void android_publish_resume_window(void* native_window) {
+        g_pending_resume_window.store(native_window, std::memory_order_release);
+    }
+}
+#endif
 
 static uint8_t DMEM[0x1000];
 static uint8_t IMEM[0x1000];
@@ -206,11 +237,27 @@ goemon64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::render
     static unsigned char dummy_rom_header[0x40];
     recompui::set_render_hooks();
 
+#if defined(__ANDROID__)
+    // TEMPORARY Bug-6 diagnostics: publish the RDRAM base so the crash handler
+    // can classify a fault as an out-of-bounds recompiled pointer.
+    goemon64::diag::set_rdram_base(rdram);
+#endif
+
     // Set up the RT64 application core fields.
     RT64::Application::Core appCore{};
 #if defined(_WIN32)
     appCore.window = window_handle.window;
-#elif defined(__linux__) || defined(__ANDROID__)
+#elif defined(__ANDROID__)
+    // On Android RT64's RenderWindow is an ANativeWindow* (Plume creates the
+    // Vulkan surface from it directly). The ultramodern WindowHandle is the
+    // SDL_Window*, so extract the native window that SDL created for it.
+    {
+        SDL_SysWMinfo wmInfo;
+        SDL_VERSION(&wmInfo.version);
+        SDL_GetWindowWMInfo(window_handle, &wmInfo);
+        appCore.window = wmInfo.info.android.window;
+    }
+#elif defined(__linux__)
     appCore.window = window_handle;
 #elif defined(__APPLE__)
     appCore.window.window = window_handle.window;
@@ -255,6 +302,16 @@ goemon64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::render
     // Set up the RT64 application configuration fields.
     RT64::ApplicationConfiguration appConfig;
     appConfig.useConfigurationFile = false;
+#if defined(__ANDROID__)
+    // RT64's detectDataPath() takes the __linux__ branch on Android: HOME is unset
+    // for an app, so it falls back to getpwuid()->pw_dir, which is "/". It then
+    // throws from std::filesystem::create_directories("/.rt64") (EACCES) and the
+    // desktop code never catches it -> SIGABRT on the Gfx Thread during setup.
+    // Point RT64 at our app-private data dir (same dir assets/config resolve under)
+    // and disable the detection so it never touches the filesystem root.
+    appConfig.detectDataPath = false;
+    appConfig.dataPath = goemon64::android_program_path();
+#endif
 
     // Create the RT64 application.
     app = std::make_unique<RT64::Application>(appCore, appConfig);
@@ -332,6 +389,17 @@ void goemon64::renderer::RT64Context::send_dl(const OSTask* task) {
 }
 
 void goemon64::renderer::RT64Context::update_screen() {
+#if defined(__ANDROID__)
+    // On the gfx thread: if the SDL/main thread published a fresh ANativeWindow
+    // on resume, hand it to the swap chain. The present thread rebuilds the
+    // Vulkan surface from it inside resize(). Done here (not from the main
+    // thread) so only gfx/present threads ever touch RT64/Plume Vulkan state.
+    if (void* nw = g_pending_resume_window.exchange(nullptr)) {
+        if (app && app->swapChain != nullptr) {
+            app->swapChain->setRenderWindow(static_cast<ANativeWindow*>(nw));
+        }
+    }
+#endif
     app->updateScreen();
 }
 

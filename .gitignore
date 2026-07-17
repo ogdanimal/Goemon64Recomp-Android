@@ -66,3 +66,11 @@ RSPRecomp
 .idea
 build-*
 cmake-build-*
+
+# Android build
+android/.gradle/
+android/build/
+android/app/build/
+android/.cxx/
+android/local.properties
+compile_commands.json

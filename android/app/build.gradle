@@ -1,0 +1,139 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Load signing credentials from keystore.properties (support both root and android/ locations).
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+if (!keystorePropertiesFile.exists()) {
+    keystorePropertiesFile = rootProject.file("android/keystore.properties")
+}
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+// Host-built tools that the cross-compiled build must run on the build machine
+// (arm64 versions can't execute here). file_to_c embeds assets/icons; it was
+// built during M1 into build-host-tools/. Path is relative to the repo root,
+// which is two levels up from android/app.
+def repoRoot = rootProject.file("..")
+def hostFileToC = new File(repoRoot, "build-host-tools/file_to_c").absolutePath
+
+android {
+    namespace 'com.goemon64.recomp'
+    compileSdk 34
+
+    // Pin to the NDK the native build was validated against (M1-M3 direct build).
+    // Without this, AGP falls back to its bundled default (25.1), whose libc++
+    // headers don't transitively include <cmath> for RT64 (std::acos etc.).
+    ndkVersion '27.1.12297006'
+
+    defaultConfig {
+        applicationId "com.goemon64.recomp"
+        // API 28+: Bionic provides aligned_alloc (used by lib/SlotMap) only from
+        // level 28. Target handhelds (Retroid Pocket 5, AYN Thor) run Android 13.
+        minSdk 28
+        targetSdk 34
+        versionCode 1
+        versionName "0.2.0-dev"
+
+        ndk {
+            // arm64-v8a is the sole target for now (Retroid Pocket 5 / AYN Thor).
+            // x86_64 for the emulator can be added once the arm64 path is proven.
+            abiFilters 'arm64-v8a'
+        }
+
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++20"
+                arguments "-DANDROID_STL=c++_shared",
+                          "-DANDROID_PLATFORM=android-28",
+                          "-DGOEMON_ANDROID=ON",
+                          "-DGOEMON_FILE_TO_C=${hostFileToC}"
+            }
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                def rawPath = keystoreProperties['storeFile']
+                if (!rawPath) throw new GradleException("storeFile missing in keystore.properties")
+                if (keystorePropertiesFile.parentFile.name == 'android' && rawPath.startsWith('android/')) {
+                    rawPath = rawPath.substring('android/'.length())
+                }
+                File resolved = new File(rawPath)
+                if (!resolved.isAbsolute()) {
+                    File propRel = new File(keystorePropertiesFile.parentFile, rawPath)
+                    resolved = propRel.exists() ? propRel : new File(rootProject.projectDir, rawPath)
+                }
+                storeFile file(resolved)
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+            ndk { debugSymbolLevel 'SYMBOL_TABLE' }
+        }
+        debug {
+            // Debug-signed APK for quick sideloading, but build the NATIVE code optimized.
+            // The NDK toolchain injects -O0 -g for a "Debug" CMAKE_BUILD_TYPE, and the software
+            // N64 recompiler + RT64 Vulkan renderer stutter badly at -O0. Force RelWithDebInfo
+            // (-O2 -g, keeps symbols) for the .so; the APK itself stays debuggable/debug-signed.
+            externalNativeBuild {
+                cmake {
+                    arguments "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+                }
+            }
+            ndk { debugSymbolLevel 'SYMBOL_TABLE' }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('../../CMakeLists.txt')
+            version '3.22.1'
+        }
+    }
+
+    // Game assets are packed into the APK and extracted to app-private storage on
+    // first launch (see AssetInstaller / native glue). Native code resolves them
+    // as <dataDir>/assets/<file> and <dataDir>/recompcontrollerdb.txt, so the APK
+    // asset tree must mirror that layout: assets/assets/... + recompcontrollerdb.txt.
+    sourceSets {
+        main {
+            assets.srcDirs = ["${buildDir}/goemon-assets"]
+        }
+    }
+}
+
+// Stage the repo's assets/ dir and recompcontrollerdb.txt into the APK asset tree
+// with the layout the native runtime expects.
+def stageGoemonAssets = tasks.register('stageGoemonAssets', Copy) {
+    into "${buildDir}/goemon-assets"
+    into('assets') {
+        from "${rootDir}/../assets"
+    }
+    from("${rootDir}/../recompcontrollerdb.txt")
+}
+tasks.named('preBuild').configure { dependsOn stageGoemonAssets }
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.10.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+}

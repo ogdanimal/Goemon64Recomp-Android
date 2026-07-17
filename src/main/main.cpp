@@ -8,7 +8,14 @@
 #include <stdexcept>
 #include <cinttypes>
 
+#if !defined(__ANDROID__)
 #include "nfd.h"
+#else
+#include <android/log.h>
+#include <unistd.h>
+#include <thread>
+#include <string>
+#endif
 
 #include "ultramodern/ultra64.h"
 #include "ultramodern/ultramodern.hpp"
@@ -145,7 +152,7 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 #endif
 
     window = SDL_CreateWindow("Goemon 64: Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1600, 960,  flags);
-#if defined(__linux__)
+#if defined(__gnu_linux__)
     SetImageAsIcon("icons/512.png",window);
     if (ultramodern::renderer::get_graphics_config().wm_option == ultramodern::renderer::WindowMode::Fullscreen) { // TODO: Remove once RT64 gets native fullscreen support on Linux
         SDL_SetWindowFullscreen(window,SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -554,7 +561,46 @@ void reorder_texture_pack(recomp::mods::ModContext&) {
 
 #define REGISTER_FUNC(name) recomp::overlays::register_base_export(#name, name)
 
+// On Android the portable entry point is invoked as game_main() from
+// android_glue.cpp's SDL_main bridge; everywhere else it's the process main().
+#if defined(__ANDROID__)
+// Pump stdout/stderr into logcat so RmlUi's default logger, RT64 fprintf()
+// diagnostics, and our printf()s are visible via `adb logcat`. Without this,
+// libc's stdio goes to /dev/null on Android and UI/asset load failures are silent.
+static void android_redirect_stdio_to_logcat() {
+    static bool started = false;
+    if (started) return;
+    started = true;
+    setvbuf(stdout, nullptr, _IOLBF, 0);
+    setvbuf(stderr, nullptr, _IONBF, 0);
+    static int fds[2];
+    if (pipe(fds) != 0) return;
+    dup2(fds[1], STDOUT_FILENO);
+    dup2(fds[1], STDERR_FILENO);
+    std::thread([]{
+        char buf[512];
+        ssize_t n;
+        std::string line;
+        while ((n = read(fds[0], buf, sizeof(buf) - 1)) > 0) {
+            buf[n] = '\0';
+            line += buf;
+            size_t pos;
+            while ((pos = line.find('\n')) != std::string::npos) {
+                __android_log_write(ANDROID_LOG_INFO, "Goemon64-stdio", line.substr(0, pos).c_str());
+                line.erase(0, pos + 1);
+            }
+        }
+    }).detach();
+}
+
+int game_main(int argc, char** argv) {
+    android_redirect_stdio_to_logcat();
+    // TEMPORARY Bug-6 diagnostics: install the SIGSEGV/SIGBUS classifier before
+    // any emulation threads spin up so a background/resume fault is captured.
+    goemon64::diag::install_crash_handler();
+#else
 int main(int argc, char** argv) {
+#endif
     (void)argc;
     (void)argv;
     recomp::Version project_version{};
@@ -640,6 +686,25 @@ int main(int argc, char** argv) {
     for (const auto& game : supported_games) {
         recomp::register_game(game);
     }
+
+#if defined(__ANDROID__)
+    // Register the SAF-copied ROM now that the game is registered (nativeInit runs
+    // before this point, when the game_roms map is still empty). The Java launcher
+    // wrote/sha1-verified it at <dataDir>/mnsg.z64; select_rom() re-validates and
+    // stores it under the config path so start_game() can load it, and makes the
+    // RmlUi launcher show "Start Game" immediately.
+    {
+        std::filesystem::path android_rom = goemon64::android_rom_path();
+        if (std::filesystem::exists(android_rom)) {
+            recomp::RomValidationError err = recomp::select_rom(android_rom, supported_games[0].game_id);
+            __android_log_print(err == recomp::RomValidationError::Good ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
+                "Goemon64", "select_rom(%s) -> %d", android_rom.c_str(), static_cast<int>(err));
+        } else {
+            __android_log_print(ANDROID_LOG_ERROR, "Goemon64",
+                "ROM not found at %s (launcher should have copied it)", android_rom.c_str());
+        }
+    }
+#endif
 
     // recomp::mods::register_embedded_mod("mm_recomp_dpad_builtin", { (const uint8_t*)(mm_recomp_dpad_builtin), std::size(mm_recomp_dpad_builtin)});
 
@@ -730,7 +795,9 @@ int main(int argc, char** argv) {
         threads_callbacks
     );
 
+#if !defined(__ANDROID__)
     NFD_Quit();
+#endif
 
     if (preloaded) {
         release_preload(preload_context);

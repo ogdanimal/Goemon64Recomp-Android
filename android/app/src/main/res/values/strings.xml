@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Goemon 64</string>
+    <string name="rom_missing_info">ROM not found. Select your Mystical Ninja Starring Goemon (USA) .z64 ROM to continue. It will be copied into this app\'s private storage.</string>
+    <string name="pick_rom">Select ROM</string>
+</resources>
