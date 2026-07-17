@@ -1,0 +1,121 @@
+# Android APK build for Goemon64Recomp-Android.
+#
+# Mirrors the (removed) desktop validate.yml recompilation recipe, adapted for a
+# cross-compiled arm64 Android build. Like every N64 recomp, building REQUIRES the
+# base ROM to generate the recompiled C — it is never committed and never shipped
+# in the APK. Following the Zelda64Recomp pattern, the ROM lives in a PRIVATE
+# companion repo and is pulled at build time via a PAT stored in the secret
+# G64RS_REPO_WITH_PAT (the authenticated clone URL of that private repo).
+#
+# Required secret:
+#   G64RS_REPO_WITH_PAT  ->  https://<user>:<PAT>@github.com/ogdanimal/Goemon64RecompSecrets.git
+#   The private repo must contain mnsg.z64 (the decompressed US ROM) at its root.
+#
+# The produced APK is a DEBUG-signed loader: it contains the recompiled game code
+# + the mod's own UI assets, but NO game data. The user supplies their own ROM at
+# runtime. Release (upload-key) signing is a later addition once a keystore exists.
+
+name: android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev, main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: build arm64 APK (debug)
+    runs-on: ubuntu-latest
+    env:
+      # Same N64Recomp commit the desktop CI pinned; bump deliberately.
+      N64RECOMP_COMMIT: '81213c1831fab2521a6a5459c67b63437d67e253'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: android-arm64-${{ env.N64RECOMP_COMMIT }}
+
+      - name: Fetch private build inputs (ROM)
+        run: |
+          git clone "${{ secrets.G64RS_REPO_WITH_PAT }}" Goemon64RecompSecrets
+          cp -v ./Goemon64RecompSecrets/* ./
+          test -f mnsg.z64 || { echo "::error::mnsg.z64 not found after cloning secrets repo"; exit 1; }
+
+      - name: Install host toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake clang lld llvm make
+
+      - name: Build N64Recomp & RSPRecomp (host)
+        run: |
+          export PATH="/usr/lib/ccache:$PATH"
+          git clone https://github.com/Mr-Wiseguy/N64Recomp.git --recurse-submodules N64RecompSource
+          cd N64RecompSource
+          git checkout "$N64RECOMP_COMMIT"
+          git submodule update --init --recursive
+          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          cmake --build build --config Release --target N64RecompCLI -j "$(nproc)"
+          cmake --build build --config Release --target RSPRecomp  -j "$(nproc)"
+          cp build/N64Recomp ../N64Recomp
+          cp build/RSPRecomp ../RSPRecomp
+
+      - name: Recompile game + RSP microcode (host; needs ROM)
+        run: |
+          ./N64Recomp mnsg.toml       # -> RecompiledFuncs/*.c
+          ./RSPRecomp aspMain.toml    # -> rsp/aspMain.cpp
+
+      - name: Build host file_to_c
+        run: |
+          mkdir -p build-host-tools
+          clang++ -std=c++17 -O2 \
+            lib/rt64/src/tools/file_to_c/file_to_c.cpp \
+            -o build-host-tools/file_to_c
+          test -x build-host-tools/file_to_c
+
+      - name: Generate patches codegen (host; the Android CMake path skips this)
+        run: |
+          make -C patches CC=clang LD=ld.lld
+          ./N64Recomp patches.toml    # -> patches/patches.bin + RecompiledPatches/*
+          ./build-host-tools/file_to_c \
+            patches/patches.bin mm_patches_bin \
+            RecompiledPatches/patches_bin.c RecompiledPatches/patches_bin.h
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned NDK + CMake
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "ndk;27.1.12297006" "cmake;3.22.1"
+
+      - name: Build debug APK (arm64-v8a)
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Goemon64-android-debug-${{ github.sha }}
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

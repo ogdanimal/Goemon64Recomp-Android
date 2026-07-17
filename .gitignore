@@ -74,3 +74,9 @@ android/app/build/
 android/.cxx/
 android/local.properties
 compile_commands.json
+
+# Android signing secrets — never commit (build.gradle reads keystore.properties
+# from repo root or android/; a bare pattern matches both locations)
+keystore.properties
+*.jks
+*.keystore
