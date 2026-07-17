@@ -101,6 +101,24 @@ static bool msaa4x_supported = false;
 static bool msaa8x_supported = false;
 static bool sample_positions_supported = false;
 
+// Android is always fullscreen-composited by the OS, so the Window Mode option
+// is meaningless there. Bound into the graphics data model to hide that row and
+// reroute menu navigation around it (see graphics.rml).
+#if defined(__ANDROID__)
+static bool is_android = true;
+#else
+static bool is_android = false;
+#endif
+
+// Downsampling (supersampling) is only offered for the base resolutions. The
+// higher fixed multiples (3x-8x) render large enough that stacking downsampling
+// on top would blow past RT64's ResolutionMultiplierLimit, and Auto manages its
+// own scale, so downsampling is disabled/forced-off for everything else.
+static bool downsampling_available(ultramodern::renderer::Resolution res) {
+    return res == ultramodern::renderer::Resolution::Original
+        || res == ultramodern::renderer::Resolution::Original2x;
+}
+
 static bool cont_active = true;
 
 static recomp::InputDevice cur_device = recomp::InputDevice::Controller;
@@ -167,14 +185,17 @@ void close_config_menu_impl() {
     }
 }
 
-// TODO: Remove once RT64 gets native fullscreen support on Linux
-#if defined(__linux__)
+// TODO: Remove once RT64 gets native fullscreen support on Linux.
+// Android also defines __linux__ but must be excluded: it is always
+// fullscreen-composited by the OS, and calling SDL_SetWindowFullscreen(0)
+// there tears down the immersive flags and brings the system bars back.
+#if defined(__linux__) && !defined(__ANDROID__)
 extern SDL_Window* window;
 #endif
 
 void apply_graphics_config(void) {
     ultramodern::renderer::set_graphics_config(new_options);
-#if defined(__linux__) // TODO: Remove once RT64 gets native fullscreen support on Linux
+#if defined(__linux__) && !defined(__ANDROID__) // TODO: Remove once RT64 gets native fullscreen support on Linux
     if (new_options.wm_option == ultramodern::renderer::WindowMode::Fullscreen) {
         SDL_SetWindowFullscreen(window,SDL_WINDOW_FULLSCREEN_DESKTOP);
     } else {
@@ -633,7 +654,7 @@ public:
             });
         constructor.BindFunc("ds_option",
             [](Rml::Variant& out) {
-                if (new_options.res_option == ultramodern::renderer::Resolution::Auto) {
+                if (!downsampling_available(new_options.res_option)) {
                     out = 1;
                 } else {
                     out = new_options.ds_option;
@@ -656,11 +677,14 @@ public:
             });
         constructor.BindFunc("ds_info",
             [](Rml::Variant& out) {
+                if (!downsampling_available(new_options.res_option)) {
+                    out = (new_options.res_option == ultramodern::renderer::Resolution::Auto)
+                        ? "Downsampling is not available at auto resolution"
+                        : "Downsampling is not available at this resolution";
+                    return;
+                }
                 switch (new_options.res_option) {
                     default:
-                    case ultramodern::renderer::Resolution::Auto:
-                        out = "Downsampling is not available at auto resolution";
-                        return;
                     case ultramodern::renderer::Resolution::Original:
                         if (new_options.ds_option == 2) {
                             out = "Rendered in 480p and scaled to 240p";
@@ -699,6 +723,7 @@ public:
         constructor.Bind("msaa4x_supported", &msaa4x_supported);
         constructor.Bind("msaa8x_supported", &msaa8x_supported);
         constructor.Bind("sample_positions_supported", &sample_positions_supported);
+        constructor.Bind("is_android", &is_android);
 
         graphics_model_handle = constructor.GetModelHandle();
     }

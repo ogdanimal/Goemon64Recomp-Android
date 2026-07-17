@@ -173,6 +173,30 @@ void set_application_user_config(RT64::Application* application, const ultramode
         application->userConfig.resolutionMultiplier = 2.0 * std::max(config.ds_option, 1);
         application->userConfig.downsampleMultiplier = std::max(config.ds_option, 1);
         break;
+    // Higher fixed multiples of native (240p). Downsampling is forced off on
+    // these tiers (see ui_config.cpp downsampling_available) to avoid stacking
+    // supersampling on top of an already-large render and blowing past RT64's
+    // ResolutionMultiplierLimit, so no ds_option factor is applied here.
+    case ultramodern::renderer::Resolution::Original3x:
+        application->userConfig.resolution = RT64::UserConfiguration::Resolution::Manual;
+        application->userConfig.resolutionMultiplier = 3.0;
+        application->userConfig.downsampleMultiplier = 1;
+        break;
+    case ultramodern::renderer::Resolution::Original4x:
+        application->userConfig.resolution = RT64::UserConfiguration::Resolution::Manual;
+        application->userConfig.resolutionMultiplier = 4.0;
+        application->userConfig.downsampleMultiplier = 1;
+        break;
+    case ultramodern::renderer::Resolution::Original6x:
+        application->userConfig.resolution = RT64::UserConfiguration::Resolution::Manual;
+        application->userConfig.resolutionMultiplier = 6.0;
+        application->userConfig.downsampleMultiplier = 1;
+        break;
+    case ultramodern::renderer::Resolution::Original8x:
+        application->userConfig.resolution = RT64::UserConfiguration::Resolution::Manual;
+        application->userConfig.resolutionMultiplier = 8.0;
+        application->userConfig.downsampleMultiplier = 1;
+        break;
     }
 
     switch (config.hr_option) {
