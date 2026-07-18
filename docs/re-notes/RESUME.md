@@ -1,8 +1,10 @@
 # Resume prompt — analog camera work (v14, 2026-07-18)
 
 ## v14 status (top of stack — read this first)
-The camera WORKS on device (clean orbit, no drift while walking). Two
-root-cause fixes on top of v13, both UNCOMMITTED on dev, diagnostics still in:
+**DONE.** The camera works on device (clean orbit, no drift while walking),
+diagnostics are stripped, and it is COMMITTED + PUSHED on `dev` as `ad0e51b`
+(26 files; `e67f31b` follows with .gitignore hygiene). Two root-cause fixes on
+top of v13 are what made it work:
 1. **Sine convention** — `func_80003E10_4A10` (math_sin) has FULL TURN = 0x400
    (1024), not 0x10000. camera.c assumed 0x10000 and used `+0x4000` for cosine
    (= 16 whole periods → sin==cos aliased → non-orthonormal matrix that
@@ -19,11 +21,24 @@ root-cause fixes on top of v13, both UNCOMMITTED on dev, diagnostics still in:
    leaving gameplay. `func_801CE3F0` basis swap also triggers on
    `g_acam_captured`. Tradeoff (by design): once engaged, game auto-follow is
    overridden for the rest of the area.
-NEXT: feel tuning (yaw/pitch rate; pitch-sign still unsettled), follow-back
-decision, C-button UX; then STRIP the dense [acamR]/[acamU]/[acamB]/[acamH]
-diagnostics and squash-commit (files list at bottom). Build in ONE call:
-`wsl -d Ubuntu bash ~/goemon-build-all.sh` (avoids PowerShell→wsl.exe quote
-mangling — see [[wsl-bash-tool-gotchas]]).
+ALSO SHIPPED in `ad0e51b`: menu settings — per-axis invert (the
+`CameraInvertMode` host plumbing already existed; only the RML widget + patch
+consumption were missing), Camera Sensitivity X/Y (0-100, 50 = the tuned base
+rate), and R3 = drop the override so the game's follow-cam resumes. The three
+dependent rows grey out and focus-disable while Analog Camera is Off, via
+`data-attrif-disabled` (NOT `data-attr-`, which sets the attribute even when
+false and would disable them permanently). The dense
+[acamR]/[acamU]/[acamB]/[acamH] diagnostics are GONE, along with the then-dead
+`acam_get_pivot`/`ACAM_PLAYER_POS_NODE` (the override pivots on look_at now).
+
+NEXT (optional polish only): feel tuning of the base rates now that
+sensitivity is adjustable; the pitch-sign default (stick up = eye rises) is
+still unconfirmed; C-button UX.
+
+Build in ONE call: `wsl -d Ubuntu bash ~/goemon-build-all.sh` (avoids the
+PowerShell→wsl.exe quote mangling — see [[wsl-bash-tool-gotchas]]). After ANY
+`assets/` change, delete the device's `files/data/.assets_version` stamp or the
+app keeps serving the OLD extracted UI and your edit looks like it never built.
 
 ---
 # (v13 prompt below — historical context)
