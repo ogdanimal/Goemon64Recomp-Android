@@ -72,6 +72,15 @@ A **Cheats** tab, all options off by default:
 
 Cheats change live game state, and that state is written to your save file at area transitions. Turning a cheat off stops it acting but does not undo it — whatever it raised stays raised in your save.
 
+### Restart Game
+
+A restart button (the circular arrow) sits next to the exit and close icons at the top right of the settings menu. It offers two destinations:
+
+- **To Title Screen** — restarts the game from a cold boot, as if you had just launched it.
+- **To App Menu** — returns to this app's own launcher screen (Start Game / Controls / Settings / Mods), without closing the app.
+
+Either way, anything since your last save is lost, so the prompt asks for confirmation. Both take a few seconds, as the game is genuinely reloaded rather than rewound. The button only appears once a game is running.
+
 ### Display and Presentation
 
 - **Higher internal resolutions** — Original 3x / 4x / 6x / 8x in addition to the stock tiers. Downsampling is only offered at Original and Original 2x, where it is meaningful.
