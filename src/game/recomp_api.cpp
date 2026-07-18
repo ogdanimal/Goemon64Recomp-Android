@@ -162,6 +162,19 @@ extern "C" void recomp_get_analog_cam_sensitivity(uint8_t* rdram, recomp_context
     *y_out = goemon64::get_analog_cam_sensitivity_y();
 }
 
+// Cheats menu toggles, read once per frame by update_cheats().
+extern "C" void recomp_get_infinite_health_enabled(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, goemon64::get_infinite_health_mode() == goemon64::CheatMode::On);
+}
+
+extern "C" void recomp_get_infinite_money_enabled(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, goemon64::get_infinite_money_mode() == goemon64::CheatMode::On);
+}
+
+extern "C" void recomp_get_infinite_lives_enabled(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, goemon64::get_infinite_lives_mode() == goemon64::CheatMode::On);
+}
+
 // R3 held state — the patch edge-detects it to recenter the camera.
 extern "C" void recomp_get_camera_recenter_pressed(uint8_t* rdram, recomp_context* ctx) {
     _return<s32>(ctx, recomp::get_camera_recenter_pressed() ? 1 : 0);

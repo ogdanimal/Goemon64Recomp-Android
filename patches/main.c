@@ -1,6 +1,7 @@
 #include "patches.h"
 #include "ui_funcs.h"
 #include "camera.h"
+#include "cheats.h"
 
 // @recomp Patched to enable RT64's extended GBI mode and set the correct refresh rate.
 RECOMP_PATCH void func_800012FC_1EFC() 
@@ -18,6 +19,9 @@ RECOMP_PATCH void func_800012FC_1EFC()
 
     // @recomp Apply analog (right-stick) camera control.
     update_analog_camera();
+
+    // @recomp Re-apply any enabled resource locks from the Cheats menu.
+    update_cheats();
 
     gEXEnable(D_8015C5CC_15D1CC++);
     // gEXSetRDRAMExtended(D_8015C5CC_15D1CC++, 1);

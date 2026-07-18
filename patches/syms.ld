@@ -28,3 +28,6 @@ recomp_run_ui_callbacks = 0x8F00005C;
 recomp_set_analog_cam_yaw = 0x8F000060;
 recomp_get_analog_cam_sensitivity = 0x8F000064;
 recomp_get_camera_recenter_pressed = 0x8F000068;
+recomp_get_infinite_health_enabled = 0x8F00006C;
+recomp_get_infinite_money_enabled = 0x8F000070;
+recomp_get_infinite_lives_enabled = 0x8F000074;

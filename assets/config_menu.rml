@@ -28,6 +28,7 @@
 	<link type="text/template" href="config_menu/graphics.rml" />
 	<link type="text/template" href="config_menu/sound.rml" />
 	<link type="text/template" href="config_menu/mods.rml" />
+	<link type="text/template" href="config_menu/cheats.rml" />
 	<link type="text/template" href="config_menu/debug.rml" />
 </head>
 <body class="window">
@@ -71,7 +72,14 @@
 						<panel class="config">
 							<template src="config-menu__mods" />
 						</panel>
-						<tab class="tab" data-model="debug_model" data-if="debug_enabled" id="tab_debug">
+						<tab class="tab" id="tab_cheats">
+								<div>Cheats</div>
+								<div class="tab__indicator"></div>
+							</tab>
+							<panel class="config" data-model="cheats_model">
+								<template src="config-menu__cheats" />
+							</panel>
+							<tab class="tab" data-model="debug_model" data-if="debug_enabled" id="tab_debug">
 							<div>Debug</div>
 							<div class="tab__indicator"></div>
 						</tab>

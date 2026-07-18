@@ -1,0 +1,124 @@
+<template name="config-menu__cheats">
+    <head>
+    </head>
+    <body>
+        <form class="config__form" id="conf-cheats__form">
+            <div class="config__hz-wrapper" id="conf-cheats__hz-wrapper">
+                <!-- Options -->
+                <div class="config__wrapper" data-event-mouseout="set_cur_config_index(-1)" id="conf-cheats__wrapper">
+                    <p class="config-option__title" style="margin-bottom: 12dp;">
+                        <b>Note:</b> cheats change your live game state, and that state is written to your save file at area transitions. Turning a cheat off stops it acting, but does not undo it — whatever it raised stays raised in your save.
+                    </p>
+
+                    <!-- infinite health -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(0)" id="conf-cheats__Infinite-Health">
+                        <label class="config-option__title">Infinite Health</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="infinite_health_mode"
+                                data-checked="infinite_health_mode"
+                                value="On"
+                                id="infinite_health_enabled"
+                                style="nav-up: #tab_cheats; nav-down: #infinite_money_enabled"
+                            />
+                            <label class="config-option__tab-label" for="infinite_health_enabled">On</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="infinite_health_mode"
+                                data-checked="infinite_health_mode"
+                                value="Off"
+                                id="infinite_health_disabled"
+                                style="nav-up: #tab_cheats; nav-down: #infinite_money_disabled"
+                            />
+                            <label class="config-option__tab-label" for="infinite_health_disabled">Off</label>
+                        </div>
+                    </div>
+
+                    <!-- infinite money -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(1)" id="conf-cheats__Infinite-Money">
+                        <label class="config-option__title">Infinite Money</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(1)"
+                                name="infinite_money_mode"
+                                data-checked="infinite_money_mode"
+                                value="On"
+                                id="infinite_money_enabled"
+                                style="nav-up: #infinite_health_enabled; nav-down: #infinite_lives_enabled"
+                            />
+                            <label class="config-option__tab-label" for="infinite_money_enabled">On</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(1)"
+                                name="infinite_money_mode"
+                                data-checked="infinite_money_mode"
+                                value="Off"
+                                id="infinite_money_disabled"
+                                style="nav-up: #infinite_health_disabled; nav-down: #infinite_lives_disabled"
+                            />
+                            <label class="config-option__tab-label" for="infinite_money_disabled">Off</label>
+                        </div>
+                    </div>
+
+                    <!-- infinite lives -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(2)" id="conf-cheats__Infinite-Lives">
+                        <label class="config-option__title">Infinite Lives</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(2)"
+                                name="infinite_lives_mode"
+                                data-checked="infinite_lives_mode"
+                                value="On"
+                                id="infinite_lives_enabled"
+                                style="nav-up: #infinite_money_enabled"
+                            />
+                            <label class="config-option__tab-label" for="infinite_lives_enabled">On</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(2)"
+                                name="infinite_lives_mode"
+                                data-checked="infinite_lives_mode"
+                                value="Off"
+                                id="infinite_lives_disabled"
+                                style="nav-up: #infinite_money_disabled"
+                            />
+                            <label class="config-option__tab-label" for="infinite_lives_disabled">Off</label>
+                        </div>
+                    </div>
+                </div>
+                <!-- Descriptions -->
+                <div class="config__wrapper">
+                    <p data-if="cur_config_index == 0">
+                        Keeps your health topped up. While this is on, the life meter is refilled every frame, so ordinary damage cannot kill you.
+                        <br/>
+                        <br/>
+                        <b>This does not protect against instant-death hazards such as falling into pits</b>, which send you back to a checkpoint regardless of your remaining health.
+                    </p>
+                    <p data-if="cur_config_index == 1">
+                        Keeps your money topped up. While this is on, your ryo are held at 9999, the maximum the game allows.
+                        <br/>
+                        <br/>
+                        <b>Shops will still deduct the price of what you buy</b>; the total simply refills immediately afterwards.
+                    </p>
+                    <p data-if="cur_config_index == 2">
+                        Keeps your remaining lives at 3, so running out cannot end your game. Dying still costs you the life and sends you back to a checkpoint as normal — the counter is simply restored.
+                    </p>
+                </div>
+            </div>
+        </form>
+    </body>
+</template>

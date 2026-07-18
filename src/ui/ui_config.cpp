@@ -18,6 +18,7 @@ Rml::DataModelHandle general_model_handle;
 Rml::DataModelHandle controls_model_handle;
 Rml::DataModelHandle graphics_model_handle;
 Rml::DataModelHandle sound_options_model_handle;
+Rml::DataModelHandle cheats_model_handle;
 
 // True if controller config menu is open, false if keyboard config menu is open, undefined otherwise
 bool configuring_controller = false;
@@ -34,8 +35,10 @@ int recompui::config_tab_to_index(recompui::ConfigTab tab) {
         return 3;
     case recompui::ConfigTab::Mods:
         return 4;
-    case recompui::ConfigTab::Debug:
+    case recompui::ConfigTab::Cheats:
         return 5;
+    case recompui::ConfigTab::Debug:
+        return 6;
     default:
         assert(false && "Unknown config tab.");
         return 0;
@@ -402,6 +405,48 @@ void goemon64::set_analog_cam_sensitivity_y(int sensitivity) {
     control_options_context.analog_cam_sensitivity_y = sensitivity;
     if (general_model_handle) {
         general_model_handle.DirtyVariable("analog_cam_sensitivity_y");
+    }
+}
+
+// These default values don't matter, as the config file handling overrides them.
+struct CheatsContext {
+    goemon64::CheatMode infinite_health_mode;
+    goemon64::CheatMode infinite_money_mode;
+    goemon64::CheatMode infinite_lives_mode;
+};
+
+CheatsContext cheats_context;
+
+goemon64::CheatMode goemon64::get_infinite_health_mode() {
+    return cheats_context.infinite_health_mode;
+}
+
+void goemon64::set_infinite_health_mode(goemon64::CheatMode mode) {
+    cheats_context.infinite_health_mode = mode;
+    if (cheats_model_handle) {
+        cheats_model_handle.DirtyVariable("infinite_health_mode");
+    }
+}
+
+goemon64::CheatMode goemon64::get_infinite_money_mode() {
+    return cheats_context.infinite_money_mode;
+}
+
+void goemon64::set_infinite_money_mode(goemon64::CheatMode mode) {
+    cheats_context.infinite_money_mode = mode;
+    if (cheats_model_handle) {
+        cheats_model_handle.DirtyVariable("infinite_money_mode");
+    }
+}
+
+goemon64::CheatMode goemon64::get_infinite_lives_mode() {
+    return cheats_context.infinite_lives_mode;
+}
+
+void goemon64::set_infinite_lives_mode(goemon64::CheatMode mode) {
+    cheats_context.infinite_lives_mode = mode;
+    if (cheats_model_handle) {
+        cheats_model_handle.DirtyVariable("infinite_lives_mode");
     }
 }
 
@@ -996,6 +1041,21 @@ public:
         general_model_handle = constructor.GetModelHandle();
     }
     
+    void make_cheats_bindings(Rml::Context* context) {
+        Rml::DataModelConstructor constructor = context->CreateDataModel("cheats_model");
+        if (!constructor) {
+            throw std::runtime_error("Failed to make RmlUi data model for the cheats menu");
+        }
+
+        bind_config_list_events(constructor);
+
+        bind_option(constructor, "infinite_health_mode", &cheats_context.infinite_health_mode);
+        bind_option(constructor, "infinite_money_mode", &cheats_context.infinite_money_mode);
+        bind_option(constructor, "infinite_lives_mode", &cheats_context.infinite_lives_mode);
+
+        cheats_model_handle = constructor.GetModelHandle();
+    }
+
     void make_sound_options_bindings(Rml::Context* context) {
         Rml::DataModelConstructor constructor = context->CreateDataModel("sound_options_model");
         if (!constructor) {
@@ -1050,6 +1110,7 @@ public:
         make_controls_bindings(context);
         make_graphics_bindings(context);
         make_sound_options_bindings(context);
+        make_cheats_bindings(context);
         make_debug_bindings(context);
     }
 };

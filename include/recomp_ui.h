@@ -65,6 +65,7 @@ namespace recompui {
         Graphics,
         Sound,
         Mods,
+        Cheats,
         Debug,
     };
 

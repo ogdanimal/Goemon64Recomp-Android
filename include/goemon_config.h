@@ -95,6 +95,28 @@ namespace goemon64 {
     int get_analog_cam_sensitivity_y();
     void set_analog_cam_sensitivity_y(int sensitivity);
 
+    // Shared On/Off enum for the Cheats menu. One enum for every cheat toggle,
+    // since they all have the same two states.
+    enum class CheatMode {
+        On,
+        Off,
+		OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(goemon64::CheatMode, {
+        {goemon64::CheatMode::On, "On"},
+        {goemon64::CheatMode::Off, "Off"}
+    });
+
+    CheatMode get_infinite_health_mode();
+    void set_infinite_health_mode(CheatMode mode);
+
+    CheatMode get_infinite_money_mode();
+    void set_infinite_money_mode(CheatMode mode);
+
+    CheatMode get_infinite_lives_mode();
+    void set_infinite_lives_mode(CheatMode mode);
+
     void open_quit_game_prompt();
 };
 
