@@ -12,6 +12,11 @@
 RecompiledFuncs/
 RecompiledPatches/
 
+# RE scratch: single-function extracts pulled out of RecompiledFuncs/ while
+# reverse-engineering (see docs/re-notes/). Regenerable from the recompiler
+# output, so they are kept local rather than committed.
+hlp_*.c
+
 # Linux build output
 build*/
 *.o
@@ -72,6 +77,7 @@ android/.gradle/
 android/build/
 android/app/build/
 android/.cxx/
+android/app/.cxx/
 android/local.properties
 compile_commands.json
 
