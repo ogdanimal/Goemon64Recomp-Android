@@ -41,6 +41,43 @@ This port has been tested primarily on Snapdragon / Adreno handhelds. If graphic
 - Physical controller support through SDL
 - Landscape-locked, fullscreen game presentation
 
+## Features
+
+Beyond the Android packaging above, this fork adds the following. Everything here is optional and off by default unless noted, and lives in the in-game settings menu.
+
+### Analog Camera
+
+A free-look camera on the right analog stick, which the original game does not have.
+
+- **Analog Camera** (General) — orbit the camera around Goemon with the right stick. The camera holds the angle you set; area transitions and scripted camera moves still take over as normal.
+- **Analog Camera Invert** — per-axis inversion (None / X / Y / Both).
+- **Camera Sensitivity X / Y** — 0–100 per axis, 50 being the tuned default rate. Zero disables that axis.
+- Click the right stick (**R3**) to hand the camera back to the game so it resumes following behind you.
+
+While enabled, the right stick's C-button mapping is silenced so it can drive the camera.
+
+### Swap Characters While Moving
+
+- **Swap Characters While Moving** (General) — lets you start a character swap (C-Down) while walking or running, instead of only from a standstill. With it on, C-Down also swaps once per press rather than repeating while held.
+
+Note this does not make swapping faster. Changing character reloads the new character's model from the game data, which costs about a second of locked input either way; this only removes the need to stop first. Swapping stays blocked in states where it would corrupt the game — notably on ladders, and while a swap is already in progress.
+
+### Cheats
+
+A **Cheats** tab, all options off by default:
+
+- **Infinite Health** — refills the life meter every frame. Does not protect against instant-death hazards such as pits.
+- **Infinite Money** — holds your ryo at 9999, the game's own maximum. Shops still deduct; the total refills immediately after.
+- **Infinite Lives** — keeps remaining lives at 3. Dying still costs the life and returns you to a checkpoint; the counter is restored.
+
+Cheats change live game state, and that state is written to your save file at area transitions. Turning a cheat off stops it acting but does not undo it — whatever it raised stays raised in your save.
+
+### Display and Presentation
+
+- **Higher internal resolutions** — Original 3x / 4x / 6x / 8x in addition to the stock tiers. Downsampling is only offered at Original and Original 2x, where it is meaningful.
+- Fullscreen (immersive) presentation is applied reliably on launch and re-applied when the app regains focus.
+- The desktop-only Window Mode option is hidden on Android, and menu navigation skips it.
+
 ## ROM and Storage
 
 The app is not an emulator and does not include copyrighted game assets. On first launch the launcher screen asks you to select a supported ROM through the Android file picker; the ROM is verified and copied into the app's private storage, so no manual folder setup or legacy storage permissions are required. Saves and configuration are kept in the same app-scoped location.
