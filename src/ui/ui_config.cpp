@@ -266,6 +266,7 @@ struct ControlOptionsContext {
     goemon64::CameraInvertMode analog_camera_invert_mode;
     int analog_cam_sensitivity_x; // 0 to 100, 50 = default rate
     int analog_cam_sensitivity_y; // 0 to 100, 50 = default rate
+    goemon64::SwapWhileMovingMode swap_while_moving_mode;
 };
 
 ControlOptionsContext control_options_context;
@@ -405,6 +406,17 @@ void goemon64::set_analog_cam_sensitivity_y(int sensitivity) {
     control_options_context.analog_cam_sensitivity_y = sensitivity;
     if (general_model_handle) {
         general_model_handle.DirtyVariable("analog_cam_sensitivity_y");
+    }
+}
+
+goemon64::SwapWhileMovingMode goemon64::get_swap_while_moving_mode() {
+    return control_options_context.swap_while_moving_mode;
+}
+
+void goemon64::set_swap_while_moving_mode(goemon64::SwapWhileMovingMode mode) {
+    control_options_context.swap_while_moving_mode = mode;
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("swap_while_moving_mode");
     }
 }
 
@@ -1037,6 +1049,7 @@ public:
         bind_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
         constructor.Bind("analog_cam_sensitivity_x", &control_options_context.analog_cam_sensitivity_x);
         constructor.Bind("analog_cam_sensitivity_y", &control_options_context.analog_cam_sensitivity_y);
+        bind_option(constructor, "swap_while_moving_mode", &control_options_context.swap_while_moving_mode);
 
         general_model_handle = constructor.GetModelHandle();
     }

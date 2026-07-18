@@ -196,9 +196,39 @@
                                 data-attrif-disabled="analog_cam_mode == 'Off'"
                                 min="0"
                                 max="100"
-                                style="flex: 1; margin: 0dp; nav-up: #acam_sens_x_input"
+                                style="flex: 1; margin: 0dp; nav-up: #acam_sens_x_input; nav-down: #swap_moving_enabled"
                                 data-value="analog_cam_sensitivity_y"
                             />
+                        </div>
+                    </div>
+
+                    <!-- character swapping while moving -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(12)" id="conf-general__Swap-While-Moving">
+                        <label class="config-option__title">Swap Characters While Moving</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(12)"
+                                name="swap_while_moving_mode"
+                                data-checked="swap_while_moving_mode"
+                                value="On"
+                                id="swap_moving_enabled"
+                                style="nav-up: #acam_sens_y_input"
+                            />
+                            <label class="config-option__tab-label" for="swap_moving_enabled">On</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(12)"
+                                name="swap_while_moving_mode"
+                                data-checked="swap_while_moving_mode"
+                                value="Off"
+                                id="swap_moving_disabled"
+                                style="nav-up: #acam_sens_y_input"
+                            />
+                            <label class="config-option__tab-label" for="swap_moving_disabled">Off</label>
                         </div>
                     </div>
                 </div>
@@ -262,6 +292,15 @@
                     </p>
                     <p data-if="cur_config_index == 11">
                         How fast the right stick rotates the camera vertically. <b>50% is the default speed</b>; 100% is about twice as fast. <b>Setting this to zero disables vertical camera movement.</b>
+                    </p>
+                    <p data-if="cur_config_index == 12">
+                        Lets you start a character swap (C-Down) while walking or running, instead of only from a standstill.
+                        <br/>
+                        <br/>
+                        <b>The swap itself is not faster.</b> Changing character reloads the new character's model from the game data, which takes about a second of locked input either way — this only removes the need to stop first.
+                        <br/>
+                        <br/>
+                        Swapping stays blocked while attacking, jumping, climbing, swimming, or riding, where a mid-action swap would leave the game in an inconsistent state. While this is on, C-Down also swaps once per press rather than repeating while held.
                     </p>
                 </div>
             </div>

@@ -35,5 +35,7 @@ DECLARE_FUNC(s32, recomp_get_camera_recenter_pressed);
 DECLARE_FUNC(s32, recomp_get_infinite_health_enabled);
 DECLARE_FUNC(s32, recomp_get_infinite_money_enabled);
 DECLARE_FUNC(s32, recomp_get_infinite_lives_enabled);
+// Allow starting a character swap while walking/running.
+DECLARE_FUNC(s32, recomp_get_swap_while_moving_enabled);
 
 #endif

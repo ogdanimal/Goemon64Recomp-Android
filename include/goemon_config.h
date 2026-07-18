@@ -117,6 +117,22 @@ namespace goemon64 {
     CheatMode get_infinite_lives_mode();
     void set_infinite_lives_mode(CheatMode mode);
 
+    // Allow starting a character swap while walking/running, instead of only
+    // from an idle stance. Reuses the On/Off shape of the other toggles.
+    enum class SwapWhileMovingMode {
+        On,
+        Off,
+		OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(goemon64::SwapWhileMovingMode, {
+        {goemon64::SwapWhileMovingMode::On, "On"},
+        {goemon64::SwapWhileMovingMode::Off, "Off"}
+    });
+
+    SwapWhileMovingMode get_swap_while_moving_mode();
+    void set_swap_while_moving_mode(SwapWhileMovingMode mode);
+
     void open_quit_game_prompt();
 };
 

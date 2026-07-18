@@ -162,6 +162,12 @@ extern "C" void recomp_get_analog_cam_sensitivity(uint8_t* rdram, recomp_context
     *y_out = goemon64::get_analog_cam_sensitivity_y();
 }
 
+// Allow starting a character swap while walking/running (gate patch in
+// patches/charswap.c).
+extern "C" void recomp_get_swap_while_moving_enabled(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, goemon64::get_swap_while_moving_mode() == goemon64::SwapWhileMovingMode::On);
+}
+
 // Cheats menu toggles, read once per frame by update_cheats().
 extern "C" void recomp_get_infinite_health_enabled(uint8_t* rdram, recomp_context* ctx) {
     _return<s32>(ctx, goemon64::get_infinite_health_mode() == goemon64::CheatMode::On);
