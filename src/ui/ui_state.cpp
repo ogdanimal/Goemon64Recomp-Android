@@ -547,10 +547,6 @@ void recompui::activate_mouse() {
     ui_state->update_focus(true, false);
 }
 
-#if defined(__ANDROID__)
-extern std::vector<recomp::GameEntry> supported_games;
-#endif
-
 void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer* swap_chain_framebuffer) {
 
     apply_background_input_mode();
@@ -564,17 +560,6 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
 
     // Return to the launcher if no menu is open and the game isn't started.
     if (!recompui::is_any_context_shown() && !ultramodern::is_game_started()) {
-#if defined(__ANDROID__)
-        // "Restart to Title Screen" relaunches the process asking for the game
-        // to boot straight away. Do it here, where the launcher would otherwise
-        // appear, rather than at startup: by now the renderer is live and the
-        // VI thread has run dummy frames, which is what the game-started path
-        // in the VI thread assumes.
-        if (goemon64::take_android_autostart()) {
-            recomp::start_game(supported_games[0].game_id);
-            return;
-        }
-#endif
         recompui::show_context(recompui::get_launcher_context_id(), "");
     }
 

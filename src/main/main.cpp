@@ -788,6 +788,16 @@ int main(int argc, char** argv) {
     // Register the .rtz texture pack file format with the previous content type as its only allowed content type.
     recomp::mods::register_mod_container_type("rtz", std::vector{ texture_pack_content_type_id }, false);
 
+#if defined(__ANDROID__)
+    // "Restart to Title Screen" relaunches the process asking for the game to
+    // boot straight away. start_game() only publishes game_status, so the game
+    // start thread's wait() returns immediately and the launcher never shows.
+    if (goemon64::android_autostart()) {
+        __android_log_print(ANDROID_LOG_INFO, "Goemon64", "autostart: skipping launcher");
+        recomp::start_game(supported_games[0].game_id);
+    }
+#endif
+
     recomp::start(
         project_version,
         {},

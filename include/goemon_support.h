@@ -40,15 +40,10 @@ namespace goemon64 {
     };
     void request_restart(RestartTarget target);
 
-    // True (once) when MainActivity was launched with the auto-start extra set,
-    // i.e. this process is the "restart to title screen" half of a restart.
-    //
-    // Consuming rather than peeking is deliberate: the caller is the per-frame
-    // UI hook, and start_game() must happen exactly once and no earlier. It
-    // cannot be hoisted to startup either -- the VI thread branches on
-    // is_game_started(), and if that is true on the first tick it skips
-    // set_dummy_vi() and then dereferences the still-null VI state.
-    bool take_android_autostart();
+    // True when MainActivity was launched with the auto-start extra set, i.e.
+    // this process is the "restart to title screen" half of a restart and should
+    // boot the game rather than stopping at the launcher.
+    bool android_autostart();
 
     // TEMPORARY Bug-6 crash diagnostics (android_diag.cpp). Remove with the fix.
     namespace diag {

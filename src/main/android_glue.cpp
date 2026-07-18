@@ -69,8 +69,8 @@ namespace goemon64 {
         return g_data_dir / "mnsg.z64";
     }
 
-    bool take_android_autostart() {
-        return g_autostart.exchange(false);
+    bool android_autostart() {
+        return g_autostart.load();
     }
 
     void request_restart(RestartTarget target) {
