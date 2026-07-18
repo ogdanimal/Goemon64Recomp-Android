@@ -1,5 +1,6 @@
 package com.goemon64.recomp;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
@@ -15,6 +16,18 @@ import java.io.File;
  * and hand the data directory to native code via nativeInit().
  */
 public class MainActivity extends SDLActivity {
+
+    /**
+     * Intent extra: when true, native code calls start_game() during init so the
+     * game boots straight to the title screen instead of stopping at the in-app
+     * launcher. Set by the "Restart to Title Screen" menu option.
+     */
+    public static final String EXTRA_AUTOSTART = "com.goemon64.recomp.AUTOSTART";
+
+    // Must match goemon64::RestartTarget in include/goemon_support.h.
+    private static final int RESTART_NONE = 0;
+    private static final int RESTART_APP_MENU = 1;
+    private static final int RESTART_TITLE_SCREEN = 2;
 
     static {
         System.loadLibrary("SDL2");
@@ -36,7 +49,8 @@ public class MainActivity extends SDLActivity {
             dataDir.mkdirs();
         }
         AssetInstaller.installIfNeeded(this, dataDir);
-        nativeInit(dataDir.getAbsolutePath());
+        nativeInit(dataDir.getAbsolutePath(),
+                getIntent().getBooleanExtra(EXTRA_AUTOSTART, false));
 
         super.onCreate(savedInstanceState);
 
@@ -79,11 +93,47 @@ public class MainActivity extends SDLActivity {
 
     @Override
     protected void onDestroy() {
+        int restartTarget = nativeGetRestartTarget();
         nativeDestroy();
         super.onDestroy();
+
+        if (restartTarget != RESTART_NONE) {
+            restartInto(restartTarget == RESTART_TITLE_SCREEN);
+            return;
+        }
+
+        // Plain quit. The native side latches `exited` for the lifetime of the
+        // process, so if Android reuses this one for the next launch, game_main
+        // returns immediately and the app comes up dead. Nothing is pending here
+        // (unlike the restart path), so we can just take the process down.
+        Runtime.getRuntime().halt(0);
+    }
+
+    /**
+     * Relaunch the game in a fresh process.
+     *
+     * The native side latches a lot of state one-way for the lifetime of the
+     * process ({@code exited}, {@code game_status}, the rdram allocation), so a
+     * genuine cold boot means a new process rather than re-running the
+     * entrypoint in place. We can't do that ourselves: killing this process
+     * races the pending activity start, and starting an activity from a
+     * finishing one is exactly the case Android's background-activity-start
+     * rules exist to block. So hand off to RestartActivity, which lives in its
+     * own process and can kill us from the outside — see that class.
+     *
+     * By this point the native shutdown has already flushed saves and torn down
+     * the renderer, so being killed is safe.
+     */
+    private void restartInto(boolean autostart) {
+        Intent intent = new Intent(this, RestartActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        intent.putExtra(EXTRA_AUTOSTART, autostart);
+        intent.putExtra(RestartActivity.EXTRA_KILL_PID, android.os.Process.myPid());
+        startActivity(intent);
     }
 
     // Implemented in android_glue.cpp.
-    public native void nativeInit(String dataPath);
+    public native void nativeInit(String dataPath, boolean autostart);
     public native void nativeDestroy();
+    public native int nativeGetRestartTarget();
 }

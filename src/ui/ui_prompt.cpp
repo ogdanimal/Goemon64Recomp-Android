@@ -12,8 +12,10 @@ struct {
     recompui::Label* prompt_label;
     recompui::Element* prompt_controls;
     recompui::Button* confirm_button;
+    recompui::Button* extra_button;
     recompui::Button* cancel_button;
     std::function<void()> confirm_action;
+    std::function<void()> extra_action;
     std::function<void()> cancel_action;
     std::string return_element_id;
     std::mutex mutex;
@@ -32,6 +34,18 @@ void run_confirm_callback() {
 
     // TODO nav: focus on return_element_id
     // or just remove it as the usage of the prompt can change now
+}
+
+void run_extra_callback() {
+    std::function<void()> extra_action;
+    {
+        std::lock_guard lock{ prompt_state.mutex };
+        extra_action = std::move(prompt_state.extra_action);
+    }
+    if (extra_action) {
+        extra_action();
+    }
+    recompui::hide_context(prompt_state.ui_context);
 }
 
 void run_cancel_callback() {
@@ -134,6 +148,30 @@ void recompui::init_prompt_context() {
     confirm_focus_style->set_border_color(Color{ 69, 208, 67, 255 });
     confirm_focus_style->set_background_color(Color{ 69, 208, 67, 76 });
     confirm_focus_style->set_color(Color{ 242, 242, 242, 255 });
+
+    // Optional middle button (three-choice prompts only). Created between the
+    // confirm and cancel buttons so DOM order matches the visual layout, and
+    // hidden by every prompt flavour that doesn't want it.
+    prompt_state.extra_button = context.create_element<Button>(prompt_state.prompt_controls, "", ButtonStyle::Primary);
+    prompt_state.extra_button->set_min_width(185.0f, Unit::Dp);
+    prompt_state.extra_button->set_margin_top(0);
+    prompt_state.extra_button->set_margin_bottom(0);
+    prompt_state.extra_button->set_margin_left(12, Unit::Dp);
+    prompt_state.extra_button->set_margin_right(12, Unit::Dp);
+    prompt_state.extra_button->set_text_align(TextAlign::Center);
+    prompt_state.extra_button->set_color(Color{ 204, 204, 204, 255 });
+    prompt_state.extra_button->set_display(Display::None);
+    prompt_state.extra_button->add_pressed_callback(run_extra_callback);
+
+    Style* extra_hover_style = prompt_state.extra_button->get_hover_style();
+    extra_hover_style->set_border_color(Color{ 233, 205, 53, 255 });
+    extra_hover_style->set_background_color(Color{ 233, 205, 53, 76 });
+    extra_hover_style->set_color(Color{ 242, 242, 242, 255 });
+
+    Style* extra_focus_style = prompt_state.extra_button->get_focus_style();
+    extra_focus_style->set_border_color(Color{ 233, 205, 53, 255 });
+    extra_focus_style->set_background_color(Color{ 233, 205, 53, 76 });
+    extra_focus_style->set_color(Color{ 242, 242, 242, 255 });
 
     prompt_state.cancel_button = context.create_element<Button>(prompt_state.prompt_controls, "", ButtonStyle::Primary);
     prompt_state.cancel_button->set_min_width(185.0f, Unit::Dp);
@@ -254,14 +292,66 @@ void recompui::open_choice_prompt(
     prompt_state.prompt_label->set_text(content_text);
     prompt_state.prompt_controls->set_display(Display::Flex);
     prompt_state.confirm_button->set_display(Display::Block);
+    prompt_state.extra_button->set_display(Display::None);
     prompt_state.cancel_button->set_display(Display::Block);
     prompt_state.confirm_button->set_text(confirm_label_text);
     prompt_state.cancel_button->set_text(cancel_label_text);
     prompt_state.confirm_action = confirm_action;
+    prompt_state.extra_action = {};
     prompt_state.cancel_action = cancel_action;
     prompt_state.return_element_id = return_element_id;
 
     style_button(prompt_state.confirm_button, confirm_variant);
+    style_button(prompt_state.cancel_button, cancel_variant);
+
+    prompt_state.ui_context.close();
+
+    if (prev_context != ContextId::null()) {
+        prev_context.open();
+    }
+
+    show_prompt(prev_cancel_action, focus_on_cancel);
+}
+
+void recompui::open_three_choice_prompt(
+    const std::string& header_text,
+    const std::string& content_text,
+    const std::string& confirm_label_text,
+    const std::string& extra_label_text,
+    const std::string& cancel_label_text,
+    std::function<void()> confirm_action,
+    std::function<void()> extra_action,
+    std::function<void()> cancel_action,
+    ButtonVariant confirm_variant,
+    ButtonVariant extra_variant,
+    ButtonVariant cancel_variant,
+    bool focus_on_cancel,
+    const std::string& return_element_id
+) {
+    std::lock_guard lock{ prompt_state.mutex };
+
+    std::function<void()> prev_cancel_action = std::move(prompt_state.cancel_action);
+
+    ContextId prev_context = try_close_current_context();
+
+    prompt_state.ui_context.open();
+
+    prompt_state.prompt_header->set_text(header_text);
+    prompt_state.prompt_label->set_text(content_text);
+    prompt_state.prompt_controls->set_display(Display::Flex);
+    prompt_state.confirm_button->set_display(Display::Block);
+    prompt_state.extra_button->set_display(Display::Block);
+    prompt_state.cancel_button->set_display(Display::Block);
+    prompt_state.confirm_button->set_text(confirm_label_text);
+    prompt_state.extra_button->set_text(extra_label_text);
+    prompt_state.cancel_button->set_text(cancel_label_text);
+    prompt_state.confirm_action = confirm_action;
+    prompt_state.extra_action = extra_action;
+    prompt_state.cancel_action = cancel_action;
+    prompt_state.return_element_id = return_element_id;
+
+    style_button(prompt_state.confirm_button, confirm_variant);
+    style_button(prompt_state.extra_button, extra_variant);
     style_button(prompt_state.cancel_button, cancel_variant);
 
     prompt_state.ui_context.close();
@@ -293,9 +383,11 @@ void recompui::open_info_prompt(
     prompt_state.prompt_label->set_text(content_text);
     prompt_state.prompt_controls->set_display(Display::Flex);
     prompt_state.confirm_button->set_display(Display::None);
+    prompt_state.extra_button->set_display(Display::None);
     prompt_state.cancel_button->set_display(Display::Block);
     prompt_state.cancel_button->set_text(okay_label_text);
     prompt_state.confirm_action = {};
+    prompt_state.extra_action = {};
     prompt_state.cancel_action = okay_action;
     prompt_state.return_element_id = return_element_id;
 
@@ -327,8 +419,10 @@ void recompui::open_notification(
     prompt_state.prompt_label->set_text(content_text);
     prompt_state.prompt_controls->set_display(Display::None);
     prompt_state.confirm_button->set_display(Display::None);
+    prompt_state.extra_button->set_display(Display::None);
     prompt_state.cancel_button->set_display(Display::None);
     prompt_state.confirm_action = {};
+    prompt_state.extra_action = {};
     prompt_state.cancel_action = {};
     prompt_state.return_element_id = return_element_id;
 

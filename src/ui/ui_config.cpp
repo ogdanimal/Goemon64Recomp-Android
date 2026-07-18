@@ -252,6 +252,79 @@ void goemon64::open_quit_game_prompt() {
     );
 }
 
+// The restart button is only meaningful for a running game, and is implemented
+// as an Android process relaunch (see goemon64::request_restart), so it is
+// hidden on desktop and before the game starts rather than left visible only to
+// explain that it does nothing. Both conditions are effectively monotonic --
+// desktop is compile-time, and is_game_started() only ever flips false->true --
+// so the change detector means this costs one DOM write per process.
+void recompui::sync_restart_button_visibility() {
+#if defined(__ANDROID__)
+    const bool visible = ultramodern::is_game_started();
+#else
+    const bool visible = false;
+#endif
+
+    static bool applied = false;
+    static bool last_visible = false;
+    if (applied && last_visible == visible) {
+        return;
+    }
+
+    ContextId old_context = recompui::try_close_current_context();
+
+    for (ContextId ctx : { recompui::get_config_context_id(), recompui::get_config_sub_menu_context_id() }) {
+        if (ctx == ContextId::null()) {
+            continue;
+        }
+        Rml::ElementDocument* doc = ctx.get_document();
+        if (doc == nullptr) {
+            continue;
+        }
+        if (Rml::Element* button = doc->GetElementById("config__restart-game-button")) {
+            if (visible) {
+                // Remove rather than set a display: .icon-button is a centering
+                // flex box (recomp.rcss), so hardcoding a value here would
+                // un-center the svg and change the button's spacing.
+                button->RemoveProperty(Rml::PropertyId::Display);
+            }
+            else {
+                button->SetProperty(Rml::PropertyId::Display, Rml::Style::Display::None);
+            }
+            applied = true;
+            last_visible = visible;
+        }
+    }
+
+    if (old_context != ContextId::null()) {
+        old_context.open();
+    }
+}
+
+void goemon64::open_restart_game_prompt() {
+#if defined(__ANDROID__)
+    recompui::open_three_choice_prompt(
+        "Restart the game?",
+        "Any progress since your last save will be lost.",
+        "To Title Screen",
+        "To App Menu",
+        "Cancel",
+        []() {
+            goemon64::request_restart(goemon64::RestartTarget::TitleScreen);
+        },
+        []() {
+            goemon64::request_restart(goemon64::RestartTarget::AppMenu);
+        },
+        []() {},
+        recompui::ButtonVariant::Warning,
+        recompui::ButtonVariant::Warning,
+        recompui::ButtonVariant::Tertiary,
+        true,
+        "config__restart-game-button"
+    );
+#endif
+}
+
 // These defaults values don't matter, as the config file handling overrides them.
 struct ControlOptionsContext {
     int rumble_strength; // 0 to 100
@@ -643,6 +716,11 @@ public:
         recompui::register_event(listener, "open_quit_game_prompt",
             [](const std::string& param, Rml::Event& event) {
                 goemon64::open_quit_game_prompt();
+            });
+
+        recompui::register_event(listener, "open_restart_game_prompt",
+            [](const std::string& param, Rml::Event& event) {
+                goemon64::open_restart_game_prompt();
             });
 
         recompui::register_event(listener, "toggle_input_device",

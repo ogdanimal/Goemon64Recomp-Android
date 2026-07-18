@@ -90,6 +90,13 @@
 					<div class="config__icon-buttons">
 						<button
 							class="icon-button"
+							onclick="open_restart_game_prompt"
+							id="config__restart-game-button"
+						>
+							<svg src="icons/Reset.svg" />
+						</button>
+						<button
+							class="icon-button"
 							onclick="open_quit_game_prompt"
 							id="config__quit-game-button"
 						>

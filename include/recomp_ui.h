@@ -69,6 +69,10 @@ namespace recompui {
         Debug,
     };
 
+    // Shows/hides the config menu's restart button. Cheap to call per frame; it
+    // only touches the DOM when the answer changes. See the definition.
+    void sync_restart_button_visibility();
+
     void set_config_tab(ConfigTab tab);
     int config_tab_to_index(ConfigTab tab);
     Rml::ElementTabSet* get_config_tabset();
@@ -96,6 +100,24 @@ namespace recompui {
         std::function<void()> confirm_action,
         std::function<void()> cancel_action,
         ButtonVariant confirm_variant = ButtonVariant::Success,
+        ButtonVariant cancel_variant = ButtonVariant::Error,
+        bool focus_on_cancel = true,
+        const std::string& return_element_id = ""
+    );
+    // Three-button variant of open_choice_prompt. Buttons are laid out
+    // confirm | extra | cancel, so the "safe" option stays rightmost where the
+    // two-button prompts already put Cancel.
+    void open_three_choice_prompt(
+        const std::string& header_text,
+        const std::string& content_text,
+        const std::string& confirm_label_text,
+        const std::string& extra_label_text,
+        const std::string& cancel_label_text,
+        std::function<void()> confirm_action,
+        std::function<void()> extra_action,
+        std::function<void()> cancel_action,
+        ButtonVariant confirm_variant = ButtonVariant::Success,
+        ButtonVariant extra_variant = ButtonVariant::Warning,
         ButtonVariant cancel_variant = ButtonVariant::Error,
         bool focus_on_cancel = true,
         const std::string& return_element_id = ""

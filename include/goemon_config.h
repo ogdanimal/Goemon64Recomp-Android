@@ -134,6 +134,7 @@ namespace goemon64 {
     void set_swap_while_moving_mode(SwapWhileMovingMode mode);
 
     void open_quit_game_prompt();
+    void open_restart_game_prompt();
 };
 
 #endif

@@ -20,6 +20,36 @@ namespace goemon64 {
     const std::filesystem::path& android_program_path();
     std::filesystem::path android_rom_path();
 
+    // Restarting the game means restarting the process: librecomp latches
+    // `exited`, `game_status` and rdram one-way, so there is no in-process way
+    // back to a cold boot. request_restart() records where MainActivity should
+    // land after the normal shutdown path finishes, then calls
+    // ultramodern::quit() so saves are flushed and the renderer torn down
+    // cleanly. MainActivity.onDestroy() reads the target back and relaunches.
+    //
+    // The relaunch cannot race the save flush: onDestroy only runs after
+    // game_main() has returned, i.e. after recomp::start() joined the saving
+    // thread, so nothing is still in flight by the time the process is killed.
+    enum class RestartTarget : int {
+        None = 0,        // normal quit; the process exits
+        // "App menu" is this port's own launcher screen (Start Game / Controls /
+        // Settings / Mods / Exit), NOT the game's title-screen menu -- that is
+        // what TitleScreen gets you.
+        AppMenu = 1,     // relaunch and stop at the in-app launcher
+        TitleScreen = 2, // relaunch and auto-start the game, skipping the launcher
+    };
+    void request_restart(RestartTarget target);
+
+    // True (once) when MainActivity was launched with the auto-start extra set,
+    // i.e. this process is the "restart to title screen" half of a restart.
+    //
+    // Consuming rather than peeking is deliberate: the caller is the per-frame
+    // UI hook, and start_game() must happen exactly once and no earlier. It
+    // cannot be hoisted to startup either -- the VI thread branches on
+    // is_game_started(), and if that is true on the first tick it skips
+    // set_dummy_vi() and then dereferences the still-null VI state.
+    bool take_android_autostart();
+
     // TEMPORARY Bug-6 crash diagnostics (android_diag.cpp). Remove with the fix.
     namespace diag {
         enum Phase : int { Foreground = 0, Background = 1, Resuming = 2 };

@@ -43,6 +43,17 @@
             android:screenOrientation="landscape"
             android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:theme="@style/Theme.Goemon64.Fullscreen"/>
+
+        <!-- Restart trampoline. Runs in its own process so it can kill the game
+             process from the outside and start a clean one; see RestartActivity. -->
+        <activity
+            android:name=".RestartActivity"
+            android:exported="false"
+            android:process=":restart"
+            android:screenOrientation="landscape"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Goemon64.Fullscreen"/>
     </application>
 
 </manifest>

@@ -16,6 +16,7 @@
 
 #if defined(__ANDROID__)
 
+#include <atomic>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
@@ -27,6 +28,8 @@
 #include "SDL2/SDL.h"
 
 #include "librecomp/game.hpp"
+#include "ultramodern/ultramodern.hpp"
+#include "goemon_support.h"
 
 #define LOG_TAG "Goemon64"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
@@ -41,6 +44,15 @@ extern int game_main(int argc, char** argv);
 namespace {
     // App-private data directory handed to us by MainActivity.nativeInit().
     std::filesystem::path g_data_dir;
+
+    // Where MainActivity.onDestroy() should relaunch us, if anywhere. Written on
+    // the UI thread (from a menu button) and read on the UI thread in onDestroy,
+    // but the shutdown in between crosses threads, so keep it atomic.
+    std::atomic<int> g_restart_target{ static_cast<int>(goemon64::RestartTarget::None) };
+
+    // Set from the Intent extra when this process is a restart-to-title relaunch.
+    // Written on the UI thread in nativeInit, consumed on the graphics thread.
+    std::atomic_bool g_autostart{ false };
 }
 
 namespace goemon64 {
@@ -56,15 +68,29 @@ namespace goemon64 {
     std::filesystem::path android_rom_path() {
         return g_data_dir / "mnsg.z64";
     }
+
+    bool take_android_autostart() {
+        return g_autostart.exchange(false);
+    }
+
+    void request_restart(RestartTarget target) {
+        g_restart_target.store(static_cast<int>(target));
+        LOGI("request_restart(%d) -> quitting for relaunch", static_cast<int>(target));
+        // Reuse the normal shutdown: it flushes saves, joins the saving thread
+        // and tears the renderer down before game_main() returns, at which point
+        // SDLActivity finishes the activity and onDestroy() does the relaunch.
+        ultramodern::quit();
+    }
 }
 
 extern "C" {
 
 JNIEXPORT void JNICALL
-Java_com_goemon64_recomp_MainActivity_nativeInit(JNIEnv* env, jobject /*thiz*/, jstring dataPath) {
+Java_com_goemon64_recomp_MainActivity_nativeInit(JNIEnv* env, jobject /*thiz*/, jstring dataPath, jboolean autostart) {
     const char* c_data = env->GetStringUTFChars(dataPath, nullptr);
     g_data_dir = std::filesystem::path{c_data};
-    LOGI("nativeInit: data dir = %s", c_data);
+    g_autostart.store(autostart == JNI_TRUE);
+    LOGI("nativeInit: data dir = %s, autostart = %d", c_data, static_cast<int>(autostart == JNI_TRUE));
 
     // config.cpp's get_app_folder_path() checks APP_FOLDER_PATH first on Linux/Android.
     setenv("APP_FOLDER_PATH", c_data, /*overwrite=*/1);
@@ -78,6 +104,13 @@ Java_com_goemon64_recomp_MainActivity_nativeInit(JNIEnv* env, jobject /*thiz*/, 
 JNIEXPORT void JNICALL
 Java_com_goemon64_recomp_MainActivity_nativeDestroy(JNIEnv* /*env*/, jobject /*thiz*/) {
     LOGI("nativeDestroy");
+}
+
+// Read by MainActivity.onDestroy() to decide whether to relaunch. See
+// goemon64::RestartTarget for the values.
+JNIEXPORT jint JNICALL
+Java_com_goemon64_recomp_MainActivity_nativeGetRestartTarget(JNIEnv* /*env*/, jobject /*thiz*/) {
+    return static_cast<jint>(g_restart_target.load());
 }
 
 // SDL's Android bootstrap calls this after loadLibraries()/nativeInit().
