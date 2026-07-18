@@ -663,6 +663,14 @@ scrollbarhorizontal sliderbar {
   justify-content: flex-start;
   margin: 16dp 0dp 24dp;
 }
+/* An option row greyed out because the setting it depends on is turned off
+   (e.g. the analog-camera invert/sensitivity rows while Analog Camera is Off).
+   The controls themselves also carry the `disabled` attribute, which RmlUi uses
+   to block focus and clicks — this rule is purely the visual cue. */
+.config-option--disabled {
+  opacity: 0.35;
+}
+
 .config-option--hz {
   flex-direction: row-reverse;
   align-items: center;

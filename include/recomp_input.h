@@ -182,6 +182,15 @@ namespace recomp {
     void apply_joystick_deadzone(float x_in, float y_in, float* x_out, float* y_out);
     void set_right_analog_suppressed(bool suppressed);
 
+    // R3 (right-stick click): analog-camera recenter. Raw held state; the
+    // consumer edge-detects it.
+    bool get_camera_recenter_pressed();
+    // Analog-camera yaw (s16 binary angle) reported by the patches each frame;
+    // get_n64_input() counter-rotates the left stick by it so movement matches
+    // the yawed view. 0 when the analog camera is off.
+    void set_analog_cam_yaw(int16_t yaw);
+    int16_t get_analog_cam_yaw();
+
     enum class BackgroundInputMode {
         On,
         Off,

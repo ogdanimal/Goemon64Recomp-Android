@@ -241,6 +241,8 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["camera_invert_mode"] = goemon64::get_camera_invert_mode();
     config_json["analog_cam_mode"] = goemon64::get_analog_cam_mode();
     config_json["analog_camera_invert_mode"] = goemon64::get_analog_camera_invert_mode();
+    config_json["analog_cam_sensitivity_x"] = goemon64::get_analog_cam_sensitivity_x();
+    config_json["analog_cam_sensitivity_y"] = goemon64::get_analog_cam_sensitivity_y();
     config_json["debug_mode"] = goemon64::get_debug_mode_enabled();
 
     return save_json_with_backups(path, config_json);
@@ -257,6 +259,8 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     goemon64::set_camera_invert_mode(from_or_default(config_json, "camera_invert_mode", goemon64::CameraInvertMode::InvertY));
     goemon64::set_analog_cam_mode(from_or_default(config_json, "analog_cam_mode", goemon64::AnalogCamMode::Off));
     goemon64::set_analog_camera_invert_mode(from_or_default(config_json, "analog_camera_invert_mode", goemon64::CameraInvertMode::InvertNone));
+    goemon64::set_analog_cam_sensitivity_x(from_or_default(config_json, "analog_cam_sensitivity_x", 50));
+    goemon64::set_analog_cam_sensitivity_y(from_or_default(config_json, "analog_cam_sensitivity_y", 50));
     goemon64::set_debug_mode_enabled(from_or_default(config_json, "debug_mode", false));
 }
 

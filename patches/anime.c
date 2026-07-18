@@ -1,5 +1,6 @@
 #include "patches.h"
 #include "graphics.h"
+#include "camera.h"
 
 // @recomp
 Object *g_actor_skeleton_root_object = NULL;
@@ -256,9 +257,10 @@ RECOMP_PATCH s32 func_80016C44_17844(Object *object)
                 aptr = (u32 *)&g_widescreen_camera;
             }
 
-            func_8001E380_1EF80(&D_801684B0_1690B0, D_801684A0_1690A0);
-            func_80017D8C_1898C((Camera *)aptr, &D_801684B0_1690B0);
-
+            // @recomp Camera resolution moved up (unchanged logic): the analog
+            // camera has to rotate the eye BEFORE func_80017D8C_1898C, because
+            // that is where the view/projection is built from this struct
+            // (guPerspective + guLookAtHilite read eye/at directly).
             if (aptr == NULL) {
                 camera = NULL;
             } else {
@@ -272,7 +274,22 @@ RECOMP_PATCH s32 func_80016C44_17844(Object *object)
                     }
                 }
             }
-            
+
+            // @recomp Analog camera: orbit the eye around the focus on a
+            // private copy and feed the copy to the whole camera path (same
+            // pattern as g_widescreen_camera above). When inactive this is a
+            // no-op and the original pointers pass through untouched.
+            {
+                Camera* rotated = apply_analog_camera(camera);
+                if (rotated != camera) {
+                    camera = rotated;
+                    aptr = (u32 *)rotated;
+                }
+            }
+
+            func_8001E380_1EF80(&D_801684B0_1690B0, D_801684A0_1690A0);
+            func_80017D8C_1898C((Camera *)aptr, &D_801684B0_1690B0);
+
             D_801684F0_1690F0 = aptr;
             func_8001B6D4_1C2D4(camera);
             return 1;

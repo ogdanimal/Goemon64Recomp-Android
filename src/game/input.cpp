@@ -626,6 +626,7 @@ bool controller_button_state(int32_t input_id) {
 }
 
 static std::atomic_bool right_analog_suppressed = false;
+static std::atomic<int16_t> analog_cam_yaw = 0;
 
 float controller_axis_state(int32_t input_id, bool allow_suppression) {
     if (abs(input_id) - 1 < SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_MAX) {
@@ -765,18 +766,88 @@ void recomp::apply_joystick_deadzone(float x_in, float y_in, float* x_out, float
     *y_out = y_in;
 }
 
+// Read the right analog stick, summed across connected controllers.
+//
+// Prefer the SDL GameController axis mapping (correct on desktop and any device
+// with a proper mapping). Some Android handhelds (e.g. the Retroid Pocket 5)
+// present their pad as a raw joystick with NO GameController axis mapping, so
+// SDL_GameControllerGetAxis returns 0 for every axis. In that case fall back to
+// the underlying joystick's raw axes, which follow the SDL enum order:
+//   0=LeftX 1=LeftY 2=RightX 3=RightY 4=TriggerLeft 5=TriggerRight
 void recomp::get_right_analog(float* x, float* y) {
-    float x_val =
-        controller_axis_state((SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_RIGHTX + 1), false) -
-        controller_axis_state(-(SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_RIGHTX + 1), false);
-    float y_val =
-        controller_axis_state((SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_RIGHTY + 1), false) -
-        controller_axis_state(-(SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_RIGHTY + 1), false);
+    constexpr float k = 1.0f / 32768.0f;
+    float x_val = 0.0f;
+    float y_val = 0.0f;
+
+    {
+        std::lock_guard lock{ InputState.cur_controllers_mutex };
+        for (const auto& controller : InputState.cur_controllers) {
+            float gx = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTX) * k;
+            float gy = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTY) * k;
+
+            // Fall back to raw joystick axes when the GameController mapping has
+            // no usable binding for the right stick. "Exactly 0" is not enough:
+            // the mapping can half-initialize between sessions and return tiny
+            // drift on wrongly-mapped axes, which silently starves the fallback.
+            // Treat anything under ~10% deflection as "mapping dead" and prefer
+            // the raw axes if they show more movement.
+            if (gx * gx + gy * gy < 0.01f) {
+                SDL_Joystick* js = SDL_GameControllerGetJoystick(controller);
+                if (js != nullptr && SDL_JoystickNumAxes(js) >= 4) {
+                    float rx = SDL_JoystickGetAxis(js, 2) * k;
+                    float ry = SDL_JoystickGetAxis(js, 3) * k;
+                    if (rx * rx + ry * ry > gx * gx + gy * gy) {
+                        gx = rx;
+                        gy = ry;
+                    }
+                }
+            }
+
+            x_val += std::clamp(gx, -1.0f, 1.0f);
+            y_val += std::clamp(gy, -1.0f, 1.0f);
+        }
+    }
+
+    x_val = std::clamp(x_val, -1.0f, 1.0f);
+    y_val = std::clamp(y_val, -1.0f, 1.0f);
+
     recomp::apply_joystick_deadzone(x_val, y_val, x, y);
+}
+
+// R3 (right-stick click) — the analog camera's "give the camera back to the
+// game" recenter button. Returns the raw held state; the patch edge-detects it
+// (update_analog_camera can run several times per rendered frame, so a
+// level read is the safe thing to expose).
+//
+// Same mapping caveat as get_right_analog: on handhelds that present as a raw
+// joystick with no GameController mapping, SDL_GameControllerGetButton returns
+// 0, so fall back to the raw joystick button in SDL enum order
+// (7 = LeftStick, 8 = RightStick).
+bool recomp::get_camera_recenter_pressed() {
+    std::lock_guard lock{ InputState.cur_controllers_mutex };
+    for (const auto& controller : InputState.cur_controllers) {
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_RIGHTSTICK)) {
+            return true;
+        }
+        SDL_Joystick* js = SDL_GameControllerGetJoystick(controller);
+        if (js != nullptr && SDL_JoystickNumButtons(js) > 8 &&
+            SDL_JoystickGetButton(js, 8)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void recomp::set_right_analog_suppressed(bool suppressed) {
     right_analog_suppressed.store(suppressed);
+}
+
+void recomp::set_analog_cam_yaw(int16_t yaw) {
+    analog_cam_yaw.store(yaw);
+}
+
+int16_t recomp::get_analog_cam_yaw() {
+    return analog_cam_yaw.load();
 }
 
 bool recomp::game_input_disabled() {

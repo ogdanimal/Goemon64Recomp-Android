@@ -87,6 +87,14 @@ namespace goemon64 {
     AnalogCamMode get_analog_cam_mode();
     void set_analog_cam_mode(AnalogCamMode mode);
 
+    // Analog-camera rotation sensitivity, 0-100 per axis. 50 = the tuned
+    // default rate; the patch scales its base yaw/pitch rates by (value / 50),
+    // so 100 is ~2x speed and 0 stops that axis.
+    int get_analog_cam_sensitivity_x();
+    void set_analog_cam_sensitivity_x(int sensitivity);
+    int get_analog_cam_sensitivity_y();
+    void set_analog_cam_sensitivity_y(int sensitivity);
+
     void open_quit_game_prompt();
 };
 

@@ -153,6 +153,20 @@ extern "C" void recomp_get_analog_cam_enabled(uint8_t* rdram, recomp_context* ct
     _return<s32>(ctx, goemon64::get_analog_cam_mode() == goemon64::AnalogCamMode::On);
 }
 
+// Analog-camera sensitivity per axis, 0-100 (50 = the tuned default rate).
+extern "C" void recomp_get_analog_cam_sensitivity(uint8_t* rdram, recomp_context* ctx) {
+    s32* x_out = _arg<0, s32*>(rdram, ctx);
+    s32* y_out = _arg<1, s32*>(rdram, ctx);
+
+    *x_out = goemon64::get_analog_cam_sensitivity_x();
+    *y_out = goemon64::get_analog_cam_sensitivity_y();
+}
+
+// R3 held state — the patch edge-detects it to recenter the camera.
+extern "C" void recomp_get_camera_recenter_pressed(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, recomp::get_camera_recenter_pressed() ? 1 : 0);
+}
+
 extern "C" void recomp_get_camera_inputs(uint8_t* rdram, recomp_context* ctx) {
     float* x_out = _arg<0, float*>(rdram, ctx);
     float* y_out = _arg<1, float*>(rdram, ctx);
@@ -183,4 +197,10 @@ extern "C" void recomp_set_right_analog_suppressed(uint8_t* rdram, recomp_contex
     s32 suppressed = _arg<0, s32>(rdram, ctx);
 
     recomp::set_right_analog_suppressed(suppressed);
+}
+
+extern "C" void recomp_set_analog_cam_yaw(uint8_t* rdram, recomp_context* ctx) {
+    s32 yaw = _arg<0, s32>(rdram, ctx);
+
+    recomp::set_analog_cam_yaw((int16_t)yaw);
 }

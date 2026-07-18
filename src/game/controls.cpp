@@ -1,4 +1,5 @@
 #include <array>
+#include <cmath>
 
 #include "librecomp/helpers.hpp"
 #include "recomp_input.h"
@@ -176,6 +177,25 @@ bool recomp::get_n64_input(int controller_num, uint16_t* buttons_out, float* x_o
 
         cur_x /= 127.0f;
         cur_y /= 127.0f;
+    }
+
+    // @recomp Analog camera, legacy left-stick counter-rotation — CURRENTLY
+    // INERT. The patch always reports 0 here, because movement is now made
+    // view-relative natively: the RECOMP_PATCH of func_801CE3F0 swaps the
+    // resolver's Camera pointer to the rotated copy, so the game derives the
+    // correct basis itself. This counter-rotation was the earlier approach and
+    // is kept only as a rollback lever (report a non-zero yaw from
+    // update_analog_camera to re-enable it); it caused a settle-inversion
+    // artifact because the view and the movement basis disagreed.
+    int16_t acam_yaw = recomp::get_analog_cam_yaw();
+    if (acam_yaw != 0) {
+        float ang = (float)acam_yaw * 9.5873799e-5f; // binang -> radians (2*pi/0x10000)
+        float cs = cosf(ang);
+        float sn = sinf(ang);
+        float rot_x = cur_x * cs + cur_y * sn;
+        float rot_y = cur_y * cs - cur_x * sn;
+        cur_x = rot_x;
+        cur_y = rot_y;
     }
 
     *buttons_out = cur_buttons;

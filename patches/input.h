@@ -25,5 +25,11 @@ DECLARE_FUNC(s32, recomp_get_analog_cam_enabled);
 DECLARE_FUNC(void, recomp_get_analog_inverted_axes, s32* x, s32* y);
 DECLARE_FUNC(void, recomp_get_camera_inputs, float* x, float* y);
 DECLARE_FUNC(void, recomp_set_right_analog_suppressed, s32 suppressed);
+DECLARE_FUNC(void, recomp_set_analog_cam_yaw, s32 yaw);
+DECLARE_FUNC(u32, recomp_time_us);
+// Analog-camera sensitivity per axis, 0-100 (50 = tuned default rate).
+DECLARE_FUNC(void, recomp_get_analog_cam_sensitivity, s32* x, s32* y);
+// R3 (right-stick click) held state — edge-detected by the patch to recenter.
+DECLARE_FUNC(s32, recomp_get_camera_recenter_pressed);
 
 #endif
