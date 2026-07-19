@@ -9,6 +9,14 @@ Zelda64Recomp/N64Recomp ecosystem). GitHub: `ogdanimal/Goemon64Recomp-Android`
 - Repo lives in WSL at `/home/user/projects/Goemon64Recomp`; work as user `user`
   (no sudo/root needed — the repo was relocated out of `/root` on 2026-07-17).
 - `gh` is authed as `ogdanimal`; git identity is `ogdanimal <the.ogdanimal@gmail.com>`.
+- **`gh` defaults to `upstream` (klorfmorf) unless told otherwise** — with no
+  default set it prefers the remote named `upstream` over `origin`, so bare
+  `gh run list` silently returns klorfmorf's public workflow runs (they even have
+  a `dev` branch, so the output looks plausible — it just isn't ours). Fixed in
+  this clone via `gh repo set-default ogdanimal/Goemon64Recomp-Android`, which
+  writes `remote.origin.gh-resolved = base` into `.git/config`. **That is local
+  to the clone and will NOT survive a fresh clone — re-run it after cloning**,
+  or pass `--repo ogdanimal/Goemon64Recomp-Android` explicitly.
 - ROM `mnsg.z64` (32 MiB, gitignored) sits at the repo root — the decompressed US ROM
   the recompiler consumes. Never commit it.
 
@@ -65,9 +73,33 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   - Optional follow-ups, none blocking: make the interval configurable (it is a
     `#define` today; the settings text now hardcodes "every 2 minutes", so
     update it in the same change).
+- **Analog camera consumer fixes — DONE and DEPLOYED 2026-07-19** (`8dc748d`
+  code, `80e9ace` docs, pushed to `dev`). Four fixes, all device-verified by the
+  user: area-transition reset via the map id at `0x800C7AB2`; capture the
+  AZIMUTH only so the game keeps control of framing distance/height (it starts
+  very close on area entry and eases out over ~2s); skybox scroll in BOTH
+  callers; and positional-audio pan. See the Analog camera section below and
+  **`docs/re-notes/README.md`**, which is now the entry point for all RE notes.
+  - **The bug CLASS to keep in mind:** the analog camera never mutates the real
+    Camera — it hands a rotated private copy to specific consumers. Any consumer
+    NOT hooked silently reads the UNROTATED camera and disagrees with the
+    rendered view. The handled/unhandled list is in `docs/re-notes/README.md`.
+  - **Storage-side rotation (one hook instead of per-consumer hooks) was
+    re-litigated on 2026-07-19 and REFUTED. Do not re-open** — no hook point is
+    both downstream of all producers and upstream of all consumers, and
+    `func_80012878` seeds camera tweens FROM the live camera at 22 sites across
+    13 overlays. Evidence in `goemon_default_cam_writer.md` §6(3).
 - **NOW: back to general bug-fixing** on the Android port (test via the CI debug
   APK), unless something else takes priority.
 - **PARKED — do not start without the user's say-so:**
+  - **World→screen projector fix** (`func_8001CB40` / `func_8001CC38_1D838`) —
+    parked 2026-07-19. Mechanism is confirmed wrong (screen-space overlays are
+    positioned from the unrotated camera) but nothing player-visible has been
+    observed routing through it, and the fix means reproducing ~65 instructions
+    of dense float math where a transcription slip would misplace everything
+    silently. UNPARK TRIGGER: a 2D effect seen sitting beside rather than on
+    whatever produced it, after orbiting. Full detail + the `+0x1A` fov-vs-roll
+    resolution in `docs/re-notes/README.md`.
   - Flip repo private→public (deliberate call; when doing it, add the `validate-external`
     fork-PR authorize-gate so fork PRs can't reach the ROM secret).
   - Release setup: signed, tag-triggered (`v*`) GitHub Releases — do around/after going
