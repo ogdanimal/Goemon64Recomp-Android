@@ -227,6 +227,7 @@ set (SOURCES
     ${CMAKE_SOURCE_DIR}/src/game/recomp_api.cpp
     ${CMAKE_SOURCE_DIR}/src/game/recomp_actor_api.cpp
     ${CMAKE_SOURCE_DIR}/src/game/recomp_data_api.cpp
+    ${CMAKE_SOURCE_DIR}/src/game/save_rollback.cpp
     ${CMAKE_SOURCE_DIR}/src/game/rom_decompression.cpp
     ${CMAKE_SOURCE_DIR}/src/game/unknown_symbols.cpp
 

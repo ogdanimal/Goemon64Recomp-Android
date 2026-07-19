@@ -32,3 +32,4 @@ recomp_get_infinite_health_enabled = 0x8F00006C;
 recomp_get_infinite_money_enabled = 0x8F000070;
 recomp_get_infinite_lives_enabled = 0x8F000074;
 recomp_get_swap_while_moving_enabled = 0x8F000078;
+recomp_set_autosave_in_progress = 0x8F00007C;

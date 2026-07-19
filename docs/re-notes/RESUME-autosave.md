@@ -72,30 +72,54 @@ overwrites the player's real save.
    **Marshaling correctness is now closed.** Add any future pairs to
    `docs/re-notes/fixtures/` rather than overwriting — that directory is the
    evidence corpus for every claim in these notes, not backups.
-3. **NEXT — build the rollback mechanism.** This *gates* the timer: it does not
-   ship until a rollback exists that does not depend on `.bak`.
-   **DECIDED 2026-07-18** —
-   neither of the two originally-framed options, but a third: **notify +
-   `.manual.bak`**. `RECOMP_PATCH func_8000B718_C318` to tell the host a
-   deliberate save is happening; the host arms a one-shot and copies the file to
-   `.manual.bak` on the next flush. Full design, rationale and the rejected
-   alternatives are in `docs/autosave.md` § "Decided design".
+3. ~~**Build the rollback mechanism.**~~ **DONE — implemented, builds clean,
+   NOT yet verified on device.**
 
-   Three things to carry into the implementation:
-   - The autosave path must **actively disarm** an armed one-shot, not merely
-     skip arming — 12 of the 25 `func_8000B718_C318` call sites are the RAM-only
-     suspend, which arms without producing a flush.
-   - Two preconditions. First, the fixtures `08`/`09`/`11` byte-identity check —
-     the notify patch touches the manual save path for the first time. Second,
-     establish whether the two **pak diagnostic** writers are runtime-reachable.
-     Note the real stakes: they write an incrementing byte pattern into slot 0,
-     so if reachable they **destroy the live save directly**, autosave or not —
-     poisoning `.manual.bak` is only the secondary casualty. The empirical bound
-     says they probably are not reachable (the fixtures corpus spans many boots
-     with slot data intact), so expect to be confirming dead or menu-gated code.
-   - The dedicated slot is **parked**; its four open questions no longer gate.
+   **The design changed during implementation. The previous "DECIDED" entry here
+   — notify via `RECOMP_PATCH func_8000B718_C318` — is SUPERSEDED. Do not
+   implement it.** What shipped instead: **observe guest pak writes host-side**,
+   patching no game function at all. Rationale, the comparison table, and the
+   superseded design are in `docs/autosave.md` § "Decided design: observe the
+   pak write".
 
-4. **Then the save-data-settled check.** Zelda64Recomp's approach: diff a
+   Why it changed: this toolchain has no `RECOMP_HOOK`, so `RECOMP_PATCH`
+   *replaces* a function outright — the notify design meant reimplementing the
+   whole marshal body on the live manual-save path. But the Controller Pak shim
+   (`librecomp/src/pak.cpp:60-77`) already hands the host every guest pak write
+   with its offset, size and a write flag, and `func_80023610_24210` issues
+   exactly one `osPfsReadWriteFile` call. Observation is not patching.
+
+   Two of the three carry-forward items above are now **dead**:
+   - The **active-disarm rule is gone, not relaxed** — a RAM-only suspend never
+     touches the pak, so it never reaches the observer and cannot arm anything.
+   - The **fixtures `08`/`09`/`11` precondition is vacuous** — it existed only
+     because the notify patch would have replaced a function on the manual-save
+     path. Nothing on that path is touched now. (Recorded as vacuous rather than
+     deleted: if anyone revives the notify approach, it revives with it.)
+   - The dedicated slot remains **parked**; its four open questions still do not
+     gate anything.
+
+   **Precondition 2 (diagnostics reachability) is RESOLVED: UNREACHABLE, HIGH
+   confidence.** `func_80023C14_24814` and `func_80023CC8_248C8` have no `jal`,
+   no fall-through, no data-word reference anywhere in 32 MiB, and no
+   `lui`+`addiu` materialization — with a *working positive control* (the same
+   scan finds the real save routine's 12 GEV dispatch sites). Full writeup,
+   including a jump-table anomaly that was explained rather than waved through,
+   in `docs/autosave.md` § "Diagnostics reachability".
+
+   **What remains before the timer: on-device verification of the rollback
+   point.** Confirm that a manual NPC save produces `.manual.bak`, that
+   subsequent autosaves leave it untouched while rotating `.bak`, and that it is
+   a loadable save. Files: `src/game/save_rollback.cpp` (all the policy),
+   `include/goemon_save_rollback.h`, the two generic hooks in the
+   `lib/N64ModernRuntime` submodule, and the bracket wrapper in
+   `patches/autosave.c`.
+
+   **The submodule change is not yet pushed.** `lib/N64ModernRuntime` carries the
+   two hook points on branch `goemon-android`; CI will not build the pointer bump
+   until that commit is pushed to `fork` (ogdanimal/N64ModernRuntime).
+
+4. **NEXT — the save-data-settled check.** Zelda64Recomp's approach: diff a
    whitelist of stable save fields, require ~10 frames unchanged before writing,
    so a write never lands mid-transaction (an item being consumed, a flag being
    applied). This protects the *autosave itself*; step 3 protects everything

@@ -3,6 +3,7 @@
 #include "recomp.h"
 #include "librecomp/overlays.hpp"
 #include "goemon_config.h"
+#include "goemon_save_rollback.h"
 #include "recomp_input.h"
 #include "recomp_ui.h"
 #include "goemon_render.h"
@@ -104,6 +105,13 @@ extern "C" void recomp_time_us(uint8_t* rdram, recomp_context* ctx) {
 
 extern "C" void recomp_get_autosave_enabled(uint8_t* rdram, recomp_context* ctx) {
     _return(ctx, static_cast<s32>(goemon64::get_autosave_mode() == goemon64::AutosaveMode::On));
+}
+
+// Bracket around the autosave's own pak traffic, so the save-rollback observer
+// can tell it apart from a deliberate, player-initiated save. See
+// src/game/save_rollback.cpp.
+extern "C" void recomp_set_autosave_in_progress(uint8_t* rdram, recomp_context* ctx) {
+    goemon64::set_autosave_in_progress(_arg<0, s32>(rdram, ctx) != 0);
 }
 
 extern "C" void recomp_load_overlays(uint8_t * rdram, recomp_context * ctx) {

@@ -37,6 +37,7 @@
 #include "recomp_ui.h"
 #include "recomp_input.h"
 #include "goemon_config.h"
+#include "goemon_save_rollback.h"
 #include "goemon_sound.h"
 #include "goemon_render.h"
 #include "goemon_support.h"
@@ -712,6 +713,7 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_target_aspect_ratio);
     REGISTER_FUNC(recomp_get_target_framerate);
     REGISTER_FUNC(recomp_get_autosave_enabled);
+    REGISTER_FUNC(recomp_set_autosave_in_progress);
     REGISTER_FUNC(recomp_get_analog_cam_enabled);
     REGISTER_FUNC(recomp_get_camera_inputs);
     REGISTER_FUNC(recomp_get_targeting_mode);
@@ -797,6 +799,11 @@ int main(int argc, char** argv) {
         recomp::start_game(supported_games[0].game_id);
     }
 #endif
+
+    // Install the save observation hooks before recomp::start(), which reaches
+    // ultramodern::init_saving() and spawns the saving thread that consumes
+    // them.
+    goemon64::init_save_rollback();
 
     recomp::start(
         project_version,

@@ -303,9 +303,144 @@ nets failing at once, which is precisely what was observed.
 **Gating precondition:** *the timer does not ship until a rollback mechanism
 exists that does not depend on `.bak`.*
 
-### Decided design: notify + `.manual.bak`
+### Decided design: observe the pak write + `.manual.bak`
 
-**Decided 2026-07-18.** Neither of the two options above; a third that delivers
+**Decided 2026-07-18, and IMPLEMENTED.** Supersedes the notify-patch design
+recorded below, which is kept because the reasoning that produced it is still
+load-bearing and because a superseded copy nobody hunted down is what has
+misled readers here twice already.
+
+The rollback point is maintained by **observing guest pak writes host-side**.
+No game function is patched at all.
+
+**Mechanism:**
+
+1. librecomp gained two **generic** hooks, neither of which knows what an
+   autosave is (`ultramodern::set_save_write_callback` /
+   `set_save_flush_callback`, declared in `ultramodern/ultramodern.hpp`): one
+   fired on every guest mutation of the save buffer, one after a flush has been
+   finalized on disk.
+2. All the policy lives in `src/game/save_rollback.cpp`. A guest pak write that
+   is **not** the autosave's own means a deliberate save-class operation, so it
+   arms a one-shot; the next completed flush copies the save file to
+   `.manual.bak`.
+3. `goemon_save_now()` brackets **its entire body** with
+   `recomp_set_autosave_in_progress(1/0)`, so its own traffic is excluded.
+
+**Why this works with no patched function.** Every guest pak access already
+arrives at the host fully described: the Controller Pak shim
+(`librecomp/src/pak.cpp:60-77`) hands `save_write` the guest's own offset, size
+and a write flag already separated from reads. And `func_80023610_24210` issues
+**exactly one** `osPfsReadWriteFile` call — `size = 0x500`,
+`offset = slot * 0x500 + 0x100`, `flag = 1` (`RecompiledFuncs/funcs_6.c`,
+instructions `0x80023638`–`0x8002365C`) — so there is no chunking to reassemble.
+Observation is not patching; that distinction is the whole of this design.
+
+**The bracket must cover the whole of `goemon_save_now()`, not just the slot
+write.** Step 10 pushes a `0x100`-byte header block through the same
+`save_write` path. Bracketing only the slot write would let the autosave's own
+header write arm the one-shot, and the next flush would copy autosave content
+into `.manual.bak` — precisely the state it exists to roll back from. C has no
+RAII, so the bracket is implemented as a thin wrapper around a
+`goemon_save_now_inner()` body, which keeps every early return balanced and
+makes the future timer caller inherit it rather than have to remember it.
+
+**What this design gains over the notify patch:**
+
+| | notify patch | pak-write observation |
+|---|---|---|
+| guest change | reimplement `func_8000B718_C318` | none — only our own `autosave.c` |
+| fixtures `08`/`09`/`11` precondition | required | **vacuous** — manual path untouched |
+| suspends arming spuriously | must actively disarm | never reach `save_write` at all |
+| anchor | marshal (before the write) | the write itself |
+
+The RAM-only suspend problem **disappears** rather than being handled: a suspend
+marshals but never touches the pak, so it never reaches the observer. The
+"active disarm" rule the notify design required is therefore gone, not
+relaxed.
+
+**Correctness no longer depends on the call-site enumerations.** This is worth
+stating as an advantage rather than a caveat: arming on *any* non-autosave pak
+write means the design does not rest on the 8-site flush map or the 25-site GEV
+map being closed. An unmapped deliberate writer arms the one-shot and gets its
+own game-produced state copied — which **degrades the contract gracefully
+instead of violating it**. The old design's correctness rested on the closed-set
+claim; this one merely benefits from it.
+
+**Contract (unchanged):** `.manual.bak` holds *the file state as of the last
+deliberate **save-class** operation* — not "the last manual save". A Diary erase
+or copy is deliberate and is captured too; that is correct, since the erase was
+the player's own act.
+
+**The rollback point is maintained unconditionally**, not gated on the autosave
+setting. A player who enables autosave and immediately triggers one would
+otherwise have no pre-autosave rollback point, because nothing would have been
+armed before the first autosave flush.
+
+**Precondition 2 (diagnostics reachability): RESOLVED — the two `.main` pak
+diagnostic writers are UNREACHABLE.** Confidence HIGH, from four independent
+negative results with a working positive control. See "Diagnostics reachability"
+below.
+
+**Precondition 1 (fixtures `08`/`09`/`11` byte-identity): VACUOUS, and worth
+recording as vacuous rather than deleting.** It existed only because the notify
+patch would have replaced a function on the live manual-save path. This design
+does not touch that path — no game function is patched — so there is no
+divergence for the check to detect. If anyone ever revives the notify approach,
+the precondition revives with it.
+
+#### Diagnostics reachability — RESOLVED (2026-07-18)
+
+The two `.main` writers are **`func_80023C14_24814`** (`RecompiledFuncs/funcs_4.c:4049`,
+`jal` at `funcs_4.c:4133`) and **`func_80023CC8_248C8`** (`funcs_3.c:4631`, `jal`
+at `funcs_3.c:4717`). Both confirmed destructive as described: fill `0x500`
+bytes with an incrementing byte counter, then write **slot 0**.
+
+**Verdict: UNREACHABLE, HIGH confidence.** Four independent negative results:
+
+- **No `jal`.** Verified twice — in the recompiled C, and by encoding
+  `jal 0x80023C14` / `jal 0x80023CC8` and scanning all 32 MiB: 0 hits each.
+- **No fall-through.** The preceding `func_80023B60_24760` ends at `0x80023C0C`
+  with `jr $ra` + delay slot, so control cannot slide in.
+- **No data-word reference anywhere in the ROM** — so no GEV native-call
+  dispatch and no function-pointer table entry.
+- **No `lui`+`addiu` address materialization.**
+
+**The scan had a working positive control**, which is what makes the negatives
+meaningful: the same data-word scan finds `0x80214D58` (the real save routine)
+**12 times** with 0 `jal` hits — exactly the GEV `0x800B` dispatch pattern, and
+matching the known "12 player-confirmed pak writes". So the method demonstrably
+detects the one dispatch mechanism of concern, and the GEV script data is
+uncompressed and scannable.
+
+An anomaly surfaced and was **fully explained** rather than waved through: a
+range scan hit twelve copies of `0x80023B58` at rom `0x7CC14`–`0x7CC40`. That is
+the jump table at `0x8007C014` for the switch in `func_80023ADC_246DC` (flagged
+by N64Recomp as `switch_error` at `funcs_16.c:9236`); all twelve entries point at
+a bare `jr $ra` no-op default, and **none** point at either diagnostic. A stray
+`0x800238DE` at rom `0x13EA3AC` is unaligned and sits in bulk asset data, so it
+cannot be a code pointer.
+
+The 201 ROM-wide unresolved jump tables do not open a hole: MIPS jump tables
+target labels *inside* a function rather than entry points, and any entry would
+still have to appear as a data word — which neither address does.
+
+**Residual gaps, both LOW:** runtime-arithmetic address construction would evade
+both scans (compilers do not emit this for function pointers, and a leaf
+diagnostic has no motive), and compressed ROM regions would hide references
+(strongly mitigated by the positive control proving the GEV data is scannable).
+What would settle it conclusively: an instrumented run logging entry to both
+functions across a playthrough. Not judged necessary.
+
+The empirical bound — fixtures spanning many boots with slot data intact — is
+**consistent and corroborating, not load-bearing**.
+
+### Superseded: notify + `.manual.bak`
+
+**SUPERSEDED 2026-07-18** by the pak-write observation design above. Retained
+for its reasoning, not as instructions. **Do not implement this.**
+
+Neither of the two options above; a third that delivers
 the dedicated slot's rollback semantics at roughly the host-snapshot's cost.
 
 The earlier framing of this choice was a false dilemma — it compared the
@@ -414,7 +549,11 @@ this decision.
 
 ### Dedicated-slot option — PARKED, not gating
 
-Superseded as the rollback mechanism by the notify design above. Kept because its
+Superseded as the rollback mechanism by the **pak-write observation design**
+above — *not* by the notify design, which is itself dead and marked
+do-not-implement. (This pointer named the notify design until 2026-07-19; it was
+the fourth leftover-stale-cross-reference in this feature's history, which is
+why the supersession chain is now spelled out rather than relative.) Kept because its
 self-service-restore advantage may still justify it as an opt-in someday (though
 SAF import/export may obsolete that too). **These four questions no longer block
 anything** — they only matter if someone revives it.
@@ -458,9 +597,13 @@ building it:
 > **While autosave is enabled, assume `.bak` contains autosave data.** The
 > runtime rotates `current -> .bak` on every flush, and every save the feature
 > makes is a flush, so the on-device `.bak` is an earlier *autosave*, not your
-> last manual save. **The `adb` backup below is the only trustworthy recovery
-> copy.** This applies to the current manual-trigger build, not just to a future
-> timer — see "What it overwrites, exactly".
+> last manual save. This applies to the current manual-trigger build, not just
+> to a future timer — see "What it overwrites, exactly".
+>
+> `.manual.bak` now exists to be the deliberate rollback point (see "Decided
+> design"), but it is **implemented and not yet verified on device**. Until that
+> verification lands, **treat the `adb` backup below as the only trustworthy
+> recovery copy.**
 
 ### 1. Back up the save first
 
@@ -614,7 +757,62 @@ unexamined `0xF0`-byte delta. The next divergence will also hide behind a
 plausible aggregate number — and sometimes the outcome of that discipline is an
 explanation rather than a bug.
 
-### 5. Also confirm
+### 5. Verifying the `.manual.bak` rollback point
+
+**Not yet run.** The rollback mechanism is implemented and builds; this is the
+outstanding on-device check, and it gates the timer.
+
+```sh
+SAVES=/sdcard/Android/data/com.goemon64.recomp/files/data/saves
+```
+
+1. **A deliberate save produces the rollback point.** Save through an NPC or
+   inn, then pull both files and confirm they match exactly:
+
+   ```sh
+   adb pull $SAVES/mnsg.us.bin main.bin
+   adb pull $SAVES/mnsg.us.bin.manual.bak manual.bin
+   cmp main.bin manual.bin && echo "rollback point matches the manual save"
+   ```
+
+   A whole-file `cmp` **is** correct here — unlike the differential test, both
+   sides are copies of the same flush, so the step-10 stack residue is identical
+   rather than divergent.
+
+2. **Autosaves do not disturb it — the closing bracket on this whole arc.** With
+   the rollback point in place from step 1, fire the combo **twice, ~3 seconds
+   apart**. That is deliberately the same 2.7-second sequence that first
+   demonstrated the loss, back when it rotated the last manual save off the
+   device entirely. Then:
+
+   ```sh
+   adb pull $SAVES/mnsg.us.bin.manual.bak manual-after.bin
+   cmp manual.bin manual-after.bin && echo "rollback point survived two autosaves"
+   ```
+
+   `.bak` should now hold an *autosave* (an autosave-of-an-autosave, as before —
+   that behaviour is unchanged and is not a defect), while `.manual.bak` still
+   holds the manual save. **Re-running the original loss scenario and having it
+   pass is the point of the exercise**, not an incidental check.
+
+3. **Confirm it is loadable, not merely byte-identical.** Force-stop, push
+   `.manual.bak` over the main save, relaunch, and confirm the game loads the
+   manual-save state:
+
+   ```sh
+   adb shell am force-stop com.goemon64.recomp
+   adb push manual.bin $SAVES/mnsg.us.bin
+   ```
+
+   The force-stop is **not optional** — see step 2 of "Verifying it" for why a
+   restore without it is silently undone.
+
+4. **Confirm the failure paths log.** `stderr` is pumped into logcat
+   (`android_redirect_stdio_to_logcat` in `src/main/main.cpp`), so the existing
+   `adb logcat | grep autosave` picks up the copy-failure message alongside the
+   refusal diagnostics.
+
+### 6. Also confirm
 
 - ~~The save slot count~~ — **done**, confirmed 3 (see "Slot guard").
 - The setting appears in General, toggles, and persists across a restart

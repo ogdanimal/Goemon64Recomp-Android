@@ -224,7 +224,10 @@ static s32 autosave_is_safe(void) {
 // The save itself.
 // ---------------------------------------------------------------------------
 
-s32 goemon_save_now(void) {
+// The body. Do NOT call this directly -- goemon_save_now() below wraps it with
+// the save-rollback bracket, and every pak write this makes must happen inside
+// that bracket.
+static s32 goemon_save_now_inner(void) {
     volatile u32* status;
     void* arena;
     u32* image;
@@ -326,6 +329,33 @@ s32 goemon_save_now(void) {
     status = (volatile u32*)(G_STATUS_BLOCK + G_STATUS_OFFSET);
     G_STATUS_MIRROR = *status;
     return (s32)*status;
+}
+
+// Wraps the save in the rollback bracket, telling the host that every pak write
+// between these two calls is the autosave's own rather than a deliberate,
+// player-initiated save. The host maintains a `.manual.bak` rollback point by
+// observing pak writes it did NOT see bracketed -- see src/game/save_rollback.cpp
+// and docs/autosave.md.
+//
+// TWO THINGS THIS STRUCTURE IS DELIBERATELY BUYING, both easy to undo by
+// "simplifying" it back into the caller:
+//
+//  1. The bracket covers the WHOLE body, not just the slot write. The save also
+//     pushes a 0x100-byte header block through the pak (step 10), and an
+//     unbracketed header write would arm the host's one-shot and copy autosave
+//     content into `.manual.bak` -- exactly the state it exists to roll back
+//     from. C has no RAII, so a single wrapper is what keeps every early return
+//     (bad slot, probe failure, allocation failure) balanced.
+//  2. The bracket lives inside goemon_save_now(), not at the call site, so the
+//     timer -- when it lands -- inherits it instead of having to remember it.
+s32 goemon_save_now(void) {
+    s32 result;
+
+    recomp_set_autosave_in_progress(1);
+    result = goemon_save_now_inner();
+    recomp_set_autosave_in_progress(0);
+
+    return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -68,10 +68,19 @@ TWO REMAINING (in `RESUME-autosave.md`):
    state ("equal when nothing changed"). Change hearts `+0x6C` / ryo `+0x74` /
    stage `+0x200` first, then autosave + NPC-save and confirm both moved
    identically. Compare `cmp -i 256` — a whole-file `cmp` is a FALSE FAILURE.
-2. The timer (step 2) — **gated**: does not ship until a rollback mechanism
-   exists that does not depend on `.bak` (dedicated slot, or
-   backup-before-first-overwrite). A timer is confirmed the right shape:
-   Goemon has NO automatic save points, all 12 pak writes are player-confirmed.
+2. Rollback mechanism — **IMPLEMENTED, not yet device-verified.** Design changed
+   late: **observe guest pak writes host-side**, no game function patched. The
+   earlier "notify via `RECOMP_PATCH func_8000B718_C318`" plan is **SUPERSEDED —
+   do not implement it** (no `RECOMP_HOOK` in this toolchain, so `RECOMP_PATCH`
+   replaces the whole function). Two generic hooks in the `lib/N64ModernRuntime`
+   submodule + all policy in `src/game/save_rollback.cpp`. **Submodule commit not
+   yet pushed to `fork`**, so CI cannot build the pointer bump. Killed two old
+   worries: the active-disarm rule (suspends never reach the pak) and the
+   fixtures byte-identity precondition (now vacuous). Pak diagnostics
+   reachability: **RESOLVED, UNREACHABLE, HIGH confidence.**
+3. Save-data-settled check, then the timer — still **gated** on both. A timer is
+   confirmed the right shape: Goemon has NO automatic save points, all 12 pak
+   writes are player-confirmed.
 
 GOTCHAS THAT COST TIME (all documented, repeated here because they bite):
 - `0x800C7A9E` is a 3-phase init/run/exit counter, gameplay == **1** not 0. The
@@ -83,7 +92,9 @@ GOTCHAS THAT COST TIME (all documented, repeated here because they bite):
   there. Nothing reads past `0x0F`; it is not a bug.
 - `.bak` is NOT a recovery copy once autosave is enabled — `files.cpp:39-45`
   rotates on every flush, and every autosave is a flush. True of the *current*
-  build, not just a future timer. The `adb` backup is the only trustworthy copy.
+  build, not just a future timer. `.manual.bak` now exists as the deliberate
+  rollback point but is NOT yet device-verified, so until it is, the `adb`
+  backup remains the only trustworthy copy.
 - `make -C patches` needs `CC=clang LD=ld.lld`; an inherited `CC=cc` defeats the
   Makefile's `CC ?= clang`. `~/goemon-build-all.sh` passes both.
 
