@@ -36,10 +36,22 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   device-verified: manual trigger, sharpened differential test, `.manual.bak`
   rollback point, save-data-settled check, and the 2-minute timer. Pushed on
   `dev`. See the Autosave section below and `docs/autosave.md`.
-  - **One open call, deliberately not made: the timer still defaults to Off.**
-    Every gate for flipping it On is met; doing so means the port overwrites the
-    player's save automatically, which is a user-facing decision, especially with
-    a public release parked. One line in `src/game/config.cpp`.
+  - **DECIDED 2026-07-19: autosave stays Off by default. This is settled, not
+    an open call** — do not re-raise it without the user. Every technical gate
+    for On is met and verified; it stays Off because the feature reimplements
+    Goemon's save routine, and the differential test proved the payload matches
+    on the states tested, not on every state that exists. Off means anyone
+    exposed to that opted in.
+  - **"Defaults Off" means the WHOLE feature is off, not just the timer.**
+    There is one setting, `autosave_mode` (`src/game/config.cpp:262`), and the
+    early return at the top of `update_autosave` (`patches/autosave.c:583`) sits
+    *above* the combo handling — so with the default in place the manual
+    `L + R + D-Pad Up` combo does nothing either, the settle tracking does not
+    accumulate, and the Saved indicator is never seen. On a fresh install the
+    feature is entirely inert until the player enables it. Earlier notes said
+    "the timer defaults to Off", which wrongly implies manual saving works out
+    of the box. The default applies only when the JSON key is **absent**;
+    existing users keep whatever they chose.
   - **On-screen "Saved" indicator — DONE, device-verified 2026-07-19** on both
     the timed and manual paths (`src/ui/ui_saved_indicator.cpp`). The settings
     description now also states the 2-minute interval. The old claim here that
@@ -72,7 +84,9 @@ Evidence corpus (cite it, don't re-derive): `docs/re-notes/fixtures/`.
 Commits on `dev`: `70d3e4d` feature, `9522fe8` docs+RE corrections,
 `49fedf8` `.bak` hazard reframing, `71e56a5` fixtures.
 
-WHAT WORKS: manual trigger `L + R + D-Pad Up`, edge-triggered, defaults **Off**.
+WHAT WORKS: manual trigger `L + R + D-Pad Up`, edge-triggered. The single
+`autosave_mode` setting defaults **Off**, which disables this combo too — see
+the note above.
 Commits through Goemon's own save data/slot format by reimplementing
 `func_80214D58_5D0228` (overlay code, so not callable). Writes the slot the
 player loaded — which is the game's *native* semantic, since an in-game save
@@ -108,8 +122,8 @@ TWO REMAINING (in `RESUME-autosave.md`):
 4. **The timer — DONE, VERIFIED ON DEVICE 2026-07-19.** 2-min interval; saves
    only when safe + settled + something actually changed (walking changes
    nothing watched, so idle/walking produces no writes). Full cycle observed.
-   **Still defaults Off** — every gate for flipping it On is met, but that is a
-   deliberate user-facing call and has NOT been made.
+   Ships **Off** by default along with the rest of the feature — DECIDED
+   2026-07-19, settled, see the note near the top of this file.
 
 RULE THIS FEATURE EARNED THE HARD WAY (3 separate occasions): for anything that
 refuses or declines, build the diagnostic that proves it is REACHING ITS

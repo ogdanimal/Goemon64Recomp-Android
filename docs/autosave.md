@@ -22,8 +22,18 @@ is not wired up until the write path is proven on-device.
 every frame), and only while the safety gate passes. See the
 `AUTOSAVE_TEST_COMBO` define in `patches/autosave.c`.
 
-The setting defaults to **Off**. Zelda64Recomp defaults theirs On; this one
-overwrites your real save, so we do not.
+The single `autosave_mode` setting defaults to **Off** — decided 2026-07-19 and
+settled. Zelda64Recomp defaults theirs On; this one overwrites your real save
+via a *reimplementation* of the game's save routine, and the differential test
+proved the payload matches on the states tested rather than on every state that
+exists, so Off means anyone exposed to that opted in.
+
+**Off disables the whole feature, not just the timer.** The early return in
+`update_autosave` (`patches/autosave.c:583`) sits above the combo handling, so
+the manual `L + R + D-Pad Up` trigger does nothing either, the settle tracking
+does not accumulate, and the Saved indicator is never seen. A fresh install is
+entirely inert until the player enables it. The default applies only when the
+JSON key is **absent**; existing users keep what they chose.
 
 ## How it works
 

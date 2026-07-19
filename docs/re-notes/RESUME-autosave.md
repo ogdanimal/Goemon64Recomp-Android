@@ -143,9 +143,11 @@ overwrites the player's real save.
    something actually changed. Full cycle observed (fire -> suppress -> re-arm
    -> suppress). Details in `docs/autosave.md` § "The timer".
 
-   **It still defaults to Off.** Every gate for defaulting it On is now met, but
-   flipping the default is a deliberate user-facing call — it means the port
-   overwrites the player's save automatically — and has not been made.
+   **DECIDED 2026-07-19: it stays Off by default. Settled — do not re-raise.**
+   Every technical gate for On is met; it stays Off because this reimplements
+   Goemon's save routine and the differential test covers the states tested,
+   not every state. Note "Off" disables the manual combo too, not just the
+   timer — the gate is above the combo handling.
 
    **The `.bak` hazard is already true of step 1, today.** `files.cpp:39-45` rotates
    `current -> .bak` on every flush and every autosave is a flush, so a *second*
