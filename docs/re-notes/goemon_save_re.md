@@ -271,6 +271,16 @@ camera-direction records at 0x800C7DB0" is the `System` controller array
   is the loader counter. Partially settled on device: pressing the save combo
   mid-dialogue with a save NPC refused with `sub 3` **and** a non-zero
   `0x80077858` (the script-VM gate), so the chain does exclude dialogue.
+  **Refined 2026-07-19: `sub 3` is NOT dialogue-specific.** Standing still in an
+  inn — no dialogue, no menu — also reads `sub 3`, but with `0x80077858 == 0`.
+  So the two states are distinguished by the script-VM gate, not by submode, and
+  submode 3 is broader than "in dialogue". Do not read a `sub 3` refusal as
+  evidence of dialogue; check `busy` alongside it.
+  **The guard is faithful, verified against the game itself:** the pause menu
+  also refuses to open in that inn spot, so submode 3 blocks the game's own
+  pause predicate and not merely our re-evaluation of it. Autosave therefore
+  does not fire in inns — a real coverage limit the timer inherits, though a
+  harmless one while inns are themselves save points.
 - Whether top-level state `0x11` (the bare gameplay variant) is ever live during
   saveable play. `patches/autosave.c` accepts only `0x0D`; if a refusal ever
   logs `state 17`, that is the line to revisit.

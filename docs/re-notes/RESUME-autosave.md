@@ -72,8 +72,8 @@ overwrites the player's real save.
    **Marshaling correctness is now closed.** Add any future pairs to
    `docs/re-notes/fixtures/` rather than overwriting — that directory is the
    evidence corpus for every claim in these notes, not backups.
-3. ~~**Build the rollback mechanism.**~~ **DONE — implemented, builds clean,
-   NOT yet verified on device.**
+3. ~~**Build the rollback mechanism.**~~ **DONE — implemented, and VERIFIED ON
+   DEVICE 2026-07-19. The timer's gating precondition is met.**
 
    **The design changed during implementation. The previous "DECIDED" entry here
    — notify via `RECOMP_PATCH func_8000B718_C318` — is SUPERSEDED. Do not
@@ -107,10 +107,14 @@ overwrites the player's real save.
    including a jump-table anomaly that was explained rather than waved through,
    in `docs/autosave.md` § "Diagnostics reachability".
 
-   **What remains before the timer: on-device verification of the rollback
-   point.** Confirm that a manual NPC save produces `.manual.bak`, that
-   subsequent autosaves leave it untouched while rotating `.bak`, and that it is
-   a loadable save. Files: `src/game/save_rollback.cpp` (all the policy),
+   **Verification PASSED** (`docs/autosave.md` § 5): a manual NPC save produced
+   `.manual.bak` byte-identical to it and demonstrably not stale; two autosaves
+   4.6s apart — the original 2.7s loss scenario — left it untouched while `.bak`
+   became an autosave as before. The gate was also confirmed **faithful, not
+   over-strict**: it refuses in inns (`sub 3`), and the game's own pause menu
+   refuses in that same spot.
+
+   Files: `src/game/save_rollback.cpp` (all the policy),
    `include/goemon_save_rollback.h`, the two generic hooks in the
    `lib/N64ModernRuntime` submodule, and the bracket wrapper in
    `patches/autosave.c`.

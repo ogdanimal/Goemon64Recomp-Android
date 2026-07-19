@@ -759,8 +759,18 @@ explanation rather than a bug.
 
 ### 5. Verifying the `.manual.bak` rollback point
 
-**Not yet run.** The rollback mechanism is implemented and builds; this is the
-outstanding on-device check, and it gates the timer.
+**RUN AND PASSED on device, 2026-07-19.** Results under each step below. This
+was the gating precondition for the timer, and it is now met: a rollback
+mechanism exists that does not depend on `.bak`, and it is verified rather than
+merely implemented.
+
+**A null result nearly read as a pass, and then as a failure — note the shape.**
+The first attempt at step 1 found no `.manual.bak` and looked like a defect. The
+device was simply running an APK seven hours older than the feature. **Absence
+of `.manual.bak` looks identical whether the feature is broken or not
+installed** — so check `adb shell dumpsys package com.goemon64.recomp | grep
+lastUpdateTime` against the build time before drawing any conclusion from a
+missing file.
 
 ```sh
 SAVES=/sdcard/Android/data/com.goemon64.recomp/files/data/saves
@@ -779,6 +789,13 @@ SAVES=/sdcard/Android/data/com.goemon64.recomp/files/data/saves
    sides are copies of the same flush, so the step-10 stack residue is identical
    rather than divergent.
 
+   **PASSED (2026-07-19).** `.manual.bak` byte-identical to the manual save.
+   Also confirmed **not stale**, which a bare existence check would have missed:
+   it differed from the pre-install save pulled minutes earlier, so the one-shot
+   armed and fired on *this* save rather than a leftover file passing inspection.
+   Corroborated by `.bak` being byte-identical to that pre-install save — three
+   files telling one consistent story, which is stronger than any single compare.
+
 2. **Autosaves do not disturb it — the closing bracket on this whole arc.** With
    the rollback point in place from step 1, fire the combo **twice, ~3 seconds
    apart**. That is deliberately the same 2.7-second sequence that first
@@ -794,6 +811,15 @@ SAVES=/sdcard/Android/data/com.goemon64.recomp/files/data/saves
    that behaviour is unchanged and is not a defect), while `.manual.bak` still
    holds the manual save. **Re-running the original loss scenario and having it
    pass is the point of the exercise**, not an incidental check.
+
+   **PASSED (2026-07-19).** Two autosaves 4.6s apart, both `status 0`.
+   `.manual.bak` byte-identical to its step 1 content; `.bak` differs from the
+   manual save, i.e. it had become autosave A exactly as it always did. The loss
+   scenario reproduced faithfully and the rollback point survived it.
+
+   **Getting there took a refusal worth recording.** The first attempt fired the
+   combo while standing in an inn and was refused twice — every guard passed
+   except `sub 3`. See "Submode 3" below; it is the gate working, not a defect.
 
 3. **Confirm it is loadable, not merely byte-identical.** Force-stop, push
    `.manual.bak` over the main save, relaunch, and confirm the game loads the
@@ -811,6 +837,37 @@ SAVES=/sdcard/Android/data/com.goemon64.recomp/files/data/saves
    (`android_redirect_stdio_to_logcat` in `src/main/main.cpp`), so the existing
    `adb logcat | grep autosave` picks up the copy-failure message alongside the
    refusal diagnostics.
+
+   **CONFIRMED** — the refusal diagnostics carried the whole of step 2's
+   troubleshooting. No copy-failure message was produced, which is the expected
+   silence rather than an untested path.
+
+#### Submode 3 — the gate refuses in inns, and that is faithful
+
+`0x800C7AA4` semantics remain an **open question** (`goemon_save_re.md:201`,
+MEDIUM; listed at line 270). This run added one concrete data point against it:
+
+**OBSERVED: submode reads 3 while standing in an inn**, with every other guard
+passing (`state 13 | phase 1 | done 0 | paused 0 xfer 0 lock 0 | busy 0 loading
+0 gA 0 gB 0 | file11 1`), so the gate refuses there.
+
+**OBSERVED: the game's own pause menu does not open in that same spot.** This is
+the check that matters, and it was run deliberately: the entire gate is a
+re-evaluation of the game's pause-menu predicate, so if submode 3 blocked *us*
+but not the game, our guard would be stricter than the game's and autosave would
+be silently refusing in states the game considers safe. It is not. The guard is
+faithful.
+
+**NOT established:** what submode 3 *means*. "Inn interior", "post-save", "shop"
+and others all remain live. An earlier reading of this same refusal as "still in
+dialogue" was **wrong** — the player was standing still in an inn, not talking
+to anyone — and is recorded here because the plausible-sounding guess was
+offered before the cheap experiment that actually settled the faithfulness
+question.
+
+Practical consequence: **autosave will not fire inside inns.** Harmless today,
+since inns are themselves save points, but it is a real coverage limit that the
+timer inherits, and it should be understood before the timer defaults to On.
 
 ### 6. Also confirm
 

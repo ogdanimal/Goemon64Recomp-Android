@@ -68,7 +68,10 @@ TWO REMAINING (in `RESUME-autosave.md`):
    state ("equal when nothing changed"). Change hearts `+0x6C` / ryo `+0x74` /
    stage `+0x200` first, then autosave + NPC-save and confirm both moved
    identically. Compare `cmp -i 256` — a whole-file `cmp` is a FALSE FAILURE.
-2. Rollback mechanism — **IMPLEMENTED, not yet device-verified.** Design changed
+2. Rollback mechanism — **DONE, VERIFIED ON DEVICE 2026-07-19.** `.manual.bak`
+   matched the manual save and survived two autosaves 4.6s apart (the original
+   loss scenario) while `.bak` became an autosave. The timer's gating
+   precondition is MET. Design changed
    late: **observe guest pak writes host-side**, no game function patched. The
    earlier "notify via `RECOMP_PATCH func_8000B718_C318`" plan is **SUPERSEDED —
    do not implement it** (no `RECOMP_HOOK` in this toolchain, so `RECOMP_PATCH`
@@ -92,9 +95,12 @@ GOTCHAS THAT COST TIME (all documented, repeated here because they bite):
   there. Nothing reads past `0x0F`; it is not a bug.
 - `.bak` is NOT a recovery copy once autosave is enabled — `files.cpp:39-45`
   rotates on every flush, and every autosave is a flush. True of the *current*
-  build, not just a future timer. `.manual.bak` now exists as the deliberate
-  rollback point but is NOT yet device-verified, so until it is, the `adb`
-  backup remains the only trustworthy copy.
+  build, not just a future timer. `.manual.bak` is the deliberate rollback point
+  and is device-verified (survives autosaves); `.bak` is still autosave data.
+- `sub 3` in an autosave refusal is NOT dialogue — standing in an inn reads
+  `sub 3` too, with `busy 0`. Dialogue additionally sets `busy` non-zero. The
+  gate is faithful: the game's own pause menu also refuses in that inn spot, so
+  autosave does not fire in inns.
 - `make -C patches` needs `CC=clang LD=ld.lld`; an inherited `CC=cc` defeats the
   Makefile's `CC ?= clang`. `~/goemon-build-all.sh` passes both.
 
