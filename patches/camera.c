@@ -18,7 +18,8 @@
 //      (The old host left-stick counter-rotation hack is off — pass 0.)
 //
 // The camera is an ABSOLUTE override, not an offset added to the live camera:
-// see the g_acam_off_* comment below for why that distinction fixes drift.
+// see the g_acam_dir_* comment below for why that distinction fixes drift. We
+// own the camera's AZIMUTH only; its distance and height stay the game's.
 //
 // Settings consumed from the menu: analog cam on/off, per-axis invert, per-axis
 // sensitivity, and R3 to hand the camera back to the game.
@@ -29,6 +30,17 @@
 // re-points it every tick at a static 0x18-byte stick record in the table
 // at 0x800C7DB0: +0xC magnitude, +0x10/+0x14 planar components.)
 #define ACAM_MOVE_PTR ((u32*)0x8020CA2C)
+
+// Current map id. The engine's area-change commit (func_8000B364) copies this
+// halfword to the previous-map slot 0x800C7ABC, then installs the pending
+// destination from 0x800C7CA0 — so a change here IS an area transition, one
+// cheap 2-byte read with no pointer chase. Map ids are per-room (0..0x26C, 621
+// of them across only 14 stages), which is the granularity a house interior
+// needs. Three independent addressing forms in the binary resolve here.
+//
+// NOTE: gamedata+0x200 looks like an area id but is NOT — it indexes the
+// continue/save-point table at 0x8005BA30 and only moves when you save.
+#define ACAM_MAP_ID ((volatile u16*)0x800C7AB2)
 
 // Accumulated analog-camera yaw and pitch, s16 binary angles
 // (0x10000 = full turn).
@@ -45,10 +57,31 @@ s16 g_analog_cam_pitch = 0;
 // you around, but its azimuth is ours to hold — the game's follow-cam no longer
 // bleeds in. Captured once per engagement; re-snapped on disengage so
 // re-engaging never jumps.
+// Only the horizontal DIRECTION is captured — a unit vector. Radius and height
+// are re-read from the live camera every frame and left entirely to the game.
+//
+// WHY NOT capture the whole offset (which is what v14 did): the offset encodes
+// the framing DISTANCE, and the game's distance is dynamic. On entering an area
+// the camera starts very close to the character and eases out to its normal
+// distance over ~2s (device recording, 2026-07-19: at 1.5s after the load
+// Goemon fills the frame; by 4.0s the camera has pulled back on its own with no
+// input) — and movement affects it too. Capturing during that window froze the
+// camera at "very close" for the whole area, fixable only with R3. Deferring the
+// capture until the pose settles would only have moved the guess around, since
+// there is no single instant that is reliably "the" framing.
+//
+// Taking radius/height live cannot reintroduce the v14 drift bug: that was the
+// game's follow-cam swinging its AZIMUTH behind movement, and azimuth is the one
+// quantity we never read back. Radius and height are azimuth-independent
+// scalars. And since the game has no per-frame camera writer (see the RE notes),
+// they are constant except at cuts and eases — so there is no jitter to inherit.
 static s32 g_acam_captured = 0;
-static f32 g_acam_off_x = 0.0f;
-static f32 g_acam_off_y = 0.0f;
-static f32 g_acam_off_z = 0.0f;
+static f32 g_acam_dir_x = 0.0f;
+static f32 g_acam_dir_z = 0.0f;
+
+// Last map id seen, for the area-transition reset. -1 = nothing seen yet, so
+// the first gameplay frame is not reported as a transition.
+static s32 g_acam_last_map = -1;
 
 // v12 feel: TIME-BASED rates (binang per second at full stick tilt), so the
 // rotation speed no longer depends on how many times per rendered frame the
@@ -121,6 +154,32 @@ void update_analog_camera(void) {
 
     // Silence the right stick's C-button mapping only while active.
     recomp_set_right_analog_suppressed(enabled);
+
+    // Area-transition reset. The held azimuth (g_acam_dir_* plus accumulated
+    // yaw) belongs to the area it was captured in; each area sets its own
+    // intended camera direction on entry, and without this the old area's
+    // heading survived the transition and overrode it — fixable only by pressing
+    // R3 every single time. Clearing the capture makes the next frame
+    // re-snapshot from the live camera, which is exactly what R3 does by hand.
+    //
+    // Distance and height need no reset: they are read live every frame now.
+    //
+    // Yaw/pitch must be zeroed with it: they are applied ON TOP of a freshly
+    // captured offset, so keeping stale rotation would re-snapshot the new
+    // area's framing and then immediately swing away from it.
+    //
+    // Tracked unconditionally (above the enabled/gameplay gate) so the id never
+    // goes stale while the feature is off or during a load.
+    s32 map = (s32)*ACAM_MAP_ID;
+    if (map != g_acam_last_map) {
+        s32 prev = g_acam_last_map;
+        g_acam_last_map = map;
+        if (prev != -1) {
+            g_analog_cam_yaw = 0;
+            g_analog_cam_pitch = 0;
+            g_acam_captured = 0;
+        }
+    }
 
     if (!enabled || !acam_in_gameplay()) {
         g_analog_cam_yaw = 0;
@@ -201,25 +260,41 @@ void update_analog_camera(void) {
 // leaving look_at untouched keeps the aim on the character while we own the
 // orbit angle — which is also the basis the movement resolver reads.
 static void acam_rotate_in_place(Camera* cam) {
-    // Snapshot the eye offset on the first frame of an engagement (see the
-    // g_acam_off_* comment). At entry `cam` is an unrotated copy of the live
-    // game camera, so this captures the game's current framing exactly — the
-    // engage transition is seamless (accumulated yaw is ~0 at that instant).
+    // Live eye offset. At entry `cam` is an unrotated copy of the live game
+    // camera, so this is the game's current framing: `r` is its intended
+    // distance and `ly` its intended height, both of which stay the game's to
+    // set (see the g_acam_dir_* comment).
+    f32 lx = cam->position.x - cam->look_at.x;
+    f32 ly = cam->position.y - cam->look_at.y;
+    f32 lz = cam->position.z - cam->look_at.z;
+    f32 r = __builtin_sqrtf(lx * lx + lz * lz);
+
+    // Snapshot only the azimuth, on the first frame of an engagement. Yaw is ~0
+    // at that instant, so the engage transition is seamless.
     if (!g_acam_captured) {
-        g_acam_off_x = cam->position.x - cam->look_at.x;
-        g_acam_off_y = cam->position.y - cam->look_at.y;
-        g_acam_off_z = cam->position.z - cam->look_at.z;
+        // Degenerate: camera directly overhead, so there is no horizontal
+        // direction to capture. Defer to the next frame rather than snapshot a
+        // meaningless one — passing the camera through untouched meanwhile.
+        if (r < 1.0f) {
+            return;
+        }
+        g_acam_dir_x = lx / r;
+        g_acam_dir_z = lz / r;
         g_acam_captured = 1;
     }
 
-    // Yaw: rotate the captured horizontal offset about the vertical axis. This
-    // is an ABSOLUTE world azimuth we own — it does not read the live camera's
-    // (drifting) azimuth, so the follow-cam can no longer pull the view back.
+    // Yaw: rotate the captured unit direction about the vertical axis, then
+    // scale by the LIVE radius. This is an ABSOLUTE world azimuth we own — it
+    // does not read the live camera's (drifting) azimuth, so the follow-cam
+    // cannot pull the view back; but the game keeps control of how far out and
+    // how high the camera sits, so a dolly-out or a new area's framing is
+    // picked up automatically. Recomputed from g_acam_dir_* each frame rather
+    // than accumulated, so the direction cannot drift off unit length.
     f32 s = acam_sin(g_analog_cam_yaw);
     f32 c = acam_cos(g_analog_cam_yaw);
-    f32 dx = g_acam_off_x * c - g_acam_off_z * s;
-    f32 dz = g_acam_off_x * s + g_acam_off_z * c;
-    f32 dy = g_acam_off_y;
+    f32 dx = (g_acam_dir_x * c - g_acam_dir_z * s) * r;
+    f32 dz = (g_acam_dir_x * s + g_acam_dir_z * c) * r;
+    f32 dy = ly;
 
     // Pitch: swing the eye vertically in the (horizontal-distance, height)
     // plane about the look_at, radius-preserving, with the absolute elevation
@@ -384,4 +459,207 @@ RECOMP_PATCH s32 func_801CE3F0_58A300(u8* task, f32 speed) {
     }
 
     return ret;
+}
+
+// ============================================================================
+// Skybox yaw. The sky is NOT 3D geometry — it is a 640x240 panorama blitted as
+// screen-space texture rectangles (ROM segment labelled "# Skybox"; the draw
+// path is what patches/background.c already patches). func_801F8670_5B4580
+// computes its horizontal scroll as
+//
+//     u = 640 - 640 * (binang yaw of eye-look_at) / 1024
+//
+// i.e. one full panorama per full turn, reading the LIVE camera through
+// *(*(*(player+0x64)+0x18)+0x2C) — the same chain the movement resolver uses.
+//
+// That chain saw NEITHER of our hooks: apply_analog_camera rotates a private
+// copy and never writes the node's +0x2C word, and the func_801CE3F0 swap is
+// restored a few instructions later, long before the skybox task runs. So the
+// sky kept following the game's own follow-cam azimuth — which the v14
+// absolute-override deliberately stopped driving — and stayed nearly put while
+// the world swung. Same fix as the movement basis: swap the node's Camera
+// pointer to a rotated copy across the call, so the scroll is computed from the
+// view we are actually rendering. Correct by construction: the game's own
+// formula is fed the camera it would have had.
+//
+// (The gentle sky drift while merely WALKING is native behaviour, not this bug
+// — that is the follow-cam azimuth lazily tracking the player.)
+// ============================================================================
+
+// Rotated Camera image fed to the skybox scroll computation during the swap.
+static Camera acam_sky_cam;
+
+void func_801F8670_5B4580(void* node, s32 width, s32 height);
+
+// Faithful reproduction of func_801F8644_5B4554 (0x2C bytes): it forwards its
+// SECOND argument to func_801F8670 with the panorama dimensions 640 x 136. The
+// first argument is stored to the stack and never used.
+// Point the camera node's Camera pointer at a rotated copy for the duration of
+// a skybox scroll computation. Returns 1 if the swap was made, in which case
+// *out_node / *out_old must be handed back to acam_sky_unswap afterwards.
+//
+// Resolves exactly the chain func_801F8670 reads. When no player exists that
+// function instead falls back to the camera at *(0x800C7ADC) and there is no
+// node pointer to swap — the range checks below leave the swap off in that
+// case, which is correct (it is not gameplay anyway).
+static s32 acam_sky_swap(u32* out_node, u32* out_old) {
+    if (!recomp_get_analog_cam_enabled() ||
+        (g_analog_cam_yaw == 0 && g_analog_cam_pitch == 0 && !g_acam_captured) ||
+        !acam_in_gameplay()) {
+        return 0;
+    }
+
+    u32 player = *(u32*)0x801FC604;
+    if (player < 0x80000000u || player >= 0x80800000u) {
+        return 0;
+    }
+    u32 obj = *(u32*)(player + 0x64);
+    if (obj < 0x80000000u || obj >= 0x80800000u) {
+        return 0;
+    }
+    u32 node = *(u32*)(obj + 0x18);
+    if (node < 0x80000000u || node >= 0x80800000u) {
+        return 0;
+    }
+
+    u32 old_cam = *(u32*)(node + 0x2C);
+    Camera* real = (Camera*)(old_cam & 0x8FFFFFFE);
+    if ((u32)real < 0x80000000u || (u32)real >= 0x80800000u ||
+        !acam_is_gameplay_camera(real)) {
+        return 0;
+    }
+
+    memcpy(&acam_sky_cam, real, sizeof(Camera));
+    acam_rotate_in_place(&acam_sky_cam);
+    *(u32*)(node + 0x2C) = (u32)&acam_sky_cam;
+
+    *out_node = node;
+    *out_old = old_cam;
+    return 1;
+}
+
+static void acam_sky_unswap(u32 node, u32 old_cam) {
+    *(u32*)(node + 0x2C) = old_cam;
+}
+
+RECOMP_PATCH void func_801F8644_5B4554(void* task, void* node_arg) {
+    (void)task;
+
+    u32 node = 0, old_cam = 0;
+    s32 swapped = acam_sky_swap(&node, &old_cam);
+
+    func_801F8670_5B4580(node_arg, 0x280, 0x88);
+
+    if (swapped) {
+        acam_sky_unswap(node, old_cam);
+    }
+}
+
+// The SECOND caller of the skybox scroll computation — a scripted/animated sky
+// variant in a different overlay, which func_801F8644's patch does not cover.
+// Confirmed a real alternate path rather than a symbol-resolution artifact:
+// it passes DATA-DRIVEN panorama dimensions read from the node (+0x10/+0x12),
+// where the base-exe forwarder hardcodes 640 x 136. A duplicated symbol would
+// have identical code.
+//
+// Faithful reproduction of func_802242DC_68DCBC (0xA4 bytes). Dispatches on the
+// mode byte at task+0x5D: 0 = advance a two-axis scroll-offset tween and publish
+// it into the node, 1 = run the scroll computation, anything else = return.
+RECOMP_PATCH void func_802242DC_68DCBC(u8* task, void* arg1) {
+    (void)arg1;
+
+    u8 mode = *(u8*)(task + 0x5D);
+
+    if (mode == 0) {
+        u8* p = task + 0x5C;
+        s16 count = *(s16*)(p + 0x2);
+        f32 scroll_u;
+
+        if (count > 0) {
+            f32 u_cur  = *(f32*)(p + 0x8);
+            f32 u_step = *(f32*)(p + 0xC);
+            f32 v_cur  = *(f32*)(p + 0x14);
+            f32 v_step = *(f32*)(p + 0x18);
+
+            *(s16*)(p + 0x2) = count - 1;
+            *(f32*)(p + 0x8) = u_cur + u_step;
+            *(f32*)(p + 0x14) = v_cur + v_step;
+        }
+        scroll_u = *(f32*)(p + 0x8);
+
+        u32 node = *(u32*)(p + 0x20);
+        *(f32*)(node + 0x14) = scroll_u;
+        node = *(u32*)(p + 0x20);
+        *(f32*)(node + 0x18) = *(f32*)(p + 0x14);
+    } else if (mode == 1) {
+        u8* sky_node = (u8*)*(u32*)(task + 0x7C);
+
+        u32 node = 0, old_cam = 0;
+        s32 swapped = acam_sky_swap(&node, &old_cam);
+
+        func_801F8670_5B4580(sky_node, *(u16*)(sky_node + 0x10),
+                             *(u16*)(sky_node + 0x12));
+
+        if (swapped) {
+            acam_sky_unswap(node, old_cam);
+        }
+    }
+}
+
+// ============================================================================
+// Positional audio panning. func_8000FE1C_10A1C derives the LISTENER heading
+// from the camera's eye->look_at azimuth and pans with
+//
+//     sin( (sourceYaw - cameraYaw) & 0x3FF )
+//
+// Unlike the skybox and the movement resolver, it does NOT resolve the camera
+// through the node chain — the Camera is passed as an ARGUMENT ($a1), untouched,
+// down the chain func_8000F420 -> func_8000F6E8 -> func_8000FE1C. So a
+// node+0x2C pointer swap cannot reach it; the argument has to be substituted.
+//
+// Left unfixed this is wrong EVERYWHERE, always, by exactly the accumulated
+// analog yaw: orbit 90 degrees and a sound source visibly on your left plays
+// from your right; at 180 degrees the whole soundstage is mirrored. It is
+// inaudible on mono/TV speakers, which is why it survived visual testing.
+//
+// Hooked at func_8000F6E8 rather than at func_8000FE1C itself: F6E8 is a thin
+// 0x48-byte forwarder (vs 0x360 for FE1C) and still covers the overwhelming
+// majority of entries — the ~130 overlay sites that call func_8000F420, plus
+// F6E8's own 8 direct and 5 indirect callers.
+//
+// KNOWN GAP, deliberate: four sites call func_8000FE1C directly and bypass this
+// patch — 0x801F2A58 and 0x801F2A7C (RecompiledFuncs/funcs_34.c), 0x8000FE04
+// (funcs_11.c, inside the audio module itself), and 0x80210074 (funcs_87.c).
+// Closing those means faithfully reproducing all 0x360 bytes of FE1C. Revisit
+// only if a specific sound is audibly mispanned while the rest are correct.
+// ============================================================================
+
+// Rotated Camera image handed to the audio panner during the substitution.
+static Camera acam_audio_cam;
+
+// Args are forwarded verbatim as raw words: a2/a3 and the two stack slots carry
+// float BITS through integer registers in the original (an mtc1/mfc1 round trip
+// that is a no-op), so typing them as u32 reproduces the o32 layout exactly and
+// avoids the compiler re-classifying them into FP registers.
+void func_8000FE1C_10A1C(u32 sound_id, void* cam, u32 x, u32 z, u32 a, u32 b);
+
+// Faithful reproduction of func_8000F6E8_102E8 (0x48 bytes): masks the sound id
+// to 16 bits and forwards every other argument unchanged.
+RECOMP_PATCH void func_8000F6E8_102E8(u32 sound_id, void* cam, u32 x, u32 z,
+                                      u32 a, u32 b) {
+    void* use_cam = cam;
+
+    if (cam != NULL && recomp_get_analog_cam_enabled() &&
+        (g_analog_cam_yaw != 0 || g_analog_cam_pitch != 0 || g_acam_captured) &&
+        acam_in_gameplay()) {
+        Camera* real = (Camera*)(((u32)cam) & 0x8FFFFFFE);
+        if ((u32)real >= 0x80000000u && (u32)real < 0x80800000u &&
+            acam_is_gameplay_camera(real)) {
+            memcpy(&acam_audio_cam, real, sizeof(Camera));
+            acam_rotate_in_place(&acam_audio_cam);
+            use_cam = &acam_audio_cam;
+        }
+    }
+
+    func_8000FE1C_10A1C(sound_id & 0xFFFF, use_cam, x, z, a, b);
 }
