@@ -297,6 +297,9 @@
                         While this is on, press <b>L + R + D-Pad Up</b> during normal gameplay to save immediately.
                         <br/>
                         <br/>
+                        Saving is only allowed when the game itself would let you pause, so it will not happen <b>inside inns</b>, during dialogue or cutscenes, while a menu is open, or during area loads.
+                        <br/>
+                        <br/>
                         <b>This writes to your existing save file, overwriting it. Back it up before enabling.</b>
                     </p>
                     <p data-if="cur_config_index == 7">
