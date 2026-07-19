@@ -50,30 +50,89 @@ public class LauncherActivity extends AppCompatActivity {
         pickRomButton = findViewById(R.id.pickRomButton);
         pickRomButton.setOnClickListener(v -> romPicker.launch(new String[]{"*/*"}));
 
-        ensureDataDir();
+        // Storage location is chosen ONCE, before any data exists. Existing
+        // installs are grandfathered to internal and never prompted.
+        if (DataPaths.storedLocation(this) == null) {
+            if (DataPaths.hasExistingInternalData(this)) {
+                DataPaths.setLocation(this, DataPaths.LOCATION_INTERNAL);
+            } else if (DataPaths.hasRemovable(this)) {
+                showStorageChoiceDialog();
+                return;   // continues in proceedAfterStorageChoice()
+            } else {
+                DataPaths.setLocation(this, DataPaths.LOCATION_INTERNAL);
+            }
+        }
+
+        proceedAfterStorageChoice();
+    }
+
+    /**
+     * Offered only on a genuinely fresh install with a card present. There is no
+     * migration path, so this is the one chance to choose — say so plainly rather
+     * than implying it can be changed later.
+     */
+    private void showStorageChoiceDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("Where should game data go?")
+                .setMessage("The ROM you pick, along with saves and UI files "
+                        + "(about 45 MB), can live on internal storage or on your "
+                        + "SD card.\n\nIf you choose the SD card, the game will not "
+                        + "start while the card is removed.\n\nThis cannot be "
+                        + "changed later without reinstalling.")
+                .setPositiveButton("SD card", (d, w) -> {
+                    DataPaths.setLocation(this, DataPaths.LOCATION_SD);
+                    proceedAfterStorageChoice();
+                })
+                .setNegativeButton("Internal storage", (d, w) -> {
+                    DataPaths.setLocation(this, DataPaths.LOCATION_INTERNAL);
+                    proceedAfterStorageChoice();
+                })
+                .setCancelable(false)
+                .show();
+    }
+
+    private void proceedAfterStorageChoice() {
+        if (!DataPaths.ensureDataDir(this)) {
+            showStorageUnavailableDialog();
+            return;
+        }
 
         File rom = romFile();
-        if (rom.exists() && rom.length() > 0) {
+        if (rom != null && rom.exists() && rom.length() > 0) {
             verifyAndMaybeStart(rom);
         } else {
             showMissingRomUi();
         }
     }
 
+    /**
+     * The chosen volume is gone. Refuse rather than falling back to internal:
+     * a fallback would silently present the first-run ROM picker, which from
+     * the user's side is indistinguishable from the app having deleted their
+     * ROM and saves.
+     */
+    private void showStorageUnavailableDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("SD card not available")
+                .setMessage("This install keeps its game data on the SD card, "
+                        + "which is not currently mounted.\n\nRe-insert the card "
+                        + "and reopen the app. Your ROM and saves are on the card "
+                        + "and have not been touched.")
+                .setPositiveButton("Close", (d, w) -> finish())
+                .setCancelable(false)
+                .show();
+    }
+
+    @Nullable
     private File dataDir() {
-        return new File(getExternalFilesDir(null), "data");
+        return DataPaths.dataDir(this);
     }
 
+    /** Null when the chosen volume is unavailable — callers must handle it. */
+    @Nullable
     private File romFile() {
-        return new File(dataDir(), ROM_FILE_NAME);
-    }
-
-    private void ensureDataDir() {
         File d = dataDir();
-        if (!d.exists()) {
-            //noinspection ResultOfMethodCallIgnored
-            d.mkdirs();
-        }
+        return d == null ? null : new File(d, ROM_FILE_NAME);
     }
 
     private void showMissingRomUi() {
@@ -97,7 +156,7 @@ public class LauncherActivity extends AppCompatActivity {
             return;
         }
         File rom = romFile();
-        if (rom.exists() && rom.length() > 0) {
+        if (rom != null && rom.exists() && rom.length() > 0) {
             verifyAndMaybeStart(rom);
         } else {
             Toast.makeText(this, "ROM copy failed", Toast.LENGTH_LONG).show();
@@ -105,9 +164,15 @@ public class LauncherActivity extends AppCompatActivity {
     }
 
     private void copyRom(Uri source) throws IOException {
-        ensureDataDir();
+        if (!DataPaths.ensureDataDir(this)) {
+            throw new IOException("Storage location unavailable");
+        }
+        File dest = romFile();
+        if (dest == null) {
+            throw new IOException("Storage location unavailable");
+        }
         try (InputStream in = getContentResolver().openInputStream(source);
-             FileOutputStream out = new FileOutputStream(romFile())) {
+             FileOutputStream out = new FileOutputStream(dest)) {
             if (in == null) throw new IOException("Unable to open selected file");
             byte[] buf = new byte[8192];
             int n;

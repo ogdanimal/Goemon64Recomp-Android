@@ -46,10 +46,22 @@ public class RestartActivity extends Activity {
             Process.killProcess(killPid);
         }
 
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        intent.putExtra(MainActivity.EXTRA_AUTOSTART, autostart);
-        Log.i(TAG, "RestartActivity: relaunching, autostart=" + autostart);
+        // If the data lives on an SD card that has since been removed, relaunching
+        // straight into MainActivity would start SDL against a path that no longer
+        // exists. Route to the launcher instead: it owns the "card missing" dialog
+        // and is the correct place to refuse. This runs on every restart, so it
+        // also covers a card pulled while the game was running.
+        Intent intent;
+        if (DataPaths.dataDir(this) == null) {
+            Log.i(TAG, "RestartActivity: chosen storage unavailable, routing to launcher");
+            intent = new Intent(this, LauncherActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        } else {
+            intent = new Intent(this, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            intent.putExtra(MainActivity.EXTRA_AUTOSTART, autostart);
+            Log.i(TAG, "RestartActivity: relaunching, autostart=" + autostart);
+        }
         startActivity(intent);
 
         finish();

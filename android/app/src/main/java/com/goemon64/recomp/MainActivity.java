@@ -43,7 +43,17 @@ public class MainActivity extends SDLActivity {
     protected void onCreate(Bundle savedInstanceState) {
         // Extract assets and set up the data dir BEFORE SDLActivity starts the
         // native thread (super.onCreate), since SDL_main reads them immediately.
-        File dataDir = new File(getExternalFilesDir(null), "data");
+        // Resolved via DataPaths so this agrees with LauncherActivity about
+        // where data lives (internal or SD, chosen once at first run).
+        //
+        // Deliberately the never-null variant. We cannot bail out here: this is
+        // SDLActivity, super.onCreate() loads the native libraries and starts
+        // SDL_main, and returning before it throws SuperNotCalledException while
+        // calling it would start the game with no data path. So the
+        // "chosen volume is missing" guard lives in the only two callers that
+        // can reach this activity (it is exported=false): LauncherActivity and
+        // RestartActivity, both of which can refuse cheaply.
+        File dataDir = DataPaths.dataDirOrInternal(this);
         if (!dataDir.exists()) {
             //noinspection ResultOfMethodCallIgnored
             dataDir.mkdirs();
