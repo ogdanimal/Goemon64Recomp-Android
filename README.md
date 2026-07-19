@@ -62,6 +62,16 @@ While enabled, the right stick's C-button mapping is silenced so it can drive th
 
 Note this does not make swapping faster. Changing character reloads the new character's model from the game data, which costs about a second of locked input either way; this only removes the need to stop first. Swapping stays blocked in states where it would corrupt the game — notably on ladders, and while a swap is already in progress.
 
+### Autosave
+
+- **Autosave** (General) — saves your progress using the game's own save system, so an autosave is an ordinary save: loading one starts you where a save made at that point normally would. It writes to the save slot you loaded.
+
+While it is on, press **L + R + D-Pad Up** during normal gameplay to save immediately.
+
+Saving is refused unless the game is in normal gameplay — the check reuses the game's own "can the player open the pause menu right now" conditions, so cutscenes, dialogue, the pause menu, area transitions and loading are all excluded, as are the Impact and sidescroller stages.
+
+**This overwrites your existing save file. Back it up before enabling it.**
+
 ### Cheats
 
 A **Cheats** tab, all options off by default:
