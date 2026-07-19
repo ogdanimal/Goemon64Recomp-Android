@@ -463,11 +463,31 @@ in-game saves back-to-back producing the *same* 5-byte signature, and by header
 bytes `0x00`–`0x0F` being identical across both writers with the first
 difference at exactly `0x10`.
 
-**Caveat on how much that proves.** Both saves captured essentially identical
-game state, so it is an "equal when nothing changed" result. The sharper test —
-still outstanding — is to change something the payload must record (spend ryo,
-take damage), then autosave and NPC-save, and confirm `+0x6C` (hearts), `+0x74`
-(ryo) and `+0x200` (stage id) moved **identically** in both.
+#### Sharpened result (2026-07-18): PASSED
+
+The result above compared two saves of essentially identical state — an "equal
+when nothing changed" outcome. It has since been repeated **under changed
+state**, which is the version that actually validates the marshaling.
+
+After a play session in which the player took damage and spent money, an
+autosave and an in-game NPC save at the same point differed in the slot region
+by exactly the mask — `0x100`-`0x103` and `0x36B` — and nothing else. Four
+payload fields had moved against the previous baseline, and **both writers
+recorded all four identically**:
+
+| payload | field | change |
+|---|---|---|
+| `+0x70` | current HP | `11 -> 10` |
+| `+0x74` | ryo | `533 -> 363` |
+| `+0x7C` | unidentified counter | `0 -> 2` |
+| `+0x264` | play time | advanced |
+
+Fixtures `10-autosave-statechange.bin` / `11-npcsave-statechange.bin`; ordering
+established from the monotonic play-time counter rather than assumed.
+
+**Watch out for `+0x6C`.** It is *max* HP, not current, so taking damage does not
+move it — picking it as the field to exercise makes a real state change look like
+no change at all. Current HP is `+0x70`.
 
 #### The lesson worth carrying forward
 

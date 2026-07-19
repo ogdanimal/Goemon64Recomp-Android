@@ -14,8 +14,10 @@ Those two are the source of truth. This file is just the "where were we".
 
 ## State
 
-Implemented, builds, and **verified on device 2026-07-18**. Still **nothing is
-committed** — all changes are in the working tree on branch `dev`.
+Implemented, builds, **verified on device 2026-07-18**, and **committed and
+pushed to `origin/dev`** with CI green. Commits: `70d3e4d` feature,
+`9522fe8` docs + RE corrections, `49fedf8` `.bak` hazard reframing,
+`71e56a5` evidence corpus, `40822a8` CLAUDE.md pointers.
 
 What the on-device session established:
 
@@ -49,18 +51,21 @@ overwrites the player's real save.
 
 ## Next steps, in order
 
-1. **Commit.** Nothing is committed yet; the working tree holds the whole
-   feature plus the doc corrections.
-2. **Sharpen the differential test** (small, worthwhile). The passing test
-   compared two saves of essentially identical state — an "equal when nothing
-   changed" result. Change something the payload must record, then autosave and
-   NPC-save and confirm these moved *identically* in both: `+0x6C` hearts,
-   `+0x74` ryo, `+0x200` stage id. Compare with `cmp -i 256` — a whole-file
-   `cmp` gives a **false failure** (see `docs/autosave.md`).
+1. ~~**Commit.**~~ Done — see State above.
+2. ~~**Sharpen the differential test.**~~ **Done, PASSED** (2026-07-18 23:12).
+   Run under genuinely changed state: current HP `11 -> 10`, ryo `533 -> 363`,
+   plus a counter at `+0x7C` and play time. Autosave and in-game NPC save
+   differed in the slot region by exactly the mask and nothing else, with both
+   writers agreeing on all four fields. Fixtures `10`/`11`; details in
+   `docs/autosave.md` § "Sharpened result".
 
-   Baselines from the session that passed are committed under
-   `docs/re-notes/fixtures/`, with reproduction commands in its README. **Add
-   the new pair there** rather than overwriting anything — those files are the
+   Two field mappings fell out and are now in `goemon_save_re.md`: `+0x70` is
+   **current HP** (HIGH), and `+0x7C` is an unidentified counter (MEDIUM). Note
+   `+0x6C` is *max* HP — taking damage does not move it, which is a trap when
+   picking a field to exercise.
+
+   **Marshaling correctness is now closed.** Add any future pairs to
+   `docs/re-notes/fixtures/` rather than overwriting — that directory is the
    evidence corpus for every claim in these notes, not backups.
 3. **Then step 2 of the rollout**: the timer, plus Zelda64Recomp's
    save-data-settled check (whitelist diff, N frames unchanged) so a write never

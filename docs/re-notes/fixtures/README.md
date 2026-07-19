@@ -28,6 +28,8 @@ Each file is a whole `mnsg.us.bin` (131072 bytes = `0x20000`). Pak layout is a
 | `07-npcsave-cross.bin` | `0b2a8a94` | **in-game NPC save** shortly after `06`, same slot |
 | `08-npcsave-consecutive-A.bin` | `82e80f11` | **in-game NPC save**, first of two back-to-back |
 | `09-npcsave-consecutive-B.bin` | `eed7fade` | **in-game NPC save**, second of the pair, nothing in between |
+| `10-autosave-statechange.bin` | `966cd891` | **autosave** at 23:12:00, after a play session that changed HP and ryo |
+| `11-npcsave-statechange.bin` | `5e1bceae` | **in-game NPC save** immediately after `10`, same slot |
 | `diary-slot-count.png` | — | "Select Adventure Diary" screen |
 
 Two files were captured twice under different names in the working directory and
@@ -84,9 +86,41 @@ byte is exactly `0x10`. Cited by `goemon_save_re.md` § "The header write leaks
 stack".
 
 **Caveat on strength:** both saves captured near-identical game state, so this is
-an "equal when nothing changed" result. The sharper test — change hearts (`+0x6C`),
-ryo (`+0x74`) or stage id (`+0x200`) first — is listed as step 2 in
-`RESUME-autosave.md` and has **not** been run. When it is, add the pair here.
+an "equal when nothing changed" result. Superseded by `10`/`11` below, which is
+the test that actually exercises changed state.
+
+### Cross-writer equivalence under CHANGED state — `10` vs `11`
+
+The sharpened differential test, run 2026-07-18 23:12. This is the one that
+matters: the pair above proved the writers agree when nothing moved; this proves
+they agree when it does.
+
+```sh
+cmp -l 10-autosave-statechange.bin 11-npcsave-statechange.bin
+# slot-region differences: 0x100-0x103 and 0x36B -- the mask, and nothing else
+```
+
+`10` is the autosave (logged `status 0 (slot 0)` at 23:12:00) and `11` the
+in-game NPC save that followed. **Ordering is established from the data, not
+assumed:** the play-time counter at `0x368` reads `0x3e4e` in `10` and `0x3e63`
+in `11`, and it is monotonic.
+
+Four payload fields moved against the `06` baseline, and **both writers recorded
+all four identically**:
+
+| payload | field | `06` -> `10`/`11` |
+|---|---|---|
+| `+0x70` | current HP | `11 -> 10` |
+| `+0x74` | ryo | `0x215 -> 0x16B` (533 -> 363) |
+| `+0x7C` | unidentified counter | `0 -> 2` |
+| `+0x264` | play time | `0x3B15 -> 0x3E4E` |
+
+Reproduce the state-change half with:
+
+```sh
+cmp -l 06-autosave-C.bin 10-autosave-statechange.bin
+# 10 slot bytes: the four fields above, plus the CRC word
+```
 
 ### The game's own header signature — `08` vs `09`
 

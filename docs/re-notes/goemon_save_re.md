@@ -346,6 +346,22 @@ header:
 | location / stage id | `+0x200` |
 | play time (frames) | `+0x264` |
 
+Two more mapped empirically on 2026-07-18 by diffing two autosaves either side of
+a real play session (`fixtures/06-autosave-C.bin` vs `10-autosave-statechange.bin`),
+neither of which is read by the file-select display:
+
+| field | payload offset | evidence |
+|---|---|---|
+| **current HP** | `+0x70` | `11 -> 10` across a session in which the player confirmed taking damage; `+0x6C` (max HP) stayed `14`. (HIGH) |
+| unidentified counter | `+0x7C` | `0 -> 2` over the same session. Possibly deaths or a rest/checkpoint count — **not identified**, do not rely on it. (MEDIUM: that it changed is observed; what it means is not) |
+
+Note `+0x6C` being *max* HP is why taking damage does not move it — a trap when
+choosing a field to exercise in a differential test.
+
+That whole play session changed only **10 slot bytes**: those four fields plus
+the CRC word. The save is otherwise byte-stable across normal play, which is what
+makes the differential test sharp.
+
 Slot validity is purely per-slot: empty iff `payload[0x6C] == 0`, corrupt iff
 `crc32(payload, 0x304) != *(u32*)(payload-4)`. Neither consults the header.
 
