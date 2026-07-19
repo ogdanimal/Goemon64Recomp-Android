@@ -1,6 +1,7 @@
 #include "patches.h"
 #include "autosave.h"
 #include "misc_funcs.h"
+#include "input.h"
 
 // Autosave. Ported from Zelda64Recomp's patches/autosaving.c, which does NOT
 // call the game's own save routine but reimplements it inline; the same applies
@@ -492,6 +493,78 @@ s32 goemon_save_now(void) {
 }
 
 // ---------------------------------------------------------------------------
+// The timer.
+//
+// Confirmed to be the right trigger shape rather than a fallback: a whole-ROM
+// scan established that Goemon has NO automatic commit points -- every one of
+// the 12 pak-write sites is behind an explicit player confirmation. There is
+// nothing to piggyback on, so a timer is not passing over a better design.
+//
+// Both gating preconditions are met and device-verified: the .manual.bak
+// rollback point protects everything around the autosave, and the settled check
+// above protects the autosave itself.
+//
+// THREE BEHAVIOURS WORTH KNOWING, none of them incidental:
+//
+//  1. An elapsed interval does NOT consume the save. If the gate or the settled
+//     check refuses, the timer keeps retrying every frame rather than skipping
+//     to the next period. Otherwise an interval that happened to elapse during
+//     a cutscene would silently lose that save entirely.
+//  2. Nothing is written if nothing changed. The settled hashes are snapshotted
+//     at each save; if they still match, the save is skipped. Standing idle
+//     therefore produces no writes at all -- which matters because every flush
+//     rotates .bak, so a timer that wrote unconditionally would churn the
+//     runtime's backup for no benefit.
+//  3. A failed save resets the timer anyway. Otherwise a persistently failing
+//     save (a pak error, say) would retry every single frame.
+// ---------------------------------------------------------------------------
+
+// 2 minutes. Wrap-safe: recomp_time_us() is u32 microseconds and wraps about
+// every 71 minutes, but the unsigned subtraction below is correct across a wrap
+// for any interval short of the full period.
+// 2 minutes.
+//
+// Validated on device 2026-07-19 by temporarily shortening this to 20s. The
+// full cycle was observed: fire -> suppress while idle -> re-arm on a state
+// change -> suppress again, with successive intervals measuring 20.000s and
+// 20.033s (the 33ms is two frames, i.e. the per-frame check granularity).
+#define AUTOSAVE_INTERVAL_US (120u * 1000u * 1000u)
+
+static u32 autosave_last_us;
+static s32 autosave_timer_primed;
+static u32 autosave_saved_hash[SETTLE_RANGE_COUNT];
+static s32 autosave_saved_hash_valid;
+
+static s32 autosave_state_changed_since_save(void) {
+    s32 i;
+
+    if (!autosave_saved_hash_valid) {
+        return true;
+    }
+    for (i = 0; i < SETTLE_RANGE_COUNT; i++) {
+        if (settle_hash[i] != autosave_saved_hash[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Call after any save this feature makes, manual or timed, so a timed save does
+// not land moments after the player saved by hand.
+static void autosave_note_committed(u32 now_us, s32 status) {
+    s32 i;
+
+    autosave_last_us = now_us;
+
+    if (status == 0) {
+        for (i = 0; i < SETTLE_RANGE_COUNT; i++) {
+            autosave_saved_hash[i] = settle_hash[i];
+        }
+        autosave_saved_hash_valid = 1;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Per-frame poll.
 // ---------------------------------------------------------------------------
 
@@ -504,25 +577,32 @@ void update_autosave(void) {
     static s32 combo_was_held = 0;
     u16 held;
     s32 combo_held;
+    u32 now_us;
+    s32 is_safe;
 
     if (!recomp_get_autosave_enabled()) {
         combo_was_held = 0;
         settle_primed = 0;
+        autosave_timer_primed = 0;
         return;
     }
 
     // Unconditionally, every frame -- see update_settle_state().
     update_settle_state();
 
+    now_us = recomp_time_us();
+    if (!autosave_timer_primed) {
+        autosave_last_us = now_us;
+        autosave_timer_primed = 1;
+    }
+
+    is_safe = autosave_is_safe();
+
     held = D_8008CCC0_8D8C0.controller[0].button_held_down;
     combo_held = ((held & AUTOSAVE_TEST_COMBO) == AUTOSAVE_TEST_COMBO);
 
     // Edge-triggered, so holding the combo saves once rather than every frame.
     if (combo_held && !combo_was_held) {
-        // Evaluated once: the guards are volatile reads, so calling this twice
-        // could in principle disagree between the two evaluations.
-        s32 is_safe = autosave_is_safe();
-
         if (is_safe && !autosave_is_settled()) {
             // Named ranges, not just a count. A whitelist containing one
             // continuously-volatile field would refuse EVERY save while looking
@@ -539,6 +619,11 @@ void update_autosave(void) {
                           (settle_changed_mask & 8) ? " unlocks"  : "");
         } else if (is_safe) {
             s32 status = goemon_save_now();
+
+            // Feeds the timer too, so a timed save cannot land moments after
+            // the player just saved by hand.
+            autosave_note_committed(now_us, status);
+
             if (status == AUTOSAVE_ERR_BAD_SLOT) {
                 recomp_printf("[autosave] refused: no valid save slot selected "
                               "(cursor %d, need < %d)\n",
@@ -572,4 +657,17 @@ void update_autosave(void) {
     }
 
     combo_was_held = combo_held;
+
+    // The timer. Deliberately does NOT consume the interval when it cannot
+    // save -- see the header above; it retries next frame instead.
+    if ((u32)(now_us - autosave_last_us) >= AUTOSAVE_INTERVAL_US) {
+        if (is_safe && autosave_is_settled() && autosave_state_changed_since_save()) {
+            s32 status = goemon_save_now();
+
+            autosave_note_committed(now_us, status);
+            recomp_printf("[autosave] timed save -> status %d (slot %d)\n",
+                          status,
+                          (s32)*(volatile u32*)(G_SAVE_CTX_PTR + G_SLOT_OFFSET));
+        }
+    }
 }

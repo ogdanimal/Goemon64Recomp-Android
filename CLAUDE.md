@@ -87,9 +87,17 @@ TWO REMAINING (in `RESUME-autosave.md`):
    first passing run proved nothing, since an inert check would look identical;
    two provoked positive controls were needed. See `docs/autosave.md` § "The
    settled check" before changing the watched ranges.
-4. **The timer — BOTH GATES NOW MET, unblocked.** A timer is confirmed the right
-   shape: Goemon has NO automatic save points, all 12 pak writes are
-   player-confirmed. Keep it Off by default until it is itself device-tested.
+4. **The timer — DONE, VERIFIED ON DEVICE 2026-07-19.** 2-min interval; saves
+   only when safe + settled + something actually changed (walking changes
+   nothing watched, so idle/walking produces no writes). Full cycle observed.
+   **Still defaults Off** — every gate for flipping it On is met, but that is a
+   deliberate user-facing call and has NOT been made.
+
+RULE THIS FEATURE EARNED THE HARD WAY (3 separate occasions): for anything that
+refuses or declines, build the diagnostic that proves it is REACHING ITS
+DECISION POINT. Silence looked like success in the differential test (header
+residue), the settled check (would have been inert), and the timer (looked
+dead). A passing test with no such diagnostic proves nothing.
 
 GOTCHAS THAT COST TIME (all documented, repeated here because they bite):
 - `0x800C7A9E` is a 3-phase init/run/exit counter, gameplay == **1** not 0. The

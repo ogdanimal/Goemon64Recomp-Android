@@ -96,6 +96,66 @@ already routes guest writes through `save_read`/`save_write` — the identical p
 a manual in-game save uses — and the debounced saving thread in
 `librecomp/src/pi.cpp` flushes to disk on its own.
 
+## The timer
+
+**Implemented and verified on device 2026-07-19.** Saves every
+`AUTOSAVE_INTERVAL_US` (2 minutes) when the gate passes, the state has settled,
+and something has actually changed.
+
+A timer is **confirmed to be the right trigger shape**, not a fallback: a
+whole-ROM scan established Goemon has no automatic commit points — all 12
+pak-write sites are behind explicit player confirmation — so there is nothing to
+piggyback on and no better design is being passed over.
+
+**Three behaviours, none incidental:**
+
+1. **An elapsed interval is not consumed.** If the gate or the settled check
+   refuses, the timer retries every frame instead of skipping to the next
+   period. Otherwise an interval elapsing during a cutscene would silently lose
+   that save.
+2. **Nothing is written if nothing changed.** The settled hashes are snapshotted
+   at each save and compared. This matters more than it sounds: every flush
+   rotates `.bak`, so a timer that wrote unconditionally would churn the
+   runtime's backup forever for no benefit. **Note walking around changes
+   nothing we watch** — position is not in the payload — so idle and
+   walking-only stretches produce no writes at all.
+3. **A failed save still resets the timer**, so a persistently failing save
+   cannot retry every frame.
+
+The manual combo also feeds the timer, so a timed save cannot land moments after
+the player saved by hand.
+
+### Verification — and the third time silence looked like success
+
+The first timer run produced only two lines across 75 seconds of testing. That
+was **consistent with correct suppression and equally consistent with a timer
+that fired once and never re-armed**, and the log could not distinguish them —
+because the diagnostic only printed on success, exactly the blind spot the
+settled check had.
+
+A temporary suppression diagnostic settled it, printing the decision fields once
+per suppression episode. The full cycle was then observed:
+
+| time | event |
+|---|---|
+| `00:56:11.625` | `timed save -> status 0` |
+| `00:56:31.625` | `suppressed: safe 1 \| settled 1 (10/10) \| changed 0` |
+| `00:58:22.092` | `timed save -> status 0` — re-armed on a state change |
+| `00:58:42.125` | `suppressed: ... changed 0` — back to idle |
+
+Successive intervals measured **20.000s and 20.033s** against a temporarily
+shortened 20s interval; the 33ms is two frames, i.e. the per-frame granularity.
+`safe 1 | settled 1 (10/10) | changed 0` also proves the suppression had exactly
+one cause and nothing else was quietly wedged.
+
+Both the interval and the diagnostic were then restored/stripped.
+
+**That is three separate occasions in this feature where silence looked like
+success** — the differential test's header residue, the possibly-inert settled
+check, and this. The pattern is consistent enough to state as a rule: *for
+anything that refuses or declines, build the diagnostic that proves it is
+reaching its decision point, or the passing test proves nothing.*
+
 ## The settled check
 
 **Implemented and verified on device 2026-07-19.** Requires the save-relevant

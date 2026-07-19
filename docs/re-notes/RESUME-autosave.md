@@ -138,10 +138,14 @@ overwrites the player's real save.
    **Both gates for defaulting the timer On are now MET** — step 3 protects
    everything around the autosave, step 4 protects the autosave itself.
 
-5. **Then the timer.** Confirmed to be the right trigger shape rather than a
-   default chosen for lack of options: Goemon has **no automatic commit points**
-   to hook — all 12 pak-write sites are player-confirmed — so no alternative
-   design is being passed over. Keep it Off by default until 3 and 4 are done.
+5. ~~**Then the timer.**~~ **DONE and VERIFIED on device 2026-07-19.** 2-minute
+   interval; saves only when the gate passes, the state has settled, and
+   something actually changed. Full cycle observed (fire -> suppress -> re-arm
+   -> suppress). Details in `docs/autosave.md` § "The timer".
+
+   **It still defaults to Off.** Every gate for defaulting it On is now met, but
+   flipping the default is a deliberate user-facing call — it means the port
+   overwrites the player's save automatically — and has not been made.
 
    **The `.bak` hazard is already true of step 1, today.** `files.cpp:39-45` rotates
    `current -> .bak` on every flush and every autosave is a flush, so a *second*
