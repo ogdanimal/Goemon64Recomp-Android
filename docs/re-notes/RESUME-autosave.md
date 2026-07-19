@@ -72,13 +72,9 @@ overwrites the player's real save.
    **Marshaling correctness is now closed.** Add any future pairs to
    `docs/re-notes/fixtures/` rather than overwriting — that directory is the
    evidence corpus for every claim in these notes, not backups.
-3. **Then step 2 of the rollout**: the timer, plus Zelda64Recomp's
-   save-data-settled check (whitelist diff, N frames unchanged) so a write never
-   lands mid-transaction. A timer is now *confirmed* to be the right shape —
-   Goemon has no automatic commit points to hook, so there is no alternative
-   design being passed over.
-4. **Gating precondition on the timer:** it does not ship until a rollback
-   mechanism exists that does not depend on `.bak`. **DECIDED 2026-07-18** —
+3. **NEXT — build the rollback mechanism.** This *gates* the timer: it does not
+   ship until a rollback exists that does not depend on `.bak`.
+   **DECIDED 2026-07-18** —
    neither of the two originally-framed options, but a third: **notify +
    `.manual.bak`**. `RECOMP_PATCH func_8000B718_C318` to tell the host a
    deliberate save is happening; the host arms a one-shot and copies the file to
@@ -99,7 +95,19 @@ overwrites the player's real save.
      with slot data intact), so expect to be confirming dead or menu-gated code.
    - The dedicated slot is **parked**; its four open questions no longer gate.
 
-   **This is already true of step 1, today.** `files.cpp:39-45` rotates
+4. **Then the save-data-settled check.** Zelda64Recomp's approach: diff a
+   whitelist of stable save fields, require ~10 frames unchanged before writing,
+   so a write never lands mid-transaction (an item being consumed, a flag being
+   applied). This protects the *autosave itself*; step 3 protects everything
+   else. They are independent, and **both** are prerequisites for defaulting the
+   timer On.
+
+5. **Then the timer.** Confirmed to be the right trigger shape rather than a
+   default chosen for lack of options: Goemon has **no automatic commit points**
+   to hook — all 12 pak-write sites are player-confirmed — so no alternative
+   design is being passed over. Keep it Off by default until 3 and 4 are done.
+
+   **The `.bak` hazard is already true of step 1, today.** `files.cpp:39-45` rotates
    `current -> .bak` on every flush and every autosave is a flush, so a *second*
    combo press makes `.bak` an autosave-of-an-autosave — observed at 2.7s apart,
    with no timer involved. Anyone testing the current build should treat the
