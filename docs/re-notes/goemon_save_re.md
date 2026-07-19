@@ -304,14 +304,18 @@ watches the live block directly and deliberately excludes that mirror.
 
 ## 3. Open / lowest confidence
 
-- **`gamedata+0x200` (stage id) has no resolvable writer.** UNRESOLVED as of
-  2026-07-19. The marshal reads it as a word at `0x8000B720` to index the stage
-  table, but no store to `+0x200` resolves anywhere under constant or indexed
-  addressing. Presumably written only by the wholesale copies
-  (`func_801CEC38_661AE8` load, `func_8000B6E0_C2E0` shadow restore) or through
-  an untraced pointer. A watchpoint on `0x8015C808` across a stage transition
-  would settle it. Practically harmless: it means `+0x200` is near-static
-  during play.
+- ~~**`gamedata+0x200` (stage id) has no resolvable writer.**~~ **RESOLVED
+  2026-07-19 — and it is not a stage id.** `gamedata+0x200` (live address
+  `0x8015C808`) is the index of the **continue/save-point you last saved at**,
+  into the 12-byte-stride table at `0x8005BA30` (ROM `0x5C630`), whose entries
+  are `{ map_id, x, y, z, flags, ... }`. That is why no writer resolved and why
+  it looked "near-static during play": it only changes when you save. It does
+  NOT move when you cross an area boundary or enter a building.
+  For the LIVE current area use the map id at `0x800C7AB2` instead (previous at
+  `0x800C7ABC`, pending destination at `0x800C7CA0`, installed by the
+  area-change commit `func_8000B364`) — see `re-notes/README.md`.
+  Note the threshold table `0x8005BA10..0x8005BA2B` sits immediately before the
+  save-point table, which is likely how the two got conflated originally.
 
 - The semantics of `0x800C7AA4` (`< 4 && != 3`) and whether `0x800C7AD6` really
   is the loader counter. Partially settled on device: pressing the save combo

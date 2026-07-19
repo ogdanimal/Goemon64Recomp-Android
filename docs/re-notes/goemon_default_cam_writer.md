@@ -60,10 +60,22 @@ ends in audio call func_80038C30. Overlays treat 0x8020CBF0 as "the camera" for 
 spatialization → it IS the active gameplay camera.
 
 Related engine globals (main-exe BSS, all [V]):
-- 0x801684A0 = active camera NODE pointer (written by func_8001C3E0 @0x8001C3F4 and by
-  func_8001B950 @0x8001B9AC; read by render walker func_80016C44 @0x800173F0-0x8001740C).
-- 0x801684F0 = active Camera struct pointer, cached/masked (func_8001C3E0 @0x8001C440,
-  func_8001B950 @0x8001B9D8; read back inside the func_80016C44/func_80016F44 viewport loop).
+- 0x801684A0 / 0x801684F0 — **CORRECTED 2026-07-19: these are NOT camera globals.**
+  They were previously described here as "active camera NODE pointer" and "active
+  Camera struct pointer, cached/masked". They are actually per-object, per-frame
+  animation/skeleton-walker scratch, reassigned for EVERY drawn object every frame
+  by func_80016C44. This repo's own patches/anime.c already decompiles them that
+  way: anime.c:50 assigns `D_801684A0_1690A0 = object` inside the render walker,
+  and anime.c:108-122 holds an `AnimatedSkeleton*`/animation pointer in
+  D_801684F0_1690F0. func_8001C3E0 does write both, but its own list-walk loop
+  clobbers 0x801684F0 again before the function returns (@0x8001C530, @0x8001C5D0),
+  and func_8001B950 writes them too (@0x8001B9AC, @0x8001B9D8) — shared graphics
+  scratch, not camera state.
+  CONSEQUENCE: they are useless as a camera-cut / area-change signal, both because
+  they are not camera state and because func_8001C3E0's only gameplay caller
+  (func_801D98E0_5957F0) derives BOTH its arguments from fixed globals, so the
+  value would not change across a default-camera → default-camera transition
+  anyway. For area transitions use the map id at 0x800C7AB2 instead (see below).
 - 0x801684B0 = per-frame camera matrix built from the active NODE's transform (+0x8..+0x24
   pos/rot/scale) by func_8001E380 (@0x80017214) and fed to v9's patched view builder
   func_80017D8C (@0x80017224, a1=0x801684B0) [V].
@@ -156,10 +168,23 @@ its neighbors (func_801F8EDC/801F8F0C, camera-mode bookkeeping) ARE live.
   is the camera itself) into func_800127B8 (set eye channels) and cam+0xC/10/14 into
   func_80012818 (set at channels: also zeroes velocities +0xB4/BC/C4), fov via func_80012500.
   This is the FEEDBACK path: tweens seed from the camera's previous contents, then ease.
-  func_80012878 has no jal callers [V] — reached only via computed/overlay paths, or unused.
+  **CORRECTION 2026-07-19: "func_80012878 has no jal callers — reached only via computed/overlay
+  paths, or unused" was a SCAN ARTIFACT, and the "or unused" reading is flatly wrong.** Overlays
+  never reach base-exe code by `jal`; they use `lui/addiu/jalr`. Recounted that way,
+  func_80012878 has **22 indirect call sites across 13 area overlays** (funcs_133/135/137/138/
+  140/105/109/129/130/131/139/141/142) — the ordinary zone-trigger camera code. The idiom is
+  `lw $t6,-0x39D8($v0)` (=*(0x801FC628)) / `lw $t7,0x2C($t6)` / `and $t8,$t7,0x8FFFFFFE` →
+  0x8020CBF0 passed straight in as a1 (purest form: funcs_140.c:10498-10500).
+  So the feedback path is LIVE and seeds from the real default camera.
+  NOTE the third channel seeded here is **fov via cam+0x1A**, not roll — see the +0x18 vs +0x1A
+  entry in the standing warnings of docs/re-notes/README.md.
 - Gap functions 0x800126E0-0x80012818 = channel setters/retargeters (e.g. func_800126E0 writes
   chan+0x58/+0x60 step values from spans/durations) — helpers, not drivers [V].
-- **func_80012900 commit (image → camera, 0x60-byte copy loop) has exactly two callers** [V]:
+- **func_80012900 commit (image → camera, 0x60-byte copy loop) — "exactly two callers" is WRONG.**
+  CORRECTED 2026-07-19: same jal-only scan artifact as func_80012878 above. Recounted including
+  `lui/addiu/jalr`, func_80012900 has **63 indirect sites** (62 confirmed followed by a `jalr`).
+  Related recounts: func_80012940 = 24, func_800127B8 = 78, func_80012818 = 98. The two `jal`
+  callers below are still real and still the most important ones, but they are not the whole set:
   1. 0x8020DDEC inside **func_8020D998_677378** (file_18; a 34-state jump-table camera-sequence
      machine, table 0x8022A6C8, driving handle at obj+0x8; commits to file_18 BSS scratch camera
      0x8022B2C0 and repoints the engine camera slot *(0x8015C5C8)+0x3AE1C to it
@@ -207,6 +232,26 @@ is the complete coherent solution; storage-side rotation of 0x8020CBF0 would be 
 overwritten at every camera cut/commit and must NOT be the mechanism. INFERRED (design-level):
 because ordinary-area poses are cut-based absolutes, a render+basis rotation is not merely a
 workaround — it is the only architecture that survives cuts.
+
+**STRENGTHENED 2026-07-19 — the real reason storage-side rotation is forbidden.** The
+"silently overwritten" argument above is the WEAKER one, and being overwritten is not the
+worst outcome. The decisive hazard is that the rotated struct is READ AS A BLEND SOURCE
+*before* it is overwritten: func_80012878 seeds a camera tween's `current` channels directly
+from 0x8020CBF0 (eye +0x0/4/8, at +0xC/10/14, fov +0x1A), from 22 sites across 13 area
+overlays. So the failure mode is not "our rotation gets lost" but "every scripted camera
+move in those overlays eases from the player's arbitrary orbit pose instead of the authored
+one", wrong by a player-controlled amount.
+This was investigated properly on 2026-07-19 when the private-copy architecture was
+re-litigated, and the copy approach was CONFIRMED correct. Two findings closed it:
+  (a) there is NO hook point simultaneously downstream of all camera producers and upstream
+      of all consumers — producers and the audio/projector/skybox-scroll consumers are
+      interleaved inside the same object walk (func_80034734), ordered by a runtime priority
+      halfword at obj+0x20. func_800012FC_1EFC is upstream of all consumers but ALSO upstream
+      of all producers, and runs 2-3 times per frame; func_80016950_17550 is post-producer but
+      already downstream of audio/projector/skybox-scroll (one-frame lag).
+  (b) the blend-from-live path above.
+DO NOT re-open this. The consequence is that each consumer needs its own hook — see the
+consumer list and which are handled in patches/camera.c.
 
 ## 7. Corrections to prior KNOWN FACTS
 

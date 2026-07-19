@@ -204,11 +204,28 @@ valid for the original azimuth, so the rotated copy now zeroes +0x18;
 fixed up-vector degenerate). [acamP] now prints pitch too.
 ARCHITECTURE CLOSED (goemon_default_cam_writer.md): there is NO per-frame
 default camera writer — default Camera = static BSS 0x8020CBF0, poses set
-only on zone-trigger cuts (set-active-camera choke point func_8001C3E0,
-active globals 0x801684A0/0x801684F0; & 0x8FFFFFFE = uncached→cached ptr
-mask; dead-code player-follow snapper func_801F8FD0 exists but is never
-called). So consumer-side hooks (v9 render rotation + CE3F0/CE4D0 basis
-swap) are the CORRECT final architecture, not a workaround.
+only on zone-trigger cuts (set-active-camera choke point func_8001C3E0;
+& 0x8FFFFFFE = uncached→cached ptr mask; dead-code player-follow snapper
+func_801F8FD0 exists but is never called). So consumer-side hooks are the
+CORRECT final architecture, not a workaround.
+- CORRECTION 2026-07-19: 0x801684A0/0x801684F0 were listed here as "active
+  globals". They are NOT camera state — they are func_80016C44's per-object
+  animation/skeleton scratch, reassigned for every drawn object every frame
+  (patches/anime.c:50,108 already decompiles them that way). Useless as a
+  camera-cut signal. For area transitions use the map id at 0x800C7AB2.
+- RE-LITIGATED AND RE-CLOSED 2026-07-19: rotating the real camera in place
+  (one hook instead of per-consumer hooks) was investigated properly and is
+  REFUTED. (a) No hook point is simultaneously downstream of all camera
+  producers and upstream of all consumers — they interleave inside the same
+  object walk. (b) func_80012878 seeds camera tweens FROM the live camera at
+  22 sites across 13 overlays, so a rotated struct would make every scripted
+  camera move ease from the player's orbit pose. DO NOT re-open; details and
+  the consumer/handled list are in docs/re-notes/README.md.
+- READ docs/re-notes/README.md BEFORE trusting any goemon_*.md: it carries
+  standing methodology warnings (jal-only scans produce false negatives;
+  validate a scan pattern against a known positive before trusting a zero;
+  identify struct fields by how their trig is consumed) plus the corrections
+  those warnings triggered.
 v12 = v11 + feel/pitch: TIME-BASED rates via recomp_time_us (yaw 0x5800
 binang/s, pitch 0x2C00/s, quadratic response curve, 50ms dt clamp — fixes
 the call-rate-dependent touchiness of the old per-call 0x200), plus pitch:
