@@ -32,11 +32,19 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   (or the run's Artifacts). Debug-signed → sideloadable; asks for the user's ROM on first launch.
 
 ## Current focus & parked work
-- **NOW: closing out autosave** — step 1 (manual trigger) is done, verified on
-  device, committed and pushed on `dev`, CI green. Two items remain; both are
-  written up in `docs/re-notes/RESUME-autosave.md`, which is the resume prompt
-  for a fresh session. See the Autosave section below.
-- Otherwise: bug-fixing on the Android port (test via the CI debug APK).
+- **Autosave is FUNCTIONALLY COMPLETE (2026-07-19).** All five steps done and
+  device-verified: manual trigger, sharpened differential test, `.manual.bak`
+  rollback point, save-data-settled check, and the 2-minute timer. Pushed on
+  `dev`. See the Autosave section below and `docs/autosave.md`.
+  - **One open call, deliberately not made: the timer still defaults to Off.**
+    Every gate for flipping it On is met; doing so means the port overwrites the
+    player's save automatically, which is a user-facing decision, especially with
+    a public release parked. One line in `src/game/config.cpp`.
+  - Optional follow-ups, none blocking: make the interval configurable (it is a
+    `#define` today); an on-screen "Saved" indicator (needs building from the
+    RT64 extended-GBI path — no transient toast exists in this project).
+- **NOW: back to general bug-fixing** on the Android port (test via the CI debug
+  APK), unless something else takes priority.
 - **PARKED — do not start without the user's say-so:**
   - Flip repo private→public (deliberate call; when doing it, add the `validate-external`
     fork-PR authorize-gate so fork PRs can't reach the ROM secret).
@@ -46,7 +54,7 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   - Quest64-Recomp Android port (separately scoped; different rt64 lineage makes the
     graphics work non-trivial).
 
-## Autosave (step 1 WORKING, committed + pushed on dev, CI green)
+## Autosave (COMPLETE — all 5 steps device-verified, pushed on dev)
 Resume prompt for a fresh session: `docs/re-notes/RESUME-autosave.md`.
 Feature doc: `docs/autosave.md`. RE: `docs/re-notes/goemon_save_re.md`.
 Evidence corpus (cite it, don't re-derive): `docs/re-notes/fixtures/`.
