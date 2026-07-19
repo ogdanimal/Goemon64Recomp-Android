@@ -114,6 +114,15 @@ extern "C" void recomp_set_autosave_in_progress(uint8_t* rdram, recomp_context* 
     goemon64::set_autosave_in_progress(_arg<0, s32>(rdram, ctx) != 0);
 }
 
+// Raises the on-screen "Saved" toast. Called from the guest thread for both the
+// timed autosave and the manual combo, so it only stores an atomic -- the UI
+// work happens on the render thread. See src/ui/ui_saved_indicator.cpp.
+extern "C" void recomp_notify_saved(uint8_t* rdram, recomp_context* ctx) {
+    (void)rdram;
+    (void)ctx;
+    recompui::show_saved_indicator();
+}
+
 extern "C" void recomp_load_overlays(uint8_t * rdram, recomp_context * ctx) {
     u32 rom = _arg<0, u32>(rdram, ctx);
     PTR(void) ram = _arg<1, PTR(void)>(rdram, ctx);

@@ -561,6 +561,11 @@ static void autosave_note_committed(u32 now_us, s32 status) {
             autosave_saved_hash[i] = settle_hash[i];
         }
         autosave_saved_hash_valid = 1;
+
+        // Both save paths (timed and the manual combo) funnel through here, and
+        // only a status of 0 actually committed anything -- so this is the one
+        // place the "Saved" toast can be raised without it ever lying.
+        recomp_notify_saved();
     }
 }
 

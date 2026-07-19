@@ -237,6 +237,7 @@ public:
         launcher_menu_controller->load_document();
         config_menu_controller->load_document();
         recompui::init_prompt_context();
+        recompui::init_saved_indicator_context();
     }
 
     void unload() {
@@ -557,6 +558,12 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
     }
 
     recompui::sync_restart_button_visibility();
+
+    // Must run before the ui_state_mutex lock below -- it calls the public
+    // show_context/hide_context, which take that same non-recursive mutex.
+    // Runs before the launcher check so an expiring toast can't hold
+    // is_any_context_shown() true and suppress the launcher for a frame.
+    recompui::tick_saved_indicator();
 
     // Return to the launcher if no menu is open and the game isn't started.
     if (!recompui::is_any_context_shown() && !ultramodern::is_game_started()) {

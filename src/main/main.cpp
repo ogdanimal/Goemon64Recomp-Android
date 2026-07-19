@@ -714,6 +714,7 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_target_framerate);
     REGISTER_FUNC(recomp_get_autosave_enabled);
     REGISTER_FUNC(recomp_set_autosave_in_progress);
+    REGISTER_FUNC(recomp_notify_saved);
     REGISTER_FUNC(recomp_get_analog_cam_enabled);
     REGISTER_FUNC(recomp_get_camera_inputs);
     REGISTER_FUNC(recomp_get_targeting_mode);

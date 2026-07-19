@@ -137,6 +137,12 @@ namespace recompui {
     );
     void close_prompt();
     bool is_prompt_open();
+
+    // Transient "Saved" toast over gameplay. show_ is guest-thread safe;
+    // init_/tick_ are render-thread only. See ui_saved_indicator.cpp.
+    void init_saved_indicator_context();
+    void show_saved_indicator();
+    void tick_saved_indicator();
     void update_mod_list(bool scan_mods = true);
     void process_game_started();
 
