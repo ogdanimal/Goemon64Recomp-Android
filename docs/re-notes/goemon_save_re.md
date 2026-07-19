@@ -332,6 +332,24 @@ inn's A-confirm. String counts corroborate exactly: `"Do you wish to save"` ×6,
 The only other pak writers are the `.file_15` Diary management menu (new / copy /
 erase) and the base-exe pak *diagnostics* — both already documented above.
 
+### Flush sources — the closed set (HIGH)
+
+Every write of a `0x500` slot goes through `func_80023610_24210`, and it has
+**exactly 8 static call sites** across 5 recompiled files. Verified by grep over
+`RecompiledFuncs/` (a 9th mention in `funcs_6.c` is the definition itself):
+
+| sites | file | where | save-class? |
+|---|---|---|---|
+| 1 | `funcs_53.c` | `func_80214D58_5D0228`, the real save | **yes** |
+| 5 | `funcs_84.c` ×1, `funcs_85.c` ×4 | `.file_15` Diary management — new file, copy, erase | **yes**, deliberate |
+| 2 | `funcs_3.c`, `funcs_4.c` | base-exe pak **diagnostics** (`func_80023C14_24814`, `func_80023CC8_248C8`) — write an incrementing byte pattern to slot 0 | **NO** |
+
+This set being closed is what makes the `.manual.bak` design in `docs/autosave.md`
+sound: with all flush sources known there is no unmapped writer left to consume an
+armed one-shot. The two diagnostic writers are the exception that needs handling
+— **whether they are reachable at runtime is not established** and is a listed
+precondition on that design.
+
 **Consequence for autosave design:** there are **no natural commit points to
 hook**. A timer is the correct trigger; this is settled, not provisional.
 

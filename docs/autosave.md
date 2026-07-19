@@ -302,7 +302,109 @@ nets failing at once, which is precisely what was observed.
 **Gating precondition:** *the timer does not ship until a rollback mechanism
 exists that does not depend on `.bak`.*
 
-### Dedicated-slot option — open questions if it is ever built
+### Decided design: notify + `.manual.bak`
+
+**Decided 2026-07-18.** Neither of the two options above; a third that delivers
+the dedicated slot's rollback semantics at roughly the host-snapshot's cost.
+
+The earlier framing of this choice was a false dilemma — it compared the
+dedicated slot's best case against a host snapshot assumed to be
+one-time-at-enable, and "the snapshot ages badly" was an artifact of that
+assumption rather than anything inherent. Nothing forces it to be one-time. The
+host cannot distinguish an autosave flush from a manual one, but **the guest
+can**, and it can say so.
+
+**Mechanism:**
+
+1. `RECOMP_PATCH` `func_8000B718_C318` (the live -> gamedata marshal; in `.main`,
+   always resident, body fully decoded) to notify the host before doing its work.
+2. `goemon_save_now()` calls that same function, so the autosave path brackets
+   its own call with an in-progress flag and the patch suppresses the notify.
+3. Host side, the notify arms a one-shot. When the next flush completes, the save
+   file is copied to `.manual.bak`.
+
+**The autosave path must actively DISARM, not merely decline to arm.** This is
+not optional and does not follow from the flag alone. `func_8000B718_C318` has
+**25 call sites**, not one (see `goemon_save_re.md`): a `jal` from the real save
+routine plus 24 GEV script native-calls, and **half of those 24 are the RAM-only
+suspend**, which marshals but never writes the pak. A suspend therefore arms the
+one-shot and leaves it armed, because no flush follows. The next flush to arrive
+may be an autosave — which would then be copied into `.manual.bak`, silently
+replacing the rollback point with exactly the thing it exists to roll back from.
+
+| sequence | outcome |
+|---|---|
+| manual save -> flush | `.manual.bak` written — intended path |
+| suspend (no flush) -> autosave | autosave disarms; `.manual.bak` untouched |
+| suspend -> manual save | still armed, flush follows — correct |
+| suspend -> file erase/copy -> flush | `.manual.bak` holds post-operation state |
+
+That last row is **correct behaviour, not a hole**, and is stated here so nobody
+later reads it as one: the erase was the player's deliberate act, and every other
+slot's last save survives in both files. But it is why the contract is worded as
+below rather than as "last manual save".
+
+**Contract:** `.manual.bak` holds *the file state as of the last deliberate
+**save-class** operation* — not "the last manual save". The looser wording is the
+honest one given the flush sources below.
+
+**Flush sources — all 8, already mapped** (`jal func_80023610_24210`, the
+0x500-slot write). The disarm rule's correctness depends on this set being
+closed, and it is:
+
+| sites | where | save-class? |
+|---|---|---|
+| 1 | `func_80214D58_5D0228` (`funcs_53`) | yes — the real save |
+| 5 | `.file_15` Diary management (new / copy / erase) | yes — deliberate |
+| 2 | `.main` pak **diagnostics** | **no** — they write an incrementing byte pattern to slot 0 |
+
+With the set closed there is no mystery writer left to consume an armed one-shot.
+
+**Open precondition:** the two diagnostic writers are *not* save-class, and a
+diagnostic flush consuming an armed one-shot would copy a slot-0-scribbled file
+into `.manual.bak` — worse than the erase case, since nothing about it is
+deliberate. **Establish whether they are reachable at runtime** (they may be
+boot- or debug-only). If they are reachable, the disarm rule must cover them too.
+
+**Preconditions before the timer ships:**
+
+1. The notify patch touches the **manual save path** for the first time. Confirm
+   a manual save made through the patched `func_8000B718_C318` is byte-identical
+   to the pre-patch baselines already in `docs/re-notes/fixtures/` — compare
+   against `08`/`09`/`11`. Nearly free, and only because the corpus is versioned.
+2. Resolve the diagnostics reachability question above.
+
+**Why not the slot-write anchor.** Anchoring the notify on
+`func_80023610_24210` instead is superficially better — "wrote the pak" is the
+event whose consequence we snapshot, and suspends never reach it. It was checked
+and rejected: it trades 25 fully-mapped call sites for 8 whose semantics had to
+be re-derived, and requires reimplementing a pak-manager wrapper of unknown
+complexity rather than a marshal body that is already fully decoded.
+
+**Why not the dedicated slot.** Its one unique advantage is *self-service
+restore* — a rollback point sitting in the file-select screen, loadable without
+tools, where `.manual.bak` needs `adb` and a force-stop. That is real but not
+gating: the precondition requires a rollback mechanism to **exist**, not to be
+end-user-polished. The gap has a better closer already parked — the SAF
+import/export item covers file-level restore and device migration together.
+
+The disqualifying argument is the slot cost. Evaluating it as "it costs nothing
+today, since 2 of 3 slots are in use" is personal-fork reasoning applied to a
+repo with a parked **public-release** plan. For a public player using all three
+files, the dedicated slot either destroys one silently or refuses permanently —
+and a design whose acceptability depends on one developer's current slot usage
+breaks precisely when the audience changes, which is the roadmap.
+
+**The dedicated slot is therefore PARKED as a possible future opt-in**, and its
+four open questions below stop gating anything. That is the practical payoff of
+this decision.
+
+### Dedicated-slot option — PARKED, not gating
+
+Superseded as the rollback mechanism by the notify design above. Kept because its
+self-service-restore advantage may still justify it as an opt-in someday (though
+SAF import/export may obsolete that too). **These four questions no longer block
+anything** — they only matter if someone revives it.
 
 Writing autosaves to a fixed slot instead of the cursor slot is a **one-line**
 change (`patches/autosave.c` reads the cursor once, then passes `slot`

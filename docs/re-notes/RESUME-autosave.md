@@ -73,9 +73,22 @@ overwrites the player's real save.
    Goemon has no automatic commit points to hook, so there is no alternative
    design being passed over.
 4. **Gating precondition on the timer:** it does not ship until a rollback
-   mechanism exists that does not depend on `.bak` — either a dedicated slot or
-   backup-before-first-overwrite. One of those two is a prerequisite now, not
-   deferred polish.
+   mechanism exists that does not depend on `.bak`. **DECIDED 2026-07-18** —
+   neither of the two originally-framed options, but a third: **notify +
+   `.manual.bak`**. `RECOMP_PATCH func_8000B718_C318` to tell the host a
+   deliberate save is happening; the host arms a one-shot and copies the file to
+   `.manual.bak` on the next flush. Full design, rationale and the rejected
+   alternatives are in `docs/autosave.md` § "Decided design".
+
+   Three things to carry into the implementation:
+   - The autosave path must **actively disarm** an armed one-shot, not merely
+     skip arming — 12 of the 25 `func_8000B718_C318` call sites are the RAM-only
+     suspend, which arms without producing a flush.
+   - Two preconditions: the fixtures `08`/`09`/`11` byte-identity check (the
+     notify patch touches the manual save path for the first time), and
+     establishing whether the two **pak diagnostic** writers are reachable at
+     runtime — they are not save-class and would poison `.manual.bak`.
+   - The dedicated slot is **parked**; its four open questions no longer gate.
 
    **This is already true of step 1, today.** `files.cpp:39-45` rotates
    `current -> .bak` on every flush and every autosave is a flush, so a *second*
