@@ -32,7 +32,11 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   (or the run's Artifacts). Debug-signed → sideloadable; asks for the user's ROM on first launch.
 
 ## Current focus & parked work
-- **NOW: bug-fixing** on the Android port (test via the CI debug APK).
+- **NOW: closing out autosave** — step 1 (manual trigger) is done, verified on
+  device, committed and pushed on `dev`, CI green. Two items remain; both are
+  written up in `docs/re-notes/RESUME-autosave.md`, which is the resume prompt
+  for a fresh session. See the Autosave section below.
+- Otherwise: bug-fixing on the Android port (test via the CI debug APK).
 - **PARKED — do not start without the user's say-so:**
   - Flip repo private→public (deliberate call; when doing it, add the `validate-external`
     fork-PR authorize-gate so fork PRs can't reach the ROM secret).
@@ -41,6 +45,47 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     `.gitignore` already ignores `keystore.properties`/`*.jks`/`*.keystore`.
   - Quest64-Recomp Android port (separately scoped; different rt64 lineage makes the
     graphics work non-trivial).
+
+## Autosave (step 1 WORKING, committed + pushed on dev, CI green)
+Resume prompt for a fresh session: `docs/re-notes/RESUME-autosave.md`.
+Feature doc: `docs/autosave.md`. RE: `docs/re-notes/goemon_save_re.md`.
+Evidence corpus (cite it, don't re-derive): `docs/re-notes/fixtures/`.
+
+Commits on `dev`: `70d3e4d` feature, `9522fe8` docs+RE corrections,
+`49fedf8` `.bak` hazard reframing, `71e56a5` fixtures.
+
+WHAT WORKS: manual trigger `L + R + D-Pad Up`, edge-triggered, defaults **Off**.
+Commits through Goemon's own save data/slot format by reimplementing
+`func_80214D58_5D0228` (overlay code, so not callable). Writes the slot the
+player loaded — which is the game's *native* semantic, since an in-game save
+offers no slot choice either. Verified on device: `status 0`, correct slot
+including a non-zero one, and the differential test PASSED (payload
+byte-identical to the game's own routine apart from CRC + a play-time byte).
+`SAVE_SLOT_COUNT = 3` confirmed.
+
+TWO REMAINING (in `RESUME-autosave.md`):
+1. Sharpen the differential test — the passing one compared near-identical
+   state ("equal when nothing changed"). Change hearts `+0x6C` / ryo `+0x74` /
+   stage `+0x200` first, then autosave + NPC-save and confirm both moved
+   identically. Compare `cmp -i 256` — a whole-file `cmp` is a FALSE FAILURE.
+2. The timer (step 2) — **gated**: does not ship until a rollback mechanism
+   exists that does not depend on `.bak` (dedicated slot, or
+   backup-before-first-overwrite). A timer is confirmed the right shape:
+   Goemon has NO automatic save points, all 12 pak writes are player-confirmed.
+
+GOTCHAS THAT COST TIME (all documented, repeated here because they bite):
+- `0x800C7A9E` is a 3-phase init/run/exit counter, gameplay == **1** not 0. The
+  old note had it inverted and it refused every save.
+- The gate's `andi 0x1000` reads a BUTTON word; `0x1000` is `CONT_START`. It is
+  a trigger, not a safety guard. Do not add it as a guard.
+- Step 10 (`func_80023698_24298`) writes `0x100` bytes and leaks `0xF0` bytes of
+  uninitialised stack into the file. Two saves of identical state ALWAYS differ
+  there. Nothing reads past `0x0F`; it is not a bug.
+- `.bak` is NOT a recovery copy once autosave is enabled — `files.cpp:39-45`
+  rotates on every flush, and every autosave is a flush. True of the *current*
+  build, not just a future timer. The `adb` backup is the only trustworthy copy.
+- `make -C patches` needs `CC=clang LD=ld.lld`; an inherited `CC=cc` defeats the
+  Makefile's `CC ?= clang`. `~/goemon-build-all.sh` passes both.
 
 ## Analog camera (v14 — WORKING, committed on dev)
 Full resume prompt for a fresh session: `docs/re-notes/RESUME.md`.
