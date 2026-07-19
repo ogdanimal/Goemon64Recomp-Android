@@ -40,9 +40,19 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     Every gate for flipping it On is met; doing so means the port overwrites the
     player's save automatically, which is a user-facing decision, especially with
     a public release parked. One line in `src/game/config.cpp`.
+  - **On-screen "Saved" indicator — DONE, device-verified 2026-07-19** on both
+    the timed and manual paths (`src/ui/ui_saved_indicator.cpp`). The settings
+    description now also states the 2-minute interval. The old claim here that
+    it "needs the RT64 extended-GBI path" was **wrong**: that path has no text
+    primitive, while a `recompui` context is just an RmlUi *document* and
+    `set_captures_input(false)` is exactly the toast/modal switch. See
+    `docs/autosave.md` § "The Saved indicator" — the mistake is the reusable
+    part. Note the two hazards recorded there: the tick MUST stay above
+    `draw_hook`'s `ui_state_mutex` lock (non-recursive → self-deadlock), and the
+    guest thread may only touch an atomic.
   - Optional follow-ups, none blocking: make the interval configurable (it is a
-    `#define` today); an on-screen "Saved" indicator (needs building from the
-    RT64 extended-GBI path — no transient toast exists in this project).
+    `#define` today; the settings text now hardcodes "every 2 minutes", so
+    update it in the same change).
 - **NOW: back to general bug-fixing** on the Android port (test via the CI debug
   APK), unless something else takes priority.
 - **PARKED — do not start without the user's say-so:**

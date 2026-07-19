@@ -157,8 +157,9 @@ overwrites the player's real save.
 
 ## Deferred / parked
 
-- On-screen "Saved" indicator — no transient toast exists in this project;
-  would need building from the RT64 extended-GBI path
+- ~~On-screen "Saved" indicator~~ — DONE, device-verified 2026-07-19
+  (`src/ui/ui_saved_indicator.cpp`). The old "needs the RT64 extended-GBI path"
+  claim here was wrong; see `docs/autosave.md` § "The Saved indicator".
 - Save import/export via SAF — user asked, then parked. `LauncherActivity`
   already has the pattern (`ActivityResultContracts.OpenDocument` +
   a streaming `copyRom`). Must be launcher-only, or go through

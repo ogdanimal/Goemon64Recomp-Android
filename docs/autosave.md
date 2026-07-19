@@ -225,6 +225,81 @@ recovery was confirmed under the shipping config (two saves, `status 0`).
 It took a deliberately-provoked failure to distinguish a working check from an
 inert one, and neither ordinary test would ever have done it.
 
+## The Saved indicator
+
+A transient toast, bottom-right, 2 seconds, on every committed save — both the
+timed autosave and the manual combo. `src/ui/ui_saved_indicator.cpp`.
+
+Raised from `autosave_note_committed()`. That is the only correct place: both
+save paths funnel through it, and it already branches on `status == 0`, so the
+toast structurally cannot claim a save that did not commit. Anywhere else and
+the two paths would need separate calls that could drift apart.
+
+### The parked note was wrong, in a way worth remembering
+
+The old note in this file said a toast "would need building from the RT64
+extended-GBI path". **Both halves of that were wrong**, and the shape of the
+error is the reusable lesson: the conclusion came from finding that the one
+obvious API (`recompui::open_notification`) did not fit, and then reasoning
+about the lowest layer instead of surveying what sat in between.
+
+- The extended-GBI path is **not a drawing API at all**
+  (`lib/rt64/src/gbi/rt64_gbi_extended.h`) — it is display-list opcode dispatch,
+  with no text or quad primitive. Going that way means writing a font renderer.
+- A `recompui` "context" is **not** an RmlUi context — it is one RmlUi
+  *document* in the single shared context (`src/ui/core/ui_context.cpp`). So an
+  extra overlay is cheap, not architectural.
+- `ContextId::set_captures_input(false)` / `set_captures_mouse(false)` already
+  existed and are **exactly** the toast/modal switch. Nothing in the repo had
+  ever called them, which is why the capability looked absent.
+
+Net cost: one file plus two call sites. No rendering code, no RT64 change, no
+new assets.
+
+`open_notification` genuinely is unusable, for more reasons than the one
+recorded: it is the modal prompt with its buttons hidden
+(`src/ui/ui_prompt.cpp:405`), so besides never auto-dismissing it also dims the
+screen, calls `try_close_current_context()` on whatever menu the player has
+open, and captures input.
+
+### Two hazards, both load-bearing
+
+1. **Deadlock.** The public `show_context`/`hide_context` take `ui_state_mutex`
+   internally, and `draw_hook` holds that same **non-recursive** mutex from
+   `ui_state.cpp:566` onward. The tick therefore runs *before* that lock — next
+   to the launcher's own `show_context`, which sits above the lock for exactly
+   this reason. Move the tick below it and the render thread self-deadlocks.
+2. **Threading.** `recomp_notify_saved` runs on the guest thread; RmlUi is
+   owned by the render thread. The guest side only stores an atomic; every
+   document mutation happens in the tick. It uses `exchange`, not load+store,
+   so a save landing on the same frame as an expiry is not dropped.
+
+Also: `show_context` asserts if the context is already shown
+(`ui_state.cpp:342`), so a re-trigger while visible only extends the deadline.
+
+### Verification
+
+Same rule as the settled check and the timer: an indicator that never appears
+is ambiguous between "the guest never signalled" and "it signalled but nothing
+drew". The `[autosave] indicator shown/hidden` logging exists to split those,
+and stays in.
+
+Device-verified 2026-07-19, both paths:
+
+```
+10:24:50.353  manual save -> status 0 (slot 0)
+10:24:50.386  indicator shown          (+33ms)
+10:24:52.417  indicator hidden         (2.031s)
+10:26:50.367  timed save -> status 0 (slot 0)
+10:26:50.373  indicator shown          (+6ms)
+10:26:52.373  indicator hidden         (2.000s)
+```
+
+The timed save landing 120.014s after the manual one independently re-confirms
+`autosave_note_committed` feeds the timer — the manual save reset the interval
+rather than letting a timed save fire moments later. Gameplay input stays live
+while the toast is up, which is the failure mode that looks perfect on screen.
+
 ## Slot guard
 
 The slot cursor at `*(u32*)(G + 0x3B040)` — absolute **`0x800C7D00`** — is
@@ -296,6 +371,7 @@ logcat.
 - `patches/autosave.c` — the reimplemented save routine, the safety gate, the
   per-frame poll
 - `patches/autosave.h` — declares `goemon_save_now()` / `update_autosave()`
+- `src/ui/ui_saved_indicator.cpp` — the on-screen "Saved" toast
 - `docs/re-notes/goemon_save_re.md` — RE writeup: save path, gate, residency map,
   confidence levels, open questions
 - `docs/autosave.md` — this file
@@ -310,7 +386,14 @@ logcat.
 - `assets/config_menu/general.rml` — added the On/Off `<input type="radio">` pair
   bound to `autosave_mode` at config index 6, spliced into the
   `nav-up`/`nav-down` chain, and replaced Zelda64Recomp's stale description text
-  (it referenced owl saves and Clock Town)
+  (it referenced owl saves and Clock Town), and later stated the 2-minute
+  interval plus the changed-since-last-save requirement
+- `src/ui/ui_state.cpp` — `init_saved_indicator_context()` in `create_menus()`,
+  `tick_saved_indicator()` in `draw_hook` **above the `ui_state_mutex` lock**
+- `src/game/recomp_api.cpp`, `patches/misc_funcs.h`, `patches/syms.ld` —
+  `recomp_notify_saved` (the usual 4-point guest-API pattern, with the
+  `REGISTER_FUNC` in `src/main/main.cpp`)
+- `CMakeLists.txt` — the new UI source
 - `README.md` — Features entry
 
 No `patches/Makefile` change needed — it globs `*.c`.
@@ -360,9 +443,10 @@ Added 2026-07-18, from the on-device session and three static scans:
   notion of a checkpoint does not exist.
 - ~~**Save-data-settled check**~~ — **DONE and VERIFIED on device 2026-07-19.**
   See "The settled check" below.
-- **On-screen "Saved" indicator** — no transient toast exists in this project;
-  `recompui::open_notification` is a modal with no auto-dismiss, so it would need
-  building from the RT64 extended-GBI path.
+- ~~**On-screen "Saved" indicator**~~ — **DONE and VERIFIED on device 2026-07-19.**
+  See "The Saved indicator" below. The old note here claimed it would need
+  building from the RT64 extended-GBI path; **that was wrong on both counts** and
+  is recorded in full below, because the mistake is the reusable part.
 - ~~**Backup-before-first-overwrite**~~ — **no longer deferred.** Promoted to a
   prerequisite alongside the dedicated slot; either one satisfies the gating
   precondition in "What it overwrites, exactly". See there for why.
