@@ -450,6 +450,10 @@ both saves through both code paths — the cleanest possible comparison. Note th
 runtime keeps a one-generation `.bak`, so if both saves happen before you pull,
 `mnsg.us.bin` is the second and `mnsg.us.bin.bak` is the first.
 
+The save files these results came from are committed under
+`docs/re-notes/fixtures/`, with a per-file provenance map. Every comparison
+below reproduces from them directly.
+
 #### Result (2026-07-18): PASSED
 
 Slot 0 differed in exactly 5 bytes — `0x100`–`0x103` (CRC) and `0x36B`

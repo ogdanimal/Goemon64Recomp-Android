@@ -142,6 +142,11 @@ reports a **false failure**. Compare the slot region only — `cmp -i 256`.
 Confirmed on device: bytes `0x00`-`0x0F` were byte-identical across both
 writers, and the first differing byte was exactly `0x10`.
 
+Evidence is committed under `docs/re-notes/fixtures/` — `06-autosave-C.bin` vs
+`07-npcsave-cross.bin` for the cross-writer case, and
+`08-npcsave-consecutive-A/B.bin` for the game path's own 15-byte header churn.
+See that directory's README for the reproduction commands.
+
 `func_8000B718_C318` (base exe, `funcs_3.c:6588`) marshals live state into
 gamedata: indexes a 10-byte-stride table at `0x8005BA30` by the stage id at
 `gamedata+0x200`; `memcpy(0x8015C5D8 -> gamedata+0x64, 0x30)`; clamps

@@ -57,6 +57,11 @@ overwrites the player's real save.
    NPC-save and confirm these moved *identically* in both: `+0x6C` hearts,
    `+0x74` ryo, `+0x200` stage id. Compare with `cmp -i 256` — a whole-file
    `cmp` gives a **false failure** (see `docs/autosave.md`).
+
+   Baselines from the session that passed are committed under
+   `docs/re-notes/fixtures/`, with reproduction commands in its README. **Add
+   the new pair there** rather than overwriting anything — those files are the
+   evidence corpus for every claim in these notes, not backups.
 3. **Then step 2 of the rollout**: the timer, plus Zelda64Recomp's
    save-data-settled check (whitelist diff, N frames unchanged) so a write never
    lands mid-transaction. A timer is now *confirmed* to be the right shape —
