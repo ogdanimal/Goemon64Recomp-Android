@@ -19,6 +19,13 @@ Zelda64Recomp/N64Recomp ecosystem). GitHub: `ogdanimal/Goemon64Recomp-Android`
   or pass `--repo ogdanimal/Goemon64Recomp-Android` explicitly.
 - ROM `mnsg.z64` (32 MiB, gitignored) sits at the repo root — the decompressed US ROM
   the recompiler consumes. Never commit it.
+- **Back up on-device data BEFORE installing anything that changes storage paths,
+  and before any uninstall / `pm clear`.** Verify the backup by CHECKSUM, not by
+  `adb pull`'s success message. Latest: `C:\Users\user\goemon-backups\2026-07-19\data`
+  (93 files, 43 MB — saves, configs, ROM, assets). Saves live in
+  `<dataDir>/saves/mnsg.us.bin` plus `.bak` and `.manual.bak`.
+  NOTE: `mnsg.us.z64` in the data dir is written by the native runtime when it
+  registers the ROM — it is NOT a stale duplicate of `mnsg.z64`, do not "clean it up".
 
 ## Build reality (important)
 - A clean `--recurse-submodules` clone canNOT build without the ROM: `RecompiledFuncs/`
@@ -89,6 +96,25 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     both downstream of all producers and upstream of all consumers, and
     `func_80012878` seeds camera tweens FROM the live camera at 22 sites across
     13 overlays. Evidence in `goemon_default_cam_writer.md` §6(3).
+- **SD-card game data — DONE and DEPLOYED 2026-07-19** (`d14af04`). Users can
+  keep the ROM, assets, configs and saves on a removable card, chosen ONCE at
+  first run. `DataPaths.java` is the single source of truth for the data dir —
+  do not go back to computing it per-activity, which is how the two callers
+  drifted before. Existing installs are grandfathered to internal and never
+  prompted. Device-verified both ways: a fresh install landed everything on
+  `/storage/<uuid>/` with internal left empty, and an existing install saw no
+  prompt with save checksums unchanged.
+  - **DECIDED: card pulled MID-GAME is not handled. Do not "fix" it.** Reasoning
+    is in `DataPaths`' class comment. Availability is checked at launch only.
+  - No migration exists by design; the first-run choice is final short of a
+    reinstall. Adding migration later means copy-verify-then-delete, never move.
+- **Vulkan diagnostics — DEPLOYED 2026-07-19** (`4a6552f`, via plume `65783a0`
+  and rt64 `8c73b3f`). Startup now logs the selected physical device (vendor,
+  device API, driver version) and the loader's Vulkan version vs what we
+  request. Aimed at making bug reports from other people's hardware diagnosable
+  without a round trip. **All three submodule levels are pushed to their forks**
+  — verify with `git ls-remote` before trusting a pointer bump, since a bump
+  committed while the submodule commit stays local is unbuildable by CI.
 - **NOW: back to general bug-fixing** on the Android port (test via the CI debug
   APK), unless something else takes priority.
 - **PARKED — do not start without the user's say-so:**
@@ -140,8 +166,11 @@ TWO REMAINING (in `RESUME-autosave.md`):
    earlier "notify via `RECOMP_PATCH func_8000B718_C318`" plan is **SUPERSEDED —
    do not implement it** (no `RECOMP_HOOK` in this toolchain, so `RECOMP_PATCH`
    replaces the whole function). Two generic hooks in the `lib/N64ModernRuntime`
-   submodule + all policy in `src/game/save_rollback.cpp`. **Submodule commit not
-   yet pushed to `fork`**, so CI cannot build the pointer bump. Killed two old
+   submodule + all policy in `src/game/save_rollback.cpp`. (An earlier note here
+   said the submodule commit was **not yet pushed to `fork`** so CI could not
+   build the pointer bump — **STALE, corrected 2026-07-19**: the recorded pointer
+   `b6f6253` matches the `ogdanimal/N64ModernRuntime` `goemon-android` tip, and
+   CI is green.) Killed two old
    worries: the active-disarm rule (suspends never reach the pak) and the
    fixtures byte-identity precondition (now vacuous). Pak diagnostics
    reachability: **RESOLVED, UNREACHABLE, HIGH confidence.**
