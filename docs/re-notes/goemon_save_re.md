@@ -148,11 +148,18 @@ Evidence is committed under `docs/re-notes/fixtures/` — `06-autosave-C.bin` vs
 See that directory's README for the reproduction commands.
 
 `func_8000B718_C318` (base exe, `funcs_3.c:6588`) marshals live state into
-gamedata: indexes a 10-byte-stride table at `0x8005BA30` by the stage id at
+gamedata: indexes a **12**-byte-stride table at `0x8005BA30` by the stage id at
 `gamedata+0x200`; `memcpy(0x8015C5D8 -> gamedata+0x64, 0x30)`; clamps
 `gamedata+0x78` to >= 3 and `+0x70` to >= 10; finally mirrors gamedata into the
 shadow at `0x8015C910`. Its copy helper `func_80004208_4E08` is **bcopy order
 `(src, dst, n)`** — getting that backwards inverts primary/shadow.
+
+**Corrected 2026-07-19: the stride is 12, not 10.** At `0x8000B72C`–`0x8000B738`
+the index is built as `t7 = t6<<2; t7 -= t6; t7 <<= 2`, i.e. `stage * 12`, and
+six halfwords are then read at `+0,2,4,6,8,A`. A genuine **10**-byte-stride
+table does exist — `0x8006B780`, indexed by **room id** in
+`func_800214E4_220E4` (`multu $t6, 0xA`) — so the two tables were conflated.
+Different base, different index, different stride. (OBSERVATION, HIGH.)
 
 **Correction to `goemon_cheats_re.md`:** that note says `func_8000B718_C318`
 commits the live block "on area transitions". It does not — it is a save-time
@@ -265,7 +272,46 @@ camera-direction records at 0x800C7DB0" is the `System` controller array
 (`sizeof(Controller) == 0x18`), so `+0xC/+0x10/+0x14` are `stick_x`, `stick_y`,
 `stick_magnitude`.
 
+## 2b. The live block `0x8015C5D8` (0x30) — layout (2026-07-19)
+
+Derived for the save-data-settled check. The marshal copies this block to
+`gamedata+0x64`, so live+N == gamedata+0x64+N. Each field below is confirmed by
+a **semantic** writer, not by position alone:
+
+| live+ | gd+ | field | proof |
+|---|---|---|---|
+| `0x08` | `0x6C` | **max HP** | `func_8000B5BC_C1BC` sets `+0x0C = +0x08` (full heal); `func_8000B824_C424` 4 heart pieces → `+0x08 += 2` |
+| `0x0C` | `0x70` | **current HP** | `func_8000B51C_C11C` decrements; on 0 → death via `func_8000B578` |
+| `0x10` | `0x74` | **ryo** | `func_80221FD4_5DD4A4` adds delta, clamps `[0, 9999]` |
+| `0x14` | `0x78` | **lives** | `func_8000B578_C178` decrements on death, refills HP if nonzero |
+| `0x18` | `0x7C` | the counter | `func_80222140_5DD610` |
+
+Lives at `+0x14` explains the marshal's otherwise-unmotivated `gd+0x78 >= 3`
+clamp. All writers are event-driven; **no per-frame writer** resolves into the
+block (MEDIUM-HIGH — the writers were verified conditional, but not every call
+chain was walked to a tick).
+
+**Player world position is NOT in the save payload** (HIGH): no float store
+resolves into either buffer. The only positional fields are the 16-bit **spawn**
+coordinates at `gd+0x208`+, read from static tables. This is why walking does
+not prevent the settled check from settling — confirmed on device.
+
+**`gamedata` is NOT static between saves** (HIGH): the event-flag bitfield
+(`+0x00..+0x63`), a second bitfield at `+0x138`, progress arrays and room/spawn
+fields are all written in place during play. But `gd+0x64..+0x93` **is** stale
+between saves, since only the marshal writes it — which is why the settled check
+watches the live block directly and deliberately excludes that mirror.
+
 ## 3. Open / lowest confidence
+
+- **`gamedata+0x200` (stage id) has no resolvable writer.** UNRESOLVED as of
+  2026-07-19. The marshal reads it as a word at `0x8000B720` to index the stage
+  table, but no store to `+0x200` resolves anywhere under constant or indexed
+  addressing. Presumably written only by the wholesale copies
+  (`func_801CEC38_661AE8` load, `func_8000B6E0_C2E0` shadow restore) or through
+  an untraced pointer. A watchpoint on `0x8015C808` across a stage transition
+  would settle it. Practically harmless: it means `+0x200` is near-static
+  during play.
 
 - The semantics of `0x800C7AA4` (`< 4 && != 3`) and whether `0x800C7AD6` really
   is the loader counter. Partially settled on device: pressing the save combo

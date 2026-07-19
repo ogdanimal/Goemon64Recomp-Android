@@ -221,6 +221,139 @@ static s32 autosave_is_safe(void) {
 }
 
 // ---------------------------------------------------------------------------
+// Save-data-settled check.
+//
+// The port of Zelda64Recomp's stability window: require the save-relevant state
+// to be unchanged for a short span before committing, so a write never lands
+// mid-transaction (an item being consumed, a flag being applied). That would
+// produce a technically valid save recording a half-applied state.
+//
+// This protects the AUTOSAVE ITSELF. The .manual.bak rollback point protects
+// everything around it. They are independent, and both gate defaulting the
+// timer to On.
+//
+// WHAT IS WATCHED, AND WHY IT IS TWO BUFFERS
+// ------------------------------------------
+// Watching gamedata alone would be wrong. The marshal func_8000B718_C318 is
+// what copies the live player block into gamedata+0x64, and it runs at save
+// time -- so between saves gamedata's copy of HP, ryo and lives is STALE. A
+// check watching only gamedata would be blind to the player taking damage or
+// spending money, which is most of what "mid-transaction" means here.
+//
+// Watching the live block alone would be equally wrong in the other direction:
+// it holds no event flags or progress bits.
+//
+// So both, as four contiguous ranges:
+//
+//   A  0x8015C5D8 + 0x30   the live block, entire. Confirmed layout: max HP
+//                          +0x08, current HP +0x0C, ryo +0x10, lives +0x14,
+//                          counter +0x18 (mirrors gamedata +0x6C/+0x70/+0x74/
+//                          +0x78/+0x7C). Every writer is event-driven.
+//   B  gamedata +0x000     event-flag bitfield (800 flags)
+//   C  gamedata +0x094     progress blocks, second bitfield, room id and
+//                          spawn point
+//   D  gamedata +0x268     unlock/status tables and gauges
+//
+// DELIBERATE EXCLUSIONS -- each of these is a trap, not an omission:
+//
+//   gamedata +0x064..+0x093  The stale mirror of range A. Excluding it is not
+//                            just redundancy: it changes ONLY when a save runs,
+//                            so watching it would inject a spurious "unsettled"
+//                            event at exactly the moment a save is being
+//                            attempted.
+//   gamedata +0x264..+0x267  Play time. Written live into gamedata, +1 every 60
+//                            frames (it is seconds, not frames). It would not
+//                            deadlock a 10-frame window, but it is pure noise.
+//   gamedata +0x300..+0x303  Footer/CRC region, touched at save time.
+//   the shadow at 0x8015C910 Written only at save/load; adds nothing.
+//
+// Player world position is NOT in the payload (no float store resolves into
+// either buffer; the only positional fields are 16-bit SPAWN coordinates read
+// from static tables). So walking around does not prevent settling -- which
+// matters, because a check that only settled while standing still would refuse
+// almost every save.
+//
+// Room transitions DO register as unsettled, via +0x204..+0x211 inside range C.
+// That is wanted: a transition is precisely when a save should not land.
+// ---------------------------------------------------------------------------
+
+// Frames the watched state must hold still before a save may commit. Ported
+// from Zelda64Recomp's ~10-frame window.
+//
+// Validated on device 2026-07-19 by temporarily widening this to 120 so the
+// refusal path could be hit by hand. Two refusals reported 98/120 and 32/120
+// frames, matching the wall-clock gaps since the preceding change (1.634s and
+// 0.535s) at 60Hz to within a millisecond -- so the counter tracks real frames,
+// and the check is not merely printing plausible output.
+#define SETTLE_FRAMES 10
+#define SETTLE_RANGE_COUNT 4
+
+static const struct {
+    u32 addr;
+    u32 size;
+    const char* name;
+} settle_ranges[SETTLE_RANGE_COUNT] = {
+    { 0x8015C5D8, 0x030, "live"     },  // A: HP / ryo / lives
+    { 0x8015C608, 0x064, "flags"    },  // B: gamedata +0x000
+    { 0x8015C69C, 0x1D0, "progress" },  // C: gamedata +0x094 .. +0x263
+    { 0x8015C870, 0x098, "unlocks"  },  // D: gamedata +0x268 .. +0x2FF
+};
+
+static u32 settle_hash[SETTLE_RANGE_COUNT];
+static s32 settle_frames;
+static s32 settle_primed;
+static u32 settle_changed_mask;
+
+// FNV-1a. Cheap enough to run over ~0x2FC bytes every frame, and we only need
+// change detection, not collision resistance.
+static u32 settle_hash_range(u32 addr, u32 size) {
+    const volatile u8* p = (const volatile u8*)addr;
+    u32 h = 0x811C9DC5u;
+    u32 i;
+
+    for (i = 0; i < size; i++) {
+        h ^= (u32)p[i];
+        h *= 0x01000193u;
+    }
+    return h;
+}
+
+// Must be called EVERY frame, not lazily at trigger time -- the frame counter
+// is meaningless otherwise.
+static void update_settle_state(void) {
+    u32 changed = 0;
+    s32 i;
+
+    for (i = 0; i < SETTLE_RANGE_COUNT; i++) {
+        u32 h = settle_hash_range(settle_ranges[i].addr, settle_ranges[i].size);
+        if (h != settle_hash[i]) {
+            changed |= (1u << i);
+        }
+        settle_hash[i] = h;
+    }
+
+    // First pass after enabling only seeds the hashes; everything looks
+    // "changed" against zeroed state, which is not a real transaction.
+    if (!settle_primed) {
+        settle_primed = 1;
+        settle_frames = 0;
+        settle_changed_mask = 0;
+        return;
+    }
+
+    if (changed != 0) {
+        settle_frames = 0;
+        settle_changed_mask = changed;
+    } else if (settle_frames < SETTLE_FRAMES) {
+        settle_frames++;
+    }
+}
+
+static s32 autosave_is_settled(void) {
+    return settle_frames >= SETTLE_FRAMES;
+}
+
+// ---------------------------------------------------------------------------
 // The save itself.
 // ---------------------------------------------------------------------------
 
@@ -374,15 +507,37 @@ void update_autosave(void) {
 
     if (!recomp_get_autosave_enabled()) {
         combo_was_held = 0;
+        settle_primed = 0;
         return;
     }
+
+    // Unconditionally, every frame -- see update_settle_state().
+    update_settle_state();
 
     held = D_8008CCC0_8D8C0.controller[0].button_held_down;
     combo_held = ((held & AUTOSAVE_TEST_COMBO) == AUTOSAVE_TEST_COMBO);
 
     // Edge-triggered, so holding the combo saves once rather than every frame.
     if (combo_held && !combo_was_held) {
-        if (autosave_is_safe()) {
+        // Evaluated once: the guards are volatile reads, so calling this twice
+        // could in principle disagree between the two evaluations.
+        s32 is_safe = autosave_is_safe();
+
+        if (is_safe && !autosave_is_settled()) {
+            // Named ranges, not just a count. A whitelist containing one
+            // continuously-volatile field would refuse EVERY save while looking
+            // exactly like a gate working correctly -- the same failure shape as
+            // the inverted phase guard that refused every save until the
+            // diagnostic exposed it. Printing which range last moved makes a bad
+            // whitelist visible in one test cycle instead of looking correct.
+            recomp_printf("[autosave] refused: save data not settled "
+                          "(%d/%d frames | last change:%s%s%s%s)\n",
+                          settle_frames, SETTLE_FRAMES,
+                          (settle_changed_mask & 1) ? " live"     : "",
+                          (settle_changed_mask & 2) ? " flags"    : "",
+                          (settle_changed_mask & 4) ? " progress" : "",
+                          (settle_changed_mask & 8) ? " unlocks"  : "");
+        } else if (is_safe) {
             s32 status = goemon_save_now();
             if (status == AUTOSAVE_ERR_BAD_SLOT) {
                 recomp_printf("[autosave] refused: no valid save slot selected "

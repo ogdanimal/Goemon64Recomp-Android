@@ -81,9 +81,15 @@ TWO REMAINING (in `RESUME-autosave.md`):
    worries: the active-disarm rule (suspends never reach the pak) and the
    fixtures byte-identity precondition (now vacuous). Pak diagnostics
    reachability: **RESOLVED, UNREACHABLE, HIGH confidence.**
-3. Save-data-settled check, then the timer — still **gated** on both. A timer is
-   confirmed the right shape: Goemon has NO automatic save points, all 12 pak
-   writes are player-confirmed.
+3. Save-data-settled check — **DONE, VERIFIED ON DEVICE 2026-07-19.** Watches 4
+   ranges across the live block `0x8015C5D8` AND gamedata (gamedata alone is
+   stale for HP/ryo/lives — only the marshal writes `gd+0x64`). GOTCHA: the
+   first passing run proved nothing, since an inert check would look identical;
+   two provoked positive controls were needed. See `docs/autosave.md` § "The
+   settled check" before changing the watched ranges.
+4. **The timer — BOTH GATES NOW MET, unblocked.** A timer is confirmed the right
+   shape: Goemon has NO automatic save points, all 12 pak writes are
+   player-confirmed. Keep it Off by default until it is itself device-tested.
 
 GOTCHAS THAT COST TIME (all documented, repeated here because they bite):
 - `0x800C7A9E` is a 3-phase init/run/exit counter, gameplay == **1** not 0. The

@@ -96,6 +96,75 @@ already routes guest writes through `save_read`/`save_write` — the identical p
 a manual in-game save uses — and the debounced saving thread in
 `librecomp/src/pi.cpp` flushes to disk on its own.
 
+## The settled check
+
+**Implemented and verified on device 2026-07-19.** Requires the save-relevant
+state to hold still for `SETTLE_FRAMES` (10) before a save may commit, so a
+write never lands mid-transaction. This protects the **autosave itself**;
+`.manual.bak` protects everything around it. Both gate defaulting the timer On,
+and both are now met.
+
+### What is watched, and why it is two buffers
+
+Watching gamedata alone would be **wrong**: the marshal `func_8000B718_C318` is
+what copies the live player block into `gamedata+0x64`, and it runs at save
+time — so between saves gamedata's HP, ryo and lives are **stale**. A check
+watching only gamedata would be blind to taking damage or spending money, which
+is most of what "mid-transaction" means here. Watching only the live block would
+miss every event flag. So both, as four ranges:
+
+| # | range | bytes | contents |
+|---|---|---|---|
+| A | `0x8015C5D8` | `0x030` | live block — max HP `+0x08`, current HP `+0x0C`, ryo `+0x10`, lives `+0x14`, counter `+0x18` |
+| B | `0x8015C608` | `0x064` | gamedata `+0x000` — event-flag bitfield |
+| C | `0x8015C69C` | `0x1D0` | gamedata `+0x094..+0x263` — progress, second bitfield, room/spawn |
+| D | `0x8015C870` | `0x098` | gamedata `+0x268..+0x2FF` — unlock tables, gauges |
+
+**Deliberate exclusions, each a trap rather than an omission:**
+
+- `gd+0x064..+0x093` — the **stale mirror** of range A. Excluding it is not mere
+  redundancy: it changes *only when a save runs*, so watching it would inject a
+  spurious "unsettled" at exactly the moment a save is attempted.
+- `gd+0x264..+0x267` — play time. Written live, `+1` every **60** frames (it is
+  seconds, not frames), so it would not deadlock a 10-frame window, but it is
+  noise.
+- `gd+0x300..+0x303` — footer/CRC, touched at save time.
+- the shadow at `0x8015C910` — written only at save/load.
+
+Player position is **not** in the payload, so walking does not prevent settling
+— confirmed on device. Room transitions **do** register as unsettled via
+`+0x204..+0x211` in range C, which is wanted.
+
+### Verification — and why a passing test nearly meant nothing
+
+The first on-device run produced **no `not settled` refusals at all**, and every
+save succeeded. That was indistinguishable from the check being **inert**: had
+the addresses been wrong and read static memory, the hashes would never differ,
+the counter would pin at the threshold, and every save would be permitted while
+the check protected nothing. **The log would have looked identical.** This is the
+same failure shape as the inverted phase guard, with the sign flipped — that one
+refused everything, an inert check permits everything.
+
+Two positive controls settled it:
+
+1. **A temporary change-logging diagnostic** proved the hashes move and map as
+   claimed: `live` on damage/ryo/health item, `progress` on room transitions,
+   all four at once on a file load (the wholesale `0x300` copy). A **91-second
+   stretch with no output** while playing is the evidence that no
+   continuously-volatile field is in the whitelist — the chronic-refusal risk.
+2. **`SETTLE_FRAMES` temporarily widened to 120** so the refusal path could be
+   hit by hand. Two refusals reported `98/120` and `32/120` frames against
+   wall-clock gaps of 1.634s and 0.535s — **98.0 and 32.0 frames at 60Hz**,
+   matching to within a millisecond. So the counter tracks real frames rather
+   than merely printing plausible output.
+
+Both diagnostics were then stripped and `SETTLE_FRAMES` restored to 10;
+recovery was confirmed under the shipping config (two saves, `status 0`).
+
+**The lesson, again:** the absence of a refusal is not evidence of correctness.
+It took a deliberately-provoked failure to distinguish a working check from an
+inert one, and neither ordinary test would ever have done it.
+
 ## Slot guard
 
 The slot cursor at `*(u32*)(G + 0x3B040)` — absolute **`0x800C7D00`** — is
@@ -229,11 +298,8 @@ Added 2026-07-18, from the on-device session and three static scans:
   every one of the 12 pak-write sites is behind an explicit player confirmation.
   There is nothing to hook, so the alternative of piggybacking on the game's own
   notion of a checkpoint does not exist.
-- **Save-data-settled check** — Zelda64Recomp diffs a whitelist of stable save
-  fields and requires ~10 frames unchanged before writing. It guards against
-  catching the save data mid-transaction (an item being consumed, a flag being
-  applied), which would produce a technically valid save recording a
-  half-applied state.
+- ~~**Save-data-settled check**~~ — **DONE and VERIFIED on device 2026-07-19.**
+  See "The settled check" below.
 - **On-screen "Saved" indicator** — no transient toast exists in this project;
   `recompui::open_notification` is a modal with no auto-dismiss, so it would need
   building from the RT64 extended-GBI path.

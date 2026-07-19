@@ -123,12 +123,20 @@ overwrites the player's real save.
    two hook points on branch `goemon-android`; CI will not build the pointer bump
    until that commit is pushed to `fork` (ogdanimal/N64ModernRuntime).
 
-4. **NEXT — the save-data-settled check.** Zelda64Recomp's approach: diff a
-   whitelist of stable save fields, require ~10 frames unchanged before writing,
-   so a write never lands mid-transaction (an item being consumed, a flag being
-   applied). This protects the *autosave itself*; step 3 protects everything
-   else. They are independent, and **both** are prerequisites for defaulting the
-   timer On.
+4. ~~**The save-data-settled check.**~~ **DONE and VERIFIED on device
+   2026-07-19.** Watches four ranges across BOTH the live block `0x8015C5D8`
+   and gamedata — gamedata alone is stale for HP/ryo/lives, since only the
+   marshal writes `gd+0x64`. Full rationale, the exclusion traps, and the
+   verification in `docs/autosave.md` § "The settled check".
+
+   **Read that verification section before touching this code.** The first
+   on-device run passed every test while proving nothing: an inert check (wrong
+   addresses → hashes never move → always "settled") would have produced an
+   identical log. Two deliberately-provoked positive controls were needed. If
+   you change the watched ranges, re-run them.
+
+   **Both gates for defaulting the timer On are now MET** — step 3 protects
+   everything around the autosave, step 4 protects the autosave itself.
 
 5. **Then the timer.** Confirmed to be the right trigger shape rather than a
    default chosen for lack of options: Goemon has **no automatic commit points**
