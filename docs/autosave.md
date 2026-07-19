@@ -236,14 +236,15 @@ Added 2026-07-18, from the on-device session and three static scans:
 - **On-screen "Saved" indicator** — no transient toast exists in this project;
   `recompui::open_notification` is a modal with no auto-dismiss, so it would need
   building from the RT64 extended-GBI path.
+- ~~**Backup-before-first-overwrite**~~ — **no longer deferred.** Promoted to a
+  prerequisite alongside the dedicated slot; either one satisfies the gating
+  precondition in "What it overwrites, exactly". See there for why.
 - **Save import/export via SAF** — `LauncherActivity` already has the pattern
   (`ActivityResultContracts.OpenDocument` plus a streaming `copyRom`). Likely a
   better mitigation than the backup-region idea below, since it also covers
   device migration. Must be launcher-only, or go through
   `ultramodern::change_save_file`, because the saving thread will clobber an
   import made while the game is running.
-- **Backup-before-first-overwrite** — copying the slot to a backup region before
-  the first autosave overwrite.
 
 ## What it overwrites, exactly — open questions
 
@@ -256,12 +257,50 @@ game's own semantic (an in-game save offers no slot choice; it overwrites the
 file chosen at launch), so this is native behaviour rather than a compromise.
 The consequences are still worth stating:
 
-- **There is no in-game undo.** The runtime keeps a one-generation `.bak`, but
-  **repeated autosaves defeat it** — observed: two combo presses 2.7s apart
-  rotated a real manual save off the device entirely. A timer would do this
-  continuously. Any default-On timer needs this answered first.
 - **A bad autosave destroys the only copy.** Which is what the settled-check
   (below) is for.
+- **`.bak` is not a recovery copy once autosave is enabled.** See below. This is
+  a **step 1** property, not a timer problem.
+
+### `.bak` no longer holds your last manual save (step 1, already true)
+
+`lib/N64ModernRuntime/librecomp/src/files.cpp:39-45` copies `current -> .bak`
+then `temp -> current` on **every flush**, and every combo press produces a
+flush. So the second autosave rotates the first into `.bak` and the previous
+manual save off the device entirely. Observed: two presses 2.7s apart did exactly
+that.
+
+**This is not something the timer introduces.** The demonstration used manual
+presses only. Any second use of the combo makes `.bak` an autosave-of-an-
+autosave; a timer merely makes that window permanent rather than
+usage-dependent. Do not read step 1 as covered.
+
+**Be precise about what was lost.** The rotation's *designed* function is
+torn-write protection — if the process dies mid-copy, `.bak` still holds a
+complete previous file — and that survives autosave intact: after two autosaves
+`.bak` is still a complete, loadable save. What is destroyed is the *incidental*
+property that `.bak` usually contained the last **manual** save, which was only
+ever true because flushes were rare.
+
+That distinction determines the fix. Restoring the old behaviour is not an
+option — the host cannot distinguish an autosave flush from a manual one without
+new plumbing. The goal is a **deliberate rollback story**, so nothing depends on
+the accident:
+
+- a **dedicated slot** (manual slots untouched, so `.bak` rotation becomes
+  harmless and the rollback point lives inside the save file, out of reach of any
+  host-side rotation), or
+- **backup-before-first-overwrite** — a one-time `.pre-autosave` host-side
+  snapshot, cheaper if the slot-count math makes dedicating one unattractive.
+
+**One of these is a prerequisite, not deferred polish.** This also corrects an
+earlier claim in this doc's history: the dedicated slot was pitched as *killing*
+the backup-before-first-overwrite item. The opposite is true — they are two
+answers to the same demonstrated loss path, and shipping neither leaves both
+nets failing at once, which is precisely what was observed.
+
+**Gating precondition:** *the timer does not ship until a rollback mechanism
+exists that does not depend on `.bak`.*
 
 ### Dedicated-slot option — open questions if it is ever built
 
@@ -300,6 +339,13 @@ building it:
    half-applied state into the only autosave slot is still a bad autosave.
 
 ## Verifying it
+
+> **While autosave is enabled, assume `.bak` contains autosave data.** The
+> runtime rotates `current -> .bak` on every flush, and every save the feature
+> makes is a flush, so the on-device `.bak` is an earlier *autosave*, not your
+> last manual save. **The `adb` backup below is the only trustworthy recovery
+> copy.** This applies to the current manual-trigger build, not just to a future
+> timer — see "What it overwrites, exactly".
 
 ### 1. Back up the save first
 

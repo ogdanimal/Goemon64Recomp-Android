@@ -62,10 +62,18 @@ overwrites the player's real save.
    lands mid-transaction. A timer is now *confirmed* to be the right shape —
    Goemon has no automatic commit points to hook, so there is no alternative
    design being passed over.
-4. **Before any default-On timer**, read the "What it overwrites, exactly"
-   section in `docs/autosave.md`. Two independent prerequisites, and the
-   `.bak` net does **not** cover a timer: two combo presses 2.7s apart were
-   observed rotating a real manual save off the device entirely.
+4. **Gating precondition on the timer:** it does not ship until a rollback
+   mechanism exists that does not depend on `.bak` — either a dedicated slot or
+   backup-before-first-overwrite. One of those two is a prerequisite now, not
+   deferred polish.
+
+   **This is already true of step 1, today.** `files.cpp:39-45` rotates
+   `current -> .bak` on every flush and every autosave is a flush, so a *second*
+   combo press makes `.bak` an autosave-of-an-autosave — observed at 2.7s apart,
+   with no timer involved. Anyone testing the current build should treat the
+   `adb` backup as the only trustworthy recovery copy. Full reasoning, including
+   why `.bak`'s designed torn-write protection survives while its incidental
+   "holds your last manual save" property does not, is in `docs/autosave.md`.
 
 ## Deferred / parked
 
