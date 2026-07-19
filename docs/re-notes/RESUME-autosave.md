@@ -29,6 +29,11 @@ What the on-device session established:
 - `SAVE_SLOT_COUNT = 3` **confirmed** — the last MEDIUM-confidence assumption.
 - The safety gate correctly refuses mid-dialogue (observed on the script-VM
   guard) and during every other excluded state.
+- A header divergence escalated mid-session **resolved as a non-defect**: the
+  `0xF0`-byte delta is uninitialised stack residue leaked by the *game's own*
+  step 10, which the reimplementation reproduces faithfully. Nothing was missing
+  and nothing needed fixing. It does mean a whole-file `cmp` is a false failure —
+  see `docs/autosave.md`.
 
 One bug was found and fixed in the process: the gate's phase guard was
 **inverted** (`0x800C7A9E`: gameplay is 1, not 0), which refused every save. A
@@ -84,10 +89,14 @@ overwrites the player's real save.
    - The autosave path must **actively disarm** an armed one-shot, not merely
      skip arming — 12 of the 25 `func_8000B718_C318` call sites are the RAM-only
      suspend, which arms without producing a flush.
-   - Two preconditions: the fixtures `08`/`09`/`11` byte-identity check (the
-     notify patch touches the manual save path for the first time), and
-     establishing whether the two **pak diagnostic** writers are reachable at
-     runtime — they are not save-class and would poison `.manual.bak`.
+   - Two preconditions. First, the fixtures `08`/`09`/`11` byte-identity check —
+     the notify patch touches the manual save path for the first time. Second,
+     establish whether the two **pak diagnostic** writers are runtime-reachable.
+     Note the real stakes: they write an incrementing byte pattern into slot 0,
+     so if reachable they **destroy the live save directly**, autosave or not —
+     poisoning `.manual.bak` is only the secondary casualty. The empirical bound
+     says they probably are not reachable (the fixtures corpus spans many boots
+     with slot data intact), so expect to be confirming dead or menu-gated code.
    - The dedicated slot is **parked**; its four open questions no longer gate.
 
    **This is already true of step 1, today.** `files.cpp:39-45` rotates
@@ -144,8 +153,11 @@ The two below are older; both are documented in `goemon_save_re.md`, and
 neither has been fixed at the source:
 
 - `patches/cheats.c` says `func_8000B718_C318` commits the live block "on area
-  transitions". It does not — the save routine is its only caller in the entire
-  binary, so it is a save-time commit
+  transitions". It does not — the save path (the `jal` from the save routine,
+  plus the GEV save and suspend scripts) is its only caller class, so it is a
+  save-time commit, never an area-transition one. **Do not restate this as "its
+  only caller in the entire binary"** — that phrasing is true only of the `jal`
+  and is refuted 13 lines above; it has now misled two readers
 - `*0x8020CA2C`, used as an "in gameplay" gate by `patches/cheats.c` and
   `patches/camera.c`, is `&System->controllers[i]` and is never cleared. It stays
   "valid" through pause menus, dialogue and cutscenes. Fine for those two

@@ -198,8 +198,9 @@ missing.
 ## Corrections made to existing notes
 
 - `func_8000B718_C318` is a **save-time** commit, not an area-transition one —
-  the save routine is its only caller in the entire binary. The comment near the
-  top of `patches/cheats.c` says otherwise and is inaccurate.
+  the save path (the `jal` from the save routine, plus the GEV save and suspend
+  scripts) is its only caller class. The comment near the top of
+  `patches/cheats.c` says otherwise and is inaccurate.
 - `*0x8020CA2C` (the gate `patches/cheats.c` and `patches/camera.c` use) is
   `&System->controllers[i]` and is **never cleared**, so it stays "valid" through
   pause menus, dialogue and cutscenes. Adequate for those features; not adequate
@@ -360,11 +361,23 @@ closed, and it is:
 
 With the set closed there is no mystery writer left to consume an armed one-shot.
 
-**Open precondition:** the two diagnostic writers are *not* save-class, and a
-diagnostic flush consuming an armed one-shot would copy a slot-0-scribbled file
-into `.manual.bak` — worse than the erase case, since nothing about it is
-deliberate. **Establish whether they are reachable at runtime** (they may be
-boot- or debug-only). If they are reachable, the disarm rule must cover them too.
+**Open precondition — and its stakes are bigger than `.manual.bak`.** The two
+diagnostic writers put an **incrementing byte pattern into slot 0**. If they are
+runtime-reachable they destroy the live slot 0 save *directly* — autosave or not,
+one-shot armed or not. Poisoning `.manual.bak` is the secondary casualty, and
+scoping the risk to that undersells it; stakes determine how carefully someone
+checks.
+
+**Establish whether they are reachable at runtime.** If they are, this is a bug
+in its own right, independent of autosave, and the disarm rule must cover them
+as well.
+
+**The empirical bound already in hand says they probably are not.** The fixtures
+corpus spans many boots and play sessions with slot data persisting intact
+throughout — had these writers fired in normal operation, slot 0 would have been
+scribbled. So the static check is most likely confirming dead or menu-gated code
+rather than hunting a live threat. Both halves belong in the check: the true
+severity if reachable, and the evidence that it probably is not.
 
 **Preconditions before the timer ships:**
 
