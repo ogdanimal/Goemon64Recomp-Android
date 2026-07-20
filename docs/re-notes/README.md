@@ -147,6 +147,7 @@ long-standing "no resolvable writer" mystery in `goemon_save_re.md`.
 
 - `RESUME.md` — analog camera resume prompt (v14 + later fixes)
 - `RESUME-autosave.md` — autosave resume prompt
+- `RESUME-menu-framerate.md` — Android menu-framerate resume prompt (both fence fixes refuted; next: desktop build → inspector RE for pair-count reduction)
 - `goemon_default_cam_writer.md` — camera architecture; **carries corrections, read the warnings above first**
 - `goemon_global_camstate.md` — camera-adjacent globals
 - `goemon_basis_verify.md` — movement-basis 1:1 verification
