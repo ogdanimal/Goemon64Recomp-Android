@@ -118,8 +118,8 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   without a round trip. **All three submodule levels are pushed to their forks**
   — verify with `git ls-remote` before trusting a pointer bump, since a bump
   committed while the submodule commit stays local is unbuildable by CI.
-- **Controller input rework + analog-camera zoom — DONE and DEVICE-VERIFIED
-  2026-07-20** (on `dev` working tree; not yet committed as of this note).
+- **Controller input rework + analog-camera zoom — DONE, DEVICE-VERIFIED, and
+  SHIPPED IN v1.0.0 2026-07-20.** Committed and pushed on `main`/`dev`.
   Authored fresh from `docs/input/n64-goemon-input-assignment.csv` (the design
   doc — keep it in sync with the code).
   - **New default controller map** (`default_n64_controller_mappings`,
@@ -157,8 +157,12 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     `.bak` reloads) then relaunch. Fresh installs get the new defaults for free.
     On device the config lives at
     `/storage/<uuid>/Android/data/com.goemon64.recomp/files/data/`.
-- **NOW: back to general bug-fixing** on the Android port (test via the CI debug
-  APK), unless something else takes priority.
+- **NOW: v1.0.0 is PUBLIC and RELEASED (2026-07-20).** The repo is public and the
+  first signed release is live. Monitor the GitHub **issue tracker** for
+  device-specific bug reports (Vulkan/driver issues on non-Adreno GPUs are the
+  likely class) and triage; otherwise back to general bug-fixing. Test via the CI
+  debug APK, or cut a new signed release by pushing a `v*` tag (see release setup
+  below).
 - **PARKED — do not start without the user's say-so:**
   - **World→screen projector fix** (`func_8001CB40` / `func_8001CC38_1D838`) —
     parked 2026-07-19. Mechanism is confirmed wrong (screen-space overlays are
@@ -168,13 +172,31 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     silently. UNPARK TRIGGER: a 2D effect seen sitting beside rather than on
     whatever produced it, after orbiting. Full detail + the `+0x1A` fov-vs-roll
     resolution in `docs/re-notes/README.md`.
-  - Flip repo private→public (deliberate call; when doing it, add the `validate-external`
-    fork-PR authorize-gate so fork PRs can't reach the ROM secret).
-  - Release setup: signed, tag-triggered (`v*`) GitHub Releases — do around/after going
-    public; requires generating + BACKING UP an upload keystore first (one-way door).
-    `.gitignore` already ignores `keystore.properties`/`*.jks`/`*.keystore`.
   - Quest64-Recomp Android port (separately scoped; different rt64 lineage makes the
     graphics work non-trivial).
+
+## Public repo + release process (DONE 2026-07-20)
+- **Repo is PUBLIC.** The `validate-external` fork-PR gate turned out UNNEEDED —
+  neither workflow triggers on `pull_request`, so fork PRs can't run CI or reach
+  the ROM secret. Before flipping, the whole repo + history + submodules + APK were
+  scrubbed of PII (local usernames, device labels, the maintainer's name) and
+  secret-scanned (gitleaks, 0 real findings). GitHub hardening enabled: **secret scanning, push protection,
+  Dependabot** (Dependabot has opened PRs for `assets/scss` build-tooling npm
+  deps — build-time only, not shipped in the APK).
+- **Releases are tag-triggered + signed** via `.github/workflows/android-release.yml`:
+  push a `v*` tag → recompile → signed `assembleRelease` → publishes a GitHub
+  Release with the APK. `versionName` = the tag (`v1.0.0` → 1.0.0), `versionCode`
+  = commit count (`build.gradle` reads `-PvName`/`-PvCode`). **v1.0.0 is released.**
+  Repo secrets: `RELEASE_KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`,
+  `RELEASE_KEY_ALIAS` (`goemon-upload`), `RELEASE_KEY_PASSWORD` (+ the existing
+  `G64RS_REPO_WITH_PAT` ROM secret).
+- **Signing keystore = ONE-WAY DOOR.** PKCS12, backed up + checksum-verified at
+  `%USERPROFILE%\goemon-backups\keystore-2026-07-20\goemon-release.jks`. Signing
+  cert **SHA-256 `47323a0b…`** — every legitimate update MUST be signed with this
+  same key/cert or it won't install over an existing install. `.gitignore` ignores
+  `keystore.properties`/`*.jks`/`*.keystore`.
+- To cut an update: bump nothing manually — just `git tag vX.Y.Z && git push origin
+  vX.Y.Z` on a clean tip. Do a `v*-rc*` tag first to dry-run the pipeline if unsure.
 
 ## Autosave (COMPLETE — all 5 steps device-verified, pushed on dev)
 Resume prompt for a fresh session: `docs/re-notes/RESUME-autosave.md`.
