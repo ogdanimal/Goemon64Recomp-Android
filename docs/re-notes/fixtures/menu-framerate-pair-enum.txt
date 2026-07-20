@@ -1,0 +1,38 @@
+# Diary-screen framebuffer-pair enumeration (desktop, llvmpipe, copyWithGPU=0)
+# Captured 86 fullSync samples; pattern stable across frames.
+# Build: build-desktop with -DRT64_PROFILE_LOGCAT=1 + per-pair dump (rt64_state.cpp).
+# Main color target double-buffers 00261000 <-> 00286800; depth constant 002D1800.
+
+[g64prof] fullSync 10.4/s  pairs/frame=20.0  fences/frame=20.0  naturalFences/frame=12.0  pairSync=92.59ms/frame (gpuWait=61.75 cpuCopy=0.31 uploadWait=0.00)  copyWithGPU=0
+
+1798:[g64prof] pair enumeration (one representative frame, 20 pairs):
+[g64prof] pair enumeration (one representative frame, 20 pairs):
+  pair[ 0] color=002D1800 fmt=0 siz=2 w=320 depth=002D1800 calls=1 fillRect=1 natural=0 flush=ColorChanged
+  pair[ 1] color=00286800 fmt=0 siz=2 w=320 depth=002D1800 calls=2 fillRect=0 natural=0 flush=SampleColor
+  pair[ 2] color=001E46F0 fmt=0 siz=2 w=8 depth=002D1800 calls=2 fillRect=0 natural=1 flush=ColorChanged
+  pair[ 3] color=001E46F0 fmt=0 siz=2 w=256 depth=002D1800 calls=2 fillRect=0 natural=1 flush=ColorChanged
+  pair[ 4] color=00286800 fmt=0 siz=2 w=320 depth=002D1800 calls=4 fillRect=0 natural=0 flush=ColorChanged
+  pair[ 5] color=001E46F0 fmt=0 siz=2 w=8 depth=002D1800 calls=2 fillRect=0 natural=1 flush=ColorChanged
+  pair[ 6] color=001E46F0 fmt=0 siz=2 w=256 depth=002D1800 calls=2 fillRect=0 natural=1 flush=ColorChanged
+  pair[ 7] color=00286800 fmt=0 siz=2 w=320 depth=002D1800 calls=4 fillRect=0 natural=0 flush=ColorChanged
+  pair[ 8] color=001E46F0 fmt=0 siz=2 w=8 depth=002D1800 calls=2 fillRect=0 natural=1 flush=ColorChanged
+  pair[ 9] color=001E46F0 fmt=0 siz=2 w=256 depth=002D1800 calls=2 fillRect=0 natural=1 flush=ColorChanged
+  pair[10] color=00286800 fmt=0 siz=2 w=320 depth=002D1800 calls=4 fillRect=0 natural=0 flush=ColorChanged
+  pair[11] color=001E46F0 fmt=0 siz=2 w=8 depth=002D1800 calls=2 fillRect=0 natural=1 flush=ColorChanged
+  pair[12] color=001E46F0 fmt=0 siz=2 w=256 depth=002D1800 calls=2 fillRect=0 natural=1 flush=ColorChanged
+  pair[13] color=00286800 fmt=0 siz=2 w=320 depth=002D1800 calls=4 fillRect=0 natural=0 flush=ColorChanged
+  pair[14] color=001E46F0 fmt=0 siz=2 w=8 depth=002D1800 calls=2 fillRect=0 natural=1 flush=ColorChanged
+  pair[15] color=001E46F0 fmt=0 siz=2 w=256 depth=002D1800 calls=2 fillRect=0 natural=1 flush=ColorChanged
+  pair[16] color=00286800 fmt=0 siz=2 w=320 depth=002D1800 calls=4 fillRect=0 natural=0 flush=SampleColor
+  pair[17] color=001E46F0 fmt=0 siz=2 w=8 depth=002D1800 calls=2 fillRect=0 natural=1 flush=ColorChanged
+  pair[18] color=001E46F0 fmt=0 siz=2 w=256 depth=002D1800 calls=2 fillRect=0 natural=1 flush=ColorChanged
+  pair[19] color=00286800 fmt=0 siz=2 w=320 depth=002D1800 calls=144 fillRect=0 natural=0 flush=DLEnd
+
+# --- copies-ON validation sweep (desktop rig, G64_COPY_GPU=1, 2026-07-19) ---
+# Visual sweep across gameplay + menus: CLEAN (no glitches). llvmpipe timing invalid; counts valid.
+# Gameplay is dependency-free with copies on (first-ever gameplay copies-on capture):
+[g64prof] fullSync 29.9/s  pairs/frame=2.0  fences/frame=1.0  naturalFences/frame=0.0  pairSync=6.56ms/frame (gpuWait=6.12 cpuCopy=0.12 uploadWait=0.01)  copyWithGPU=1
+# Representative non-gameplay screens (copies on):
+[g64prof] fullSync 21.0/s  pairs/frame=8.0  fences/frame=7.0  naturalFences/frame=6.0  pairSync=45.54ms/frame (gpuWait=42.71 cpuCopy=0.18 uploadWait=0.00)  copyWithGPU=1
+[g64prof] fullSync 13.5/s  pairs/frame=13.1  fences/frame=12.1  naturalFences/frame=11.1  pairSync=71.52ms/frame (gpuWait=65.83 cpuCopy=0.25 uploadWait=0.01)  copyWithGPU=1
+[g64prof] fullSync 9.9/s  pairs/frame=20.0  fences/frame=19.0  naturalFences/frame=18.0  pairSync=98.72ms/frame (gpuWait=91.88 cpuCopy=0.26 uploadWait=0.00)  copyWithGPU=1

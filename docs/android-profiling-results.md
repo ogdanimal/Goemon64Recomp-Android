@@ -4,21 +4,34 @@ Companion to [`android-profiling-plan.md`](android-profiling-plan.md). This doc 
 real capture: the **Select Adventure Diary** screen runs at ~14 FPS on the test device, and we now
 know why, in measured detail.
 
-Status: **diagnosis confirmed and decomposed; fixes (a) and (b) both crossed off by evidence.** The
-`copyWithGPU=true` A/B refuted (a); a static trace of the 12→18 anomaly refuted (b) — the screen has
-~18 genuine serialized framebuffer-as-texture dependencies at min GPU clock, so no fence-policy
-change helps. **Only (c) reduce the pair/dependency count, and DVFS/clock, remain.** Both need work
-outside this session (RE via the desktop inspector; a firmware performance-mode capture).
+Status: **diagnosis confirmed and decomposed.** Fix (b) precise-barrier is crossed off (18 genuine
+deps). Fix (a) `copyWithGPU=true` is crossed off **as a serialization cure** — but it is a **real
++24% mitigation** (14.0→17.4 FPS, glitch-free on the worst screen), so it is *retained as the cheapest
+evidenced smoothness lever for this game*, pending a copies-on validation pass on gameplay/other
+screens. (An earlier revision wrote (a) off entirely; corrected 2026-07-19.) The ~46ms `gpuWait` is
+~18 genuine serialized framebuffer-as-texture deps at min GPU clock, so no fence-policy change cures
+it. **Remaining levers: (a) copies-on mitigation, DVFS/clock, (c) cut the pair count [engine].** UPDATE
+2026-07-19 (later session): the desktop rig is now working and **(c) has been decomposed** — the 20
+pairs are a ~6×-repeated color-cycling background effect that ping-pongs the render target; see
+"Option-(c) RE: the 20 pairs decoded" below. DVFS/clock is still a pending firmware-mode capture.
 
 ## Provenance
 
 - **Device**: Retroid Pocket 5 (Snapdragon 865 / Adreno 650), 1080×1920 @ 60 Hz, **not rooted**.
 - **Numbers below** come from the `[g64prof]` instrumentation on rt64 branch `diag/menu-framerate`,
-  commit `6c07782` (local only, not pushed; deliberately kept off `goemon-android` — it is
-  diagnostic scaffolding, remove-or-gate before release). Build: local `gradlew assembleDebug`,
-  arm64-v8a debug, `copyWithGPU=false` (shipping default) unless stated.
-- **Capture**: single session 2026-07-19, logcat `-s Goemon64-stdio`, steady-state samples only
-  (first ~2 s after a scene change discarded while the profiler rings warm up).
+  **pushed to `fork` (ogdanimal/rt64)**: the per-second fullSync/render lines are commit `6c07782`;
+  the per-pair enumeration (§"Option-(c) RE") is commit `7e49e1f`. Deliberately kept off
+  `goemon-android` — diagnostic scaffolding, remove-or-gate before release. The parent gitlink is NOT
+  bumped to this branch (stays at `8c73b3f` goemon-android); `diag/menu-framerate` is checked out
+  locally to reproduce, so CI keeps building the release line.
+- **Two capture environments — do not conflate:** (1) the **device** — Retroid, arm64 `gradlew
+  assembleDebug`, logcat `-s Goemon64-stdio`; authoritative for all timing. (2) the **desktop rig**
+  (later session) — WSL `build-desktop` (clang, `-DRT64_PROFILE_LOGCAT=1`), **llvmpipe software
+  Vulkan**; authoritative for structural *counts* only (pairs/fences/naturalFences/flushReason),
+  never for timing (it emulates GPU work on CPU — e.g. copies-on looks slower there, the opposite of
+  the device). `copyWithGPU=false` (shipping default) unless stated; `G64_COPY_GPU=1` flips it.
+- **Capture**: steady-state samples only (first ~2 s after a scene change discarded while the profiler
+  rings warm up).
 - Cross-checked independently against `dumpsys SurfaceFlinger --latency` (12 FPS, vsync-quantized
   intervals) and the device's own on-screen FPS overlay (14.3).
 
@@ -109,7 +122,7 @@ tradeoff" or "real upstream work."
   bad the glitch looks.
 - Near **12** → tile copies don't help this screen → the serious candidates are **(b) + (c)**.
 
-### A/B result (captured 2026-07-19) — fix (a) REFUTED
+### A/B result (captured 2026-07-19) — fix (a): cure REFUTED, mitigation RETAINED
 
 Same diary screen, `copyWithGPU=true` (temporary flip, reverted after capture):
 
@@ -126,12 +139,17 @@ Same diary screen, `copyWithGPU=true` (temporary flip, reverted after capture):
 Pre-registered prediction was fences ∈ [1, 12]. **Actual: 19.** Tile copies do not relieve this
 screen's dependencies. Conclusions:
 
-1. **Fix (a) is dead as a performance fix.** Enabling GPU copies moved fences 20→19 and `gpuWait`
+1. **Fix (a) is dead as a *serialization cure*.** Enabling GPU copies moved fences 20→19 and `gpuWait`
    not at all. The ~46 ms serialized GPU-fence cost is **inherent to 20 framebuffer pairs**, not an
    artifact of the `copyWithGPU=false` forced-sync policy.
-2. The modest 14→17 FPS gain came entirely from **CPU-side** work (remainder ~17→~9 ms), not fences.
-3. **No visible glitch** on this screen (observed) — so the "breaks effects in menus" reason for
-   disabling copies doesn't manifest here. Moot, since (a) doesn't help perf anyway.
+2. **But (a) is a real mitigation, NOT moot** (correction 2026-07-19 later session — the original
+   "moot" reading below was wrong). The 14.0→17.4 FPS gain is **+24% on the worst screen, glitch-free**,
+   entirely from **CPU-side** command-building savings (remainder ~17→~9 ms). "Doesn't fix the
+   serialization" was mis-stated as "doesn't help perf." It helps perf; it just isn't the cure. See
+   "What actually remains" lever 1 — copies-on is the cheapest evidenced smoothness win for this game.
+3. **No visible glitch** on this screen (observed on device AND the desktop llvmpipe rig) — so the
+   "breaks effects in menus" reason for disabling copies doesn't manifest on mnsg's file-select. The
+   reason to keep validating is *other* screens/gameplay, never captured with copies on.
 4. **Anomaly, unexplained:** `naturalFences` *rose* 12→18 with copies on. Tile copies should relieve
    deps (`!callTile.tileCopyUsed` at `rt64_state.cpp:1012`), not add them. Mechanism not verified —
    flagged for follow-up. Consequence: the A/B **conflates** "skip the blanket override" with
@@ -163,7 +181,10 @@ setter of `fbPair.syncRequired` is `:558` (color/depth **format change**).
   because it forgoes the tile-copy CPU savings (~17 ms vs ~9 ms remainder). **Not worth building.**
 
 **Revised ledger:**
-- (a) copies-on — **crossed off**, refuted by the A/B (fences 20→19, `gpuWait` unchanged).
+- (a) copies-on — **crossed off as a serialization cure** (fences 20→19, `gpuWait` unchanged), but
+  **retained as a mitigation**: it is +24% FPS (14.0→17.4) glitch-free on this screen. See "What
+  actually remains" lever 1; it needs a copies-on validation pass on gameplay/other screens, not
+  engine work. (Correction 2026-07-19: an earlier revision wrote this off entirely.)
 - (b) precise barrier — **crossed off**: the true dependency count is ~18, so precise fencing can't
   beat copies-on's ~17 FPS, and the cheap version is incorrect. (Fully verified via the anomaly
   trace above — the counter and the A/B together did their job.)
@@ -195,27 +216,153 @@ cmake --build build-desktop --target Goemon64Recompiled -j"$(nproc)"
 `libgtk-3-dev` is a second-order dep (nativefiledialog-extended), not obvious from the top-level
 CMake.
 
-**Smoke-test result (2026-07-19): the desktop build does NOT currently build in this repo — two
-distinct blockers, so budget real porting work before the inspector RE, not just an apt install.**
-We never reached the Vulkan-init / WSLg-GPU question; the build fails earlier.
+**RESOLVED (2026-07-19, later session): the desktop build now builds and launches.** Both blockers
+below were fixed; the binary runs under WSLg and the Vulkan/WSLg risk is retired. Turnkey configure is
+now just:
 
-1. **`FILE_TO_C` unset on the desktop branch.** `CMakeLists.txt:485` sets `FILE_TO_C` (host shader
-   embedder) only in the Android branch; the desktop `else()` at `:487` sets `DXC`/`SPIRVCROSS` but
-   never `FILE_TO_C`. So `build_vertex_shader`/`build_pixel_shader` emit an empty command and the
-   shader step tries to *execute the `.spv`* (`Permission denied`, exit 126). **Workaround that
-   worked:** pass `-DFILE_TO_C="$PWD/build-host-tools/file_to_c"` (reuse the Android pipeline's host
-   tool). Proper fix: have the desktop branch set `FILE_TO_C` to the native `file_to_c` target (as
-   the NRM/patches rules already do with bare `file_to_c`).
-2. **Multiple-definition at final link.** Every `RECOMP_PATCH`'d function is defined in *both*
-   `RecompiledPatches/patches.c` and the original `RecompiledFuncs/funcs_*.c`; `ld.bfd` rejects the
-   duplicates (`func_8000F6E8_102E8` et al.). The Android/gradle build applies a patch-exclusion or
-   weak-symbol mechanism the desktop CMake path does not. **Not worked around** — resolving it
-   properly (understand how the Android build excludes patched originals, replicate on desktop; a
-   blanket `--allow-multiple-definition` would let the patch win by link order but risks a subtly
-   wrong binary, unacceptable for an inspector session). This is the first task for next session.
+```
+cmake -B build-desktop -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+      -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+cmake --build build-desktop --target Goemon64Recompiled -j"$(nproc)"
+```
 
-Net: the desktop-inspector on-ramp is a **porting task**, not a turnkey build. Reaching a launchable
-binary is next session's opening move; the Vulkan-under-WSLg risk is still unretired behind it.
+The `clang` selection is **load-bearing, not stylistic** — see blocker 2. Verified end to end:
+configure 0, build `[848/848]` 0, no `--allow-multiple-definition`, no `-DFILE_TO_C` flag.
+
+1. **`FILE_TO_C` unset on the desktop branch — FIXED in `CMakeLists.txt`.** The desktop `else()`
+   branch now sets `set(FILE_TO_C file_to_c)` / `set(FILE_TO_C_DEP file_to_c)` (the in-tree native
+   target), mirroring rt64's own non-Android setting (`lib/rt64/CMakeLists.txt:85`) and the Android
+   branch. Root cause: rt64 sets `FILE_TO_C` in *its* directory scope, but the app-level
+   `build_vertex_shader`/`build_pixel_shader` calls run in the app scope where it was unset → empty
+   COMMAND → the step tried to exec the `.spv` (`Permission denied`, exit 126). The old
+   `-DFILE_TO_C=…build-host-tools/file_to_c` workaround is no longer needed.
+2. **Multiple-definition at final link — was a COMPILER problem, not a missing patch-exclusion.**
+   The "Android build applies a patch-exclusion or weak-symbol mechanism the desktop path lacks"
+   framing was wrong. There is no patch-exclusion step: `func_8000F6E8_102E8` et al. really are
+   defined in *both* `RecompiledFuncs/funcs_*.c` and `RecompiledPatches/patches.c`. What differs is
+   `RECOMP_FUNC` (`lib/N64ModernRuntime/N64Recomp/include/recomp.h`): under **clang** it expands to
+   `extern inline __attribute__((weak,noinline))` → **weak** symbols, so duplicate defs link fine and
+   the patch interposes; under **GCC** it expands to `__attribute__((noipa,…))` → **strong** symbols
+   → `ld.bfd` multiple-definition error. The failed smoke-test had configured with `/usr/bin/cc`
+   (GCC). Building with clang (as the NDK does, and as the whole recomp ecosystem expects on Linux)
+   makes the link clean with zero CMake changes. No `--allow-multiple-definition` — that hack is
+   unnecessary and correctly avoided.
+
+**Launch / Vulkan-under-WSLg — RETIRED.** `./build-desktop/Goemon64Recompiled` initializes Vulkan
+(plume: loader 1.4.341, requesting 1.2), opens an SDL/x11 window, and runs the render loop. **Caveat:
+it selects `llvmpipe` (Mesa software rasterizer), not the WSLg GPU passthrough** — vendor `0x10005`,
+device "llvmpipe (LLVM 21.1.8)". For the option-(c) RE this is acceptable: the inspector visualizes
+the per-pair framebuffer *dependency structure* (why ~20 pairs, can they merge), which is deterministic
+and GPU-independent. It only means reaching the Select Adventure Diary screen renders slowly, and that
+absolute frame timings on desktop are not comparable to the device.
+
+Net: the on-ramp is done. Remaining work is the **interactive inspector RE itself** — launch, pick the
+ROM, load a save, navigate to the diary screen, press **F1**, and read the per-pair `syncRequired`.
+That must be driven in a real desktop session by the user (it needs GUI interaction, and llvmpipe is
+slow to reach the screen).
+
+## Option-(c) RE: the 20 pairs decoded (desktop, 2026-07-19)
+
+With the desktop build working (on-ramp above), the `[g64prof]` instrumentation was forced on for
+desktop (`-DRT64_PROFILE_LOGCAT=1`) and extended with a **per-pair enumeration** (address / fmt / siz
+/ width / depth / draw-call count / natural-dep / flushReason), added in `rt64_state.cpp` inside the
+existing `RT64_PROFILE_LOGCAT` block. Raw capture: `docs/re-notes/fixtures/menu-framerate-pair-enum.txt`.
+
+**The desktop build reproduces the device's structural counts exactly** (llvmpipe software Vulkan, so
+timings differ but counts are GPU-independent): diary screen `pairs=20, fences=20, naturalFences=12`;
+gameplay `pairs=2`. This is the local, iterable rig the investigation was blocked on.
+
+**What the 20 pairs are** — one repeating structure per frame:
+
+- `pair[0]`  main clear (color==depth==`002D1800`, w320, `fillRect`, 1 call)
+- `pair[1]`  main setup (`00286800`, w320, 2 calls, `SampleColor`)
+- `pair[2..18]` a **3-pair cycle repeated ~6×**: `[001E46F0 w=8, 2 calls, natural]` →
+  `[001E46F0 w=256, 2 calls, natural]` → `[main w=320, 4 calls, ColorChanged]`
+- `pair[19]` the **actual diary UI** — `00286800`, w320, **144 draw calls**, `DLEnd`
+
+Main color target double-buffers `00261000`↔`00286800`; depth constant `002D1800`; scratch is
+`001E46F0` (rendered at w=8 then w=256 each cycle). flushReason histogram over the 20: **17
+`ColorChanged`, 2 `SampleColor`, 1 `DLEnd`**.
+
+**Findings:**
+
+1. The pair explosion is **the animated color-cycling striped background** (the green/orange waves).
+   It renders a tiny scratch buffer and composites into main, **ping-ponging the render target ~6×**.
+   Those target switches are the 17 `ColorChanged` flushes — the entire delta over gameplay's 2 pairs.
+2. **19 of 20 pairs are near-empty** (1–4 draw calls). The real UI is the single 144-call `pair[19]`.
+   So ~95% of the serialized fences are spent on a background effect that costs almost nothing to draw.
+3. The cost is **serialization, not work**: `gpuWait` dominates, `cpuCopy≈0.3ms` is negligible. 20
+   blocking submit+fence round-trips for a background that's mostly 2-call passes.
+4. The 12 natural deps are exactly the `001E46F0` scratch renders (sampled by the composite → genuine
+   read-after-write). The other 8 pairs are `ColorChanged`-only, force-fenced solely by `copyWithGPU=false`.
+
+**This reframes option (c):** the lever is the background effect's target ping-ponging, not generic
+framebuffer merging.
+
+### copies-ON A/B on the rig — fence-policy is now MEASURED dead (not estimated)
+
+`copyWithGPU` was made env-selectable (`G64_COPY_GPU=1`, `rt64_render_context.cpp`) and the diary
+screen re-captured. Direct comparison on the same rig:
+
+| metric | copies OFF | copies ON |
+| --- | --- | --- |
+| pairs/frame | 20 | 20 |
+| fences/frame | 20 | **19** |
+| naturalFences/frame | 12 | **18** |
+| gpuWait (llvmpipe) | ~59ms | ~92ms |
+
+- **The true dependency count is 18, measured** — with `checkFramebufferOverlap` running (copies on,
+  no early-return at `rt64_rdp.cpp:139`), the 6 composite pairs flip `natural=0 → natural=1`; they are
+  genuine framebuffer-as-texture reads of the `001E46F0` scratch. This confirms the earlier static
+  "~18 / detector-artifact" estimate *exactly*, and confirms the note above's caution: a precise
+  barrier that fenced only the copies-off natural=12 would drop 6 real dependencies → corruption.
+- **Fence-policy (option 1) is dead**: 18 of 20 pairs are real read-after-write deps, so the best a
+  correct precise barrier can do is 20→18 (~10%). Not a smoothness fix.
+- **copies-ON reproduces the device's structural counts locally** (fences 20→19, naturalFences 12→18).
+  It is **slower on llvmpipe** (gpuWait ~59→~92ms) — but that is a **software-rasterizer artifact**:
+  llvmpipe emulates the GPU tile copies on the CPU, so copies-on *adds* CPU work here. **This says
+  nothing about the device.** The authoritative device A/B (§"A/B result") shows the opposite:
+  **14.0→17.4 FPS, glitch-free** — a real +24% from CPU-side command-building savings (~17→~9ms).
+  Do NOT read the llvmpipe slowdown as "copies-on is bad"; it is a rig limitation.
+- **copies-ON did NOT visibly break the diary background** on llvmpipe (user-observed), matching the
+  device A/B's "no visible glitch on this screen." The breakage the `rt64_render_context.cpp:353`
+  comment cites is therefore likely device/driver-specific or specific to the other game (its TODO
+  names Goemon's Great Adventure underwater), not mnsg's file-select.
+
+### What actually remains for smoothness
+
+The 20 passes are a genuine serial dependency chain (render tiny scratch → composite samples it →
+repeat ~6×). **Fence policy** can't move it (18 of 20 are real deps). **Copy mode** does not move the
+~46ms serialization either — but it *does* move FPS +24% via CPU-side savings, so it is a real
+mitigation, not nothing. Levers, best-evidenced first:
+
+1. **Ship `copyWithGPU=true` for this game (mitigation, cheapest, MEASURED win).** The device A/B is
+   **14.0→17.4 FPS glitch-free** on the worst screen — the only lever on this list with a measured,
+   evidenced gain already attached. It does **not** cure the serialization (gpuWait stays ~46ms); the
+   win is command-building (~17→~9ms). Why it's currently off doesn't apply here: the
+   `rt64_render_context.cpp:353` TODO cites *Goemon's Great Adventure* underwater (the **other** game)
+   and even proposes per-game configs as the fix; no glitch was seen on mnsg's diary screen on either
+   rig. **Validation is a test pass, not engine work.** DONE (desktop rig, `G64_COPY_GPU=1`,
+   2026-07-19): a **visual sweep across gameplay + menus/effect screens was clean** (no glitches), and
+   the first **gameplay copies-on structural capture** shows gameplay is **dependency-free**
+   (`pairs=2, fences=1, naturalFences=0`) — so copies-on adds nothing to the common case and cannot
+   hurt the 95% of playtime that is gameplay. STILL PENDING: the same sweep **on the device** to catch
+   Adreno-specific breakage the llvmpipe rig can't (the historical breakage was driver/other-game
+   specific), plus device timing. If the device sweep is clean, ship copies-on for mnsg via a per-game
+   `copyWithGPU` config (what the `rt64_render_context.cpp:353` TODO already proposes) and retire the
+   `G64_COPY_GPU` env toggle into it. Compounds with lever 2.
+2. **DVFS / GPU clock (pending, zero-build, user-side).** The device measured `pairSync≈46ms` at a
+   **DVFS-floored 305 MHz** — the light menu workload never triggers a clock boost, so the serialized
+   fences run at minimum clock. A firmware performance-mode capture tests how much of the stall is
+   clock-inflation vs genuine work. Best value-per-effort of the *cure*-side options; run it together
+   with copies-on for the true best-available configuration.
+3. **RT64 engine: pipeline dependent fbPairs on-GPU** (large — the actual cure). RT64 does a blocking
+   submit+fence per framebuffer pair in `renderAndSynchronize(f)` **regardless of copy mode** — that
+   per-pair CPU round-trip is the serialization. Satisfying the scratch→composite dependency with a
+   GPU-side barrier instead of a CPU fence would let the 6 cycles pipeline, but this reworks how RT64
+   processes the fbPair loop and is well beyond a menu-specific tweak.
+4. **Game-side patch to the effect** (risky, changes visuals) — collapse the 6 serial composite cycles.
+   Not recommended; the effect is a deliberate look.
 
 ## Out of scope but open
 

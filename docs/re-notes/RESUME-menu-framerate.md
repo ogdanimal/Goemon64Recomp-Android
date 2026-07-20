@@ -13,35 +13,51 @@ record is in docs/android-profiling-results.md (committed e1641f7 on dev) and
 docs/android-profiling-plan.md — READ android-profiling-results.md FIRST; it is
 authoritative and the facts below are its summary, not a substitute.
 
-WHERE THINGS STAND (do not re-litigate — both fence fixes are refuted by evidence):
+WHERE THINGS STAND (do not re-litigate the fence-POLICY fixes — measured dead;
+but copies-on is a real MITIGATION, see fix (a) below):
 - Symptom: Select Adventure Diary screen runs ~14 FPS (gameplay is 30). Device is
   a Retroid Pocket 5 (Snapdragon 865 / Adreno 650), NOT rooted.
 - Root cause, MEASURED: copyWithGPU=false (src/main/rt64_render_context.cpp:356)
   forces one blocking GPU submit+fence per framebuffer pair; this screen emits ~20
   pairs/frame (10x gameplay's 2) → ~46ms of serialized gpuWait at a DVFS-floored
   305MHz ≈ the whole frame. Not CPU-bound, not copy-bound (cpuCopy ~0.4ms).
-- Fix (a) copies-on: REFUTED by an on-device A/B (fences 20→19, gpuWait unchanged).
+- Fix (a) copies-on: crossed off as a SERIALIZATION CURE (fences 20→19, gpuWait
+  unchanged) BUT retained as a real MITIGATION — device A/B is 14.0→17.4 FPS
+  (+24%), glitch-free on this screen, from CPU-side command-build savings. The
+  desktop-rig 'copies-on is slower' reading is a llvmpipe artifact, NOT device
+  behaviour (it emulates GPU copies on CPU). Cheapest evidenced smoothness lever
+  for mnsg; needs a copies-on validation pass on gameplay/other screens (never
+  captured) before shipping. G64_COPY_GPU=1 is the toggle. See results doc
+  'What actually remains' lever 1.
 - Fix (b) precise barrier: REFUTED. The copies-off naturalFences=12 is a DETECTOR
   ARTIFACT — checkFramebufferOverlap early-returns when copies are off
   (rt64_rdp.cpp:139), so framebuffer-as-texture deps go undetected and the blanket
   (f>0) override is load-bearing for correctness, not paranoia. True dep count ~18,
   so precise fencing can't beat copies-on's ~17 FPS. Naive (b) is a correctness bug.
-- REMAINING LEVERS: (c) reduce the ~20 pair count [structural RE], and DVFS/clock.
+- REMAINING LEVERS, best-evidenced first: (a) ship copies-on for mnsg [+24%,
+  needs validation pass], DVFS/clock [zero-build, user-side], (c) reduce the ~20
+  pair count [large engine RE].
 
 NEXT SESSION OPENING MOVE:
-1. Fix the desktop build so the RT64 inspector (visualizes per-pair syncRequired,
-   developerMode wired to debug at rt64_render_context.cpp:346, F1) can drive the
-   option-(c) RE. build-desktop/ is left at 790/848 (incremental). TWO blockers,
-   both detailed in the doc's "Desktop-inspector on-ramp":
-   a) FILE_TO_C unset on the desktop CMake branch — workaround that WORKED:
-      -DFILE_TO_C="$PWD/build-host-tools/file_to_c". Proper fix: desktop else()
-      branch (~CMakeLists.txt:487) should set FILE_TO_C to the native file_to_c.
-   b) multiple-definition at link: every RECOMP_PATCH'd func is in BOTH
-      RecompiledPatches/patches.c and RecompiledFuncs/funcs_*.c; the Android build
-      has a patch-exclusion/weak-symbol mechanism the desktop path lacks. NOT yet
-      worked around — this is the real first task. (--allow-multiple-definition
-      would let the patch win by link order but risks a subtly wrong binary.)
-2. Then inspector RE: why 20 framebuffer pairs on this screen, can they merge?
+1. DONE (2026-07-19). The desktop build now builds AND launches; the on-ramp is
+   retired. Turnkey: `cmake -B build-desktop -G Ninja -DCMAKE_BUILD_TYPE=Debug
+   -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++` then build target
+   Goemon64Recompiled. Both blockers resolved (see the results doc's on-ramp
+   section, now marked RESOLVED):
+   a) FILE_TO_C: FIXED permanently in CMakeLists.txt (desktop else() now sets
+      FILE_TO_C=file_to_c). No -D flag needed.
+   b) multiple-definition: it was a COMPILER issue, not a missing patch-exclusion.
+      RECOMP_FUNC is weak under clang (extern inline __attribute__((weak))) and
+      strong under gcc; the failed smoke-test used /usr/bin/cc. Build with clang
+      (the -DCMAKE_*_COMPILER flags above) → clean link, no --allow-multiple-def.
+   Vulkan/WSLg RETIRED: it runs, but on llvmpipe (SOFTWARE Vulkan), not GPU
+   passthrough — fine for the dependency-structure RE, slow to reach the screen,
+   and desktop absolute timings are NOT comparable to the device.
+2. NOW THE ACTUAL WORK — inspector RE (interactive, user-driven on a real desktop
+   session): launch, pick ROM, load a save, reach the Select Adventure Diary
+   screen, press F1, read per-pair syncRequired. Question: why ~20 framebuffer
+   pairs on this screen, can they merge? (developerMode wired to debug at
+   rt64_render_context.cpp:346.)
 
 PENDING USER-SIDE EXPERIMENT (dev-device, zero build): flip the Retroid firmware
 performance mode (raises the DVFS floor; sysfs pin is impossible — no root) and
