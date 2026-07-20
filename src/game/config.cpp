@@ -23,7 +23,20 @@ constexpr std::u8string_view graphics_filename = u8"graphics.json";
 constexpr std::u8string_view controls_filename = u8"controls.json";
 constexpr std::u8string_view sound_filename = u8"sound.json";
 
+// Resolution default is device-class-dependent. Desktop uses Auto
+// (WindowIntegerScale) which tracks the display. On Android that adapts to the
+// panel and can land at 8x (~64x native pixels) on higher-res handhelds/TVs, which
+// the per-pass GPU compute across ~20 heavy-menu composites cannot afford (device
+// profiling 2026-07-19: 8x=30 FPS vs 4x=52 FPS on the Adreno 650 at the same
+// clock). Pin 4x (~16x native) on Android — the measured sweet spot on the Retroid
+// Pocket 5 reference target — instead of an unbounded Auto. Non-destructive:
+// from_or_default applies this only when the JSON key is absent, so existing users
+// keep their saved value.
+#if defined(__ANDROID__)
+constexpr auto res_default            = ultramodern::renderer::Resolution::Original4x;
+#else
 constexpr auto res_default            = ultramodern::renderer::Resolution::Auto;
+#endif
 constexpr auto hr_default             = ultramodern::renderer::HUDRatioMode::Clamp16x9;
 constexpr auto api_default            = ultramodern::renderer::GraphicsApi::Auto;
 constexpr auto ar_default             = ultramodern::renderer::AspectRatio::Expand;
