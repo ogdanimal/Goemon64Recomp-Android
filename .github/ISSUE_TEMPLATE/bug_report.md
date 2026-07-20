@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a bug in the project
+about: Report a bug in the Android app
 title: ''
 labels: ''
 assignees: ''
@@ -9,9 +9,9 @@ assignees: ''
 
 ## Do not report issues with mods on this page. Please report them on the repo for the mods themselves.
 
-## If you have a crash on startup, please make sure your graphics drivers are up to date before submitting a bug report.
+## If the app crashes on startup, this is most often a graphics-driver / Vulkan issue on your device's GPU. Please make sure your device is on the latest available system update before submitting.
 
-**What is your GPU driver version? Old drivers, particularly on Nvidia, are known to cause crashes on boot. If you are on Nvidia and the game is crashing on boot, please update to a recent driver version before opening an issue.**
+**Does the crash happen on launch, when loading a ROM, or during gameplay?** Non-Adreno GPUs (e.g. Mali) are a known source of Vulkan/driver issues on boot.
 
 **Have you checked whether this issue is vanilla behavior? In other words, does it occur on original hardware?**
 
@@ -31,12 +31,15 @@ A clear and concise description of what you expected to happen.
 **Screenshots**
 Please attach a screenshot of the bug.
 
-**Desktop (please complete the following information):**
- - OS: [Windows 10, Windows 11, Linux distro]
- - Version: [e.g. 1.0.0]
- - CPU: [e.g. Intel Core ..., AMD Ryzen ..., etc.]
- - GPU: [e.g. NVIDIA GeForce .../Radeon RX .../Intel UHD .../etc.]
- - GPU driver: [e.g Nvidia driver 545.XX, AMD driver 24.X.X, etc]
+**Device information (please complete the following):**
+ - Device model: [e.g. Retroid Pocket 5, AYN Thor, generic phone/tablet]
+ - Android version: [e.g. Android 13]
+ - SoC / GPU: [e.g. Snapdragon 865 / Adreno 650, Dimensity 1200 / Mali-G77]
+ - App version: [e.g. 1.0.0 — shown on the launcher screen]
+ - Install source: [GitHub release APK, or built from source]
+
+**Logcat (if it crashes)**
+If you can capture it, attach `adb logcat` output around the crash (tag `Goemon64-stdio`). This is the single most useful thing for diagnosing driver crashes.
 
 **Mods Installed**
 List the mods you had installed and enabled when you encountered the error.

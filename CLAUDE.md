@@ -123,8 +123,8 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   Authored fresh from `docs/input/n64-goemon-input-assignment.csv` (the design
   doc — keep it in sync with the code).
   - **New default controller map** (`default_n64_controller_mappings`,
-    `src/game/input.cpp`), Xbox face layout: A=SOUTH, B=EAST, **X=NORTH→C-Up**,
-    **Y=WEST→C-Left** (X/Y swapped from the CSV's first pass per user), RB=C-Down,
+    `src/game/input.cpp`), Xbox face layout: A=SOUTH, B=EAST, **X=WEST→C-Up**,
+    **Y=NORTH→C-Left** (X/Y swapped from the CSV's first pass per user), RB=C-Down,
     LB=**N64 L**, LT=Z, RT=R, Start, Select=menu. Right stick → C-buttons
     (suppressed→camera in analog mode). **Physical D-pad → C-buttons; N64 D-pad
     left UNBOUND** (menu nav reads the physical D-pad directly via SDL in
