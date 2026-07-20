@@ -124,11 +124,18 @@ the clock at 305–400 MHz because GPU busy holds at ~68 %. This **refutes** the
 
 1. **Ship copyWithGPU=true for mnsg** — +24% measured mitigation, glitch-free on this screen; needs a
    device visual sweep on gameplay/other screens. Not a cure (gpuWait unchanged).
-2. **DVFS / GPU clock** — **MEASURED as the single biggest lever (~2×), #12 resolved.** Perf profile
-   305/400→587 MHz took the screen 12–15→26 FPS. Default-mode governor parks at 305–400 MHz (busy
-   ~68 % < ramp threshold). **Productize app-side, not via a user firmware toggle:** Android ADPF /
-   `PerformanceHintManager` — report real per-frame work durations so the platform ramps the clock.
-   Zero visual risk, config-independent, stacks with copies-on and with lever 3/4.
+0. **Device-class default graphics — SHIPPED 2026-07-19 (dev `fb59148` MSAA-off, `fe33491` 4x cap).**
+   Android now defaults **4x + MSAA off** (was Auto + MSAA2X — the heavy config behind the ~14 FPS).
+   Measured: 8x→30 FPS, 4x→52 FPS at fixed clock; MSAA off ≈ another ~20 %. Cheapest, highest-certainty
+   lever; likely playable in *default* power mode. Non-destructive. Un-run check: device-verify
+   default-mode FPS at 4x/MSAA-off with the perf profile OFF.
+2. **DVFS / GPU clock** — **MEASURED as the single biggest lever (~2×), #12 resolved — but NOT
+   app-forcible on this device.** Perf profile 305/400→587 MHz took the screen 12–15→26 FPS. Default
+   governor parks at 305–400 MHz (busy ~68 % < ramp threshold). **ADPF is out here:** its GPU-duration
+   path is API 34+, the Retroid is API 33, so app-side ADPF boosts CPU only, not the Adreno clock; no
+   non-root GPU overclock on API 33. The clock rises only via the user's firmware perf profile or
+   indirectly by raising utilization (lever 3/4). App-controlled path to the clock's benefit = cut GPU
+   work (lever 0, shipped) + cut the pair count (lever 3/4).
 3. **Linear/1D loadBlock tile-copy path** — targeted cure-*candidate* (INF #11); net-new (upstream
    lacks it, #7); gated by attack-surface #3. **Sequencing:** after the two [HELD]-closing captures,
    the first RE question is the scratch buffer's full lifecycle — whether the 12 format-change fences
@@ -183,11 +190,18 @@ Evidence: [`fixtures/menu-framerate-device-fence-timing.txt`](fixtures/menu-fram
    nineteen ~1–3 ms fences; the 144-draw pair is ~1.4 ms. `GPU_hw ∝ 1/clock`. Clock-bound compute,
    draw-decoupled.
 
-**Next (new work, no longer blocked on a capture):**
-- **Ship the DVFS lever app-side** — Android ADPF / `PerformanceHintManager` (§5 lever 2). Top
-  follow-up; ~2× measured, zero visual risk.
-- **Device copies-on visual sweep** on gameplay/other menus (still the one un-run validation; the rig
-  sweep was clean but Adreno-specific breakage is untested). Needs a device build with copies-on
-  hardcoded (`G64_COPY_GPU` doesn't work on Android).
+**Done this session:**
+- **Shipped device-class default graphics** (§5 lever 0): Android defaults 4x + MSAA off — dev
+  `fb59148` (MSAA off) + `fe33491` (4x cap). Built against clean rt64 (`goemon-android`, gitlink
+  `8c73b3f`); instrumentation reverted. Shippable APK at
+  `android/app/build/outputs/apk/debug/app-debug.apk`.
+- **ADPF ruled out** for app-side GPU clock on this API-33 device (§5 lever 2).
+
+**Next:**
+- **Device-verify** default-mode FPS at 4x/MSAA-off with the perf profile OFF → confirms the shipped
+  fix makes it playable without perf mode (can't fresh-install-verify on dev-device's device — config
+  already has MSAA off manually).
 - **RE the scratch lifecycle** (§4 #3) toward cutting the pair count (lever 3/4), which also raises
-  utilization and lets the governor ramp on its own.
+  utilization and lets the governor ramp on its own — the durable route to retire "perf mode essential".
+- **Device copies-on visual sweep** on gameplay/other menus (still the one un-run validation; rig sweep
+  was clean but Adreno-specific breakage is untested). Needs a device build with copies-on hardcoded.

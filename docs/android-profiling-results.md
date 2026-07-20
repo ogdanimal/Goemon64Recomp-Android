@@ -18,11 +18,13 @@ menu FPS (12–15 → 26)**. `GPU_hw ∝ 1/clock` (near-zero fixed latency) → 
 mode the `msm-adreno-tz` utilization governor parks the clock at 305–400 MHz because GPU busy (~68 %)
 never crosses its ramp threshold. See "DVFS feedback loop" below and
 [`fixtures/menu-framerate-device-fence-timing.txt`](re-notes/fixtures/menu-framerate-device-fence-timing.txt).
-This **refutes** the earlier lean toward "DVFS is out." **Two stackable levers now:** GPU clock (~2×,
-via Android ADPF/`PerformanceHintManager` or the device perf profile) and cutting the pair/fence count
-(engine — removes the ~32 % serialization bubble and raises utilization so the governor can ramp).
-The 20 pairs are a ~6×-repeated color-cycling background effect ping-ponging the render target; see
-"Option-(c) RE: the 20 pairs decoded" below.
+This **refutes** the earlier lean toward "DVFS is out." **Levers:** (0, SHIPPED) device-class default
+graphics — Android now defaults **4x + MSAA off** (dev `fb59148`+`fe33491`), the measured sweet spot,
+~2× on the worst screen; (1) GPU clock is ~2× but **not app-forcible on this device** — ADPF's GPU
+path is API 34+ and the Retroid is API 33, so only the user's firmware perf profile raises it (see DVFS
+section); (2) cutting the pair/fence count (engine — removes the ~32 % serialization bubble and raises
+utilization so the governor ramps on its own). The 20 pairs are a ~6×-repeated color-cycling background
+effect ping-ponging the render target; see "Option-(c) RE: the 20 pairs decoded" below.
 
 ## Provenance
 
@@ -226,13 +228,17 @@ setter of `fbPair.syncRequired` is `:558` (color/depth **format change**).
   governor ramp the clock (see DVFS). Entry point: the desktop RT64 inspector already visualizes
   per-pair `syncRequired`. Needs RE into why this screen composites via ~20 framebuffer pairs and
   whether they can be merged.
-- **DVFS / clock** — **now the co-dominant, MEASURED lever (2026-07-19).** The perf profile
-  305/400→587 MHz nearly doubled FPS (12–15→26); `GPU_hw ∝ 1/clock`. In default mode the governor
-  parks at 305–400 MHz because GPU busy (~68 %) never crosses its ramp threshold. **App-side lever:**
-  Android ADPF / `PerformanceHintManager` — report the real per-frame work duration so the platform
-  raises the clock without the user touching a firmware profile. Stacks with (c). (The earlier "(b)'s
-  tiny submits won't ramp, only (c) gets the DVFS bonus" note stands, and is now confirmed: raising
-  utilization is what unlocks the clock.)
+- **DVFS / clock** — **co-dominant, MEASURED lever (2026-07-19).** The perf profile 305/400→587 MHz
+  nearly doubled FPS (12–15→26); `GPU_hw ∝ 1/clock`. In default mode the governor parks at 305–400 MHz
+  because GPU busy (~68 %) never crosses its ramp threshold. **Not app-forcible on this device:** ADPF's
+  GPU-duration path is API 34+, the Retroid is API 33, so app-side ADPF boosts CPU only, not the Adreno
+  clock; no non-root GPU overclock exists on API 33. The clock only rises via the user's firmware perf
+  profile OR indirectly by raising utilization — which is what (c) does. So the app-controlled path to
+  the clock's benefit is (c), plus shipped default 4x/MSAA-off to cut the work. (The earlier "(b)'s
+  tiny submits won't ramp, only (c) gets the DVFS bonus" note stands and is confirmed.)
+- **Device-class default graphics (SHIPPED, dev `fb59148`+`fe33491`)** — Android now defaults 4x + MSAA
+  off (was Auto + MSAA2X). Cheapest, highest-certainty lever; ~2× on the worst screen; likely playable
+  in default power mode. See "What actually remains" lever 0.
 
 ## Desktop-inspector on-ramp (for the option-(c) RE)
 
@@ -448,13 +454,24 @@ mitigation, not nothing. Levers, best-evidenced first:
 2. **DVFS / GPU clock (MEASURED 2026-07-19 — the single biggest lever, ~2×).** The Retroid perf
    profile raised the clock 305/400→587 MHz and took the diary screen **12–15→26 FPS**; `GPU_hw ∝
    1/clock`. The light menu workload holds GPU busy at only ~68 %, so the `msm-adreno-tz` utilization
-   governor never ramps and parks at 305–400 MHz in default power mode. **The productizable form is
-   app-side, not a user firmware toggle:** integrate Android **ADPF / `PerformanceHintManager`** —
-   create a hint `Session` for the render thread and report actual per-frame work durations, so the
-   platform raises the clock during these heavy-readback frames without the user changing a profile.
-   Zero-risk to visuals, config-independent, stacks with copies-on and with lever 3/4 (which also raise
-   utilization). This is the top follow-up. Evidence:
-   `re-notes/fixtures/menu-framerate-device-fence-timing.txt`.
+   governor never ramps and parks at 305–400 MHz in default power mode.
+   **App-side clock control is NOT available on this device — correction 2026-07-19.** An earlier draft
+   of this line proposed Android ADPF / `PerformanceHintManager` to raise the clock automatically; that
+   was wrong for this target. ADPF's **GPU**-duration reporting (the only part that influences the GPU
+   clock) is **API 34+**, and the Retroid Pocket 5 is **API 33** (Android 13). On API 33 ADPF boosts
+   only CPU scheduling, not the Adreno clock. There is no reliable non-root app-forced GPU overclock on
+   API 33. So the durable, app-controlled routes to retire the "perf mode essential" requirement are
+   **(a)** reduce GPU work (see lever 0 below — shipped default 4x/MSAA-off) and **(b)** raise
+   utilization above the governor's ramp threshold by cutting the pair count (lever 3/4), so the clock
+   ramps *on its own*. Evidence: `re-notes/fixtures/menu-framerate-device-fence-timing.txt`.
+0. **Ship device-class default graphics (SHIPPED 2026-07-19, dev `fb59148`+`fe33491`).** The app
+   shipped `res=Auto` + `msaa=MSAA2X`; on the Adreno 650 that is the heavy config behind the ~14 FPS
+   screen. Android now defaults to **4x resolution + MSAA off** (`src/game/config.cpp`, guarded by the
+   `is_steam_deck`-style device-class precedent; non-destructive — existing users keep their saved
+   values). Measured effect at fixed clock: 8x→30 FPS, 4x→52 FPS; MSAA off removes a ~20 % multiplier.
+   This is the cheapest, highest-certainty lever and likely makes the screen playable in *default*
+   power mode (no perf profile). The single un-run check is device-verifying default-mode FPS at
+   4x/MSAA-off with the perf profile *off*.
 3. **Improve tile-copy coverage: a linear/1D loadBlock path (targeted, the promising cure-candidate).**
    See "Why tile copies decline the scratch reads" above. The per-pair `execute()/wait()` fires only
    for pairs with `syncRequired` set, and a tile-copied dependency doesn't set it — so making the
