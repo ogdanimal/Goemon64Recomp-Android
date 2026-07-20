@@ -86,7 +86,8 @@
                                 data-checked="analog_cam_mode"
                                 value="On"
                                 id="analog_cam_enabled"
-                                style="nav-up: #bg_input_enabled"
+                                style="nav-up: #bg_input_enabled; nav-down: #acam_invert_none"
+                                data-style-nav-down="analog_cam_mode == 'Off' ? '#swap_moving_enabled' : '#acam_invert_none'"
                             />
                             <label class="config-option__tab-label" for="analog_cam_enabled">On</label>
 
@@ -99,6 +100,7 @@
                                 value="Off"
                                 id="analog_cam_disabled"
                                 style="nav-up: #bg_input_disabled; nav-down: #acam_invert_none"
+                                data-style-nav-down="analog_cam_mode == 'Off' ? '#swap_moving_enabled' : '#acam_invert_none'"
                             />
                             <label class="config-option__tab-label" for="analog_cam_disabled">Off</label>
                         </div>
@@ -215,6 +217,7 @@
                                 value="On"
                                 id="swap_moving_enabled"
                                 style="nav-up: #acam_sens_y_input"
+                                data-style-nav-up="analog_cam_mode == 'Off' ? '#analog_cam_disabled' : '#acam_sens_y_input'"
                             />
                             <label class="config-option__tab-label" for="swap_moving_enabled">On</label>
 
@@ -227,6 +230,7 @@
                                 value="Off"
                                 id="swap_moving_disabled"
                                 style="nav-up: #acam_sens_y_input"
+                                data-style-nav-up="analog_cam_mode == 'Off' ? '#analog_cam_disabled' : '#acam_sens_y_input'"
                             />
                             <label class="config-option__tab-label" for="swap_moving_disabled">Off</label>
                         </div>
