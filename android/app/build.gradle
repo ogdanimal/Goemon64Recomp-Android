@@ -34,8 +34,10 @@ android {
         // level 28. Target handhelds (Retroid Pocket 5, AYN Thor) run Android 13.
         minSdk 28
         targetSdk 34
-        versionCode 1
-        versionName "0.2.0-dev"
+        // Injected by the release workflow: -PvCode (monotonic, = commit count) and
+        // -PvName (from the git tag). Falls back to a dev value for local/debug builds.
+        versionCode (project.hasProperty('vCode') ? project.property('vCode').toString().toInteger() : 1)
+        versionName (project.hasProperty('vName') ? project.property('vName').toString() : "1.0.0-dev")
 
         ndk {
             // arm64-v8a is the sole target for now (Retroid Pocket 5 / AYN Thor).

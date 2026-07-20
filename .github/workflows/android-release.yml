@@ -1,0 +1,176 @@
+# Tag-triggered RELEASE build for Goemon64Recomp-Android.
+#
+# Push a tag like `v1.0.0` and this builds a SIGNED release APK (arm64-v8a) and
+# publishes it as a GitHub Release. Same recompilation recipe as android.yml, but
+# assembleRelease + upload-key signing, with the version derived from the tag.
+#
+# Triggers ONLY on tag pushes (never on PRs), so fork PRs cannot reach the ROM or
+# signing secrets through this workflow — the maintainer pushes the tag.
+#
+# Required repository secrets:
+#   G64RS_REPO_WITH_PAT     -> authenticated clone URL of the private ROM repo
+#                              (same secret android.yml uses; must contain mnsg.z64).
+#   RELEASE_KEYSTORE_BASE64 -> base64 of the release .jks  (`base64 -w0 release.jks`)
+#   RELEASE_STORE_PASSWORD  -> keystore password
+#   RELEASE_KEY_ALIAS       -> key alias (e.g. goemon-upload)
+#   RELEASE_KEY_PASSWORD    -> key password (= store password for a PKCS12 keystore)
+#
+# The APK contains the recompiled game code + the mod's UI assets, but NO game
+# data — users supply their own ROM at runtime.
+
+name: android-release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # needed to create the GitHub Release
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-apk:
+    name: build + publish signed arm64 APK
+    runs-on: ubuntu-latest
+    env:
+      N64RECOMP_COMMIT: '81213c1831fab2521a6a5459c67b63437d67e253'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0   # full history so versionCode = commit count is stable
+
+      - name: Derive version from tag
+        id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VNAME="${TAG#v}"                       # v1.0.0 -> 1.0.0
+          VCODE="$(git rev-list --count HEAD)"    # monotonic, increases each release
+          echo "vname=$VNAME" >> "$GITHUB_OUTPUT"
+          echo "vcode=$VCODE" >> "$GITHUB_OUTPUT"
+          echo "Release $TAG -> versionName=$VNAME versionCode=$VCODE"
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: android-arm64-${{ env.N64RECOMP_COMMIT }}
+
+      - name: Fetch private build inputs (ROM)
+        run: |
+          git clone "${{ secrets.G64RS_REPO_WITH_PAT }}" Goemon64RecompSecrets
+          cp -v ./Goemon64RecompSecrets/* ./
+          test -f mnsg.z64 || { echo "::error::mnsg.z64 not found after cloning secrets repo"; exit 1; }
+
+      - name: Install host toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake clang lld llvm make
+
+      - name: Build N64Recomp & RSPRecomp (host)
+        run: |
+          export PATH="/usr/lib/ccache:$PATH"
+          git clone https://github.com/Mr-Wiseguy/N64Recomp.git --recurse-submodules N64RecompSource
+          cd N64RecompSource
+          git checkout "$N64RECOMP_COMMIT"
+          git submodule update --init --recursive
+          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          cmake --build build --config Release --target N64RecompCLI -j "$(nproc)"
+          cmake --build build --config Release --target RSPRecomp  -j "$(nproc)"
+          cp build/N64Recomp ../N64Recomp
+          cp build/RSPRecomp ../RSPRecomp
+
+      - name: Recompile game + RSP microcode (host; needs ROM)
+        run: |
+          ./N64Recomp mnsg.toml
+          ./RSPRecomp aspMain.toml
+
+      - name: Build host file_to_c
+        run: |
+          mkdir -p build-host-tools
+          clang++ -std=c++17 -O2 \
+            lib/rt64/src/tools/file_to_c/file_to_c.cpp \
+            -o build-host-tools/file_to_c
+          test -x build-host-tools/file_to_c
+
+      - name: Generate patches codegen (host; the Android CMake path skips this)
+        run: |
+          make -C patches CC=clang LD=ld.lld
+          ./N64Recomp patches.toml
+          ./build-host-tools/file_to_c \
+            patches/patches.bin mm_patches_bin \
+            RecompiledPatches/patches_bin.c RecompiledPatches/patches_bin.h
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install pinned NDK + CMake
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "ndk;27.1.12297006" "cmake;3.22.1"
+
+      - name: Decode keystore + write keystore.properties
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PW: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::RELEASE_KEYSTORE_BASE64 secret is not set — cannot sign a release."
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > android/release.jks
+          # storeFile is resolved relative to keystore.properties' own directory (android/).
+          cat > android/keystore.properties <<EOF
+          storeFile=release.jks
+          storePassword=$STORE_PW
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PW
+          EOF
+
+      - name: Build signed release APK (arm64-v8a)
+        working-directory: android
+        run: |
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -PvName="${{ steps.ver.outputs.vname }}" \
+            -PvCode="${{ steps.ver.outputs.vcode }}"
+
+      - name: Verify the APK is release-signed (not debug)
+        run: |
+          APK=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
+          test -n "$APK" || { echo "::error::no release APK found"; exit 1; }
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | tee certs.txt
+          if grep -qi "CN=Android Debug" certs.txt; then
+            echo "::error::APK is debug-signed — release signing did not take effect."
+            exit 1
+          fi
+          RENAMED="Goemon64Recomp-${{ steps.ver.outputs.vname }}-arm64-v8a.apk"
+          cp "$APK" "$RENAMED"
+          echo "APK_PATH=$RENAMED" >> "$GITHUB_ENV"
+
+      - name: Clean up signing material
+        if: always()
+        run: rm -f android/release.jks android/keystore.properties
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" "${APK_PATH}" \
+            --title "Goemon64Recomp Android ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag
