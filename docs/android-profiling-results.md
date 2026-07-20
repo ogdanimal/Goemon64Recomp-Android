@@ -4,16 +4,25 @@ Companion to [`android-profiling-plan.md`](android-profiling-plan.md). This doc 
 real capture: the **Select Adventure Diary** screen runs at ~14 FPS on the test device, and we now
 know why, in measured detail.
 
-Status: **diagnosis confirmed and decomposed.** Fix (b) precise-barrier is crossed off (18 genuine
-deps). Fix (a) `copyWithGPU=true` is crossed off **as a serialization cure** — but it is a **real
-+24% mitigation** (14.0→17.4 FPS, glitch-free on the worst screen), so it is *retained as the cheapest
-evidenced smoothness lever for this game*, pending a copies-on validation pass on gameplay/other
-screens. (An earlier revision wrote (a) off entirely; corrected 2026-07-19.) The ~46ms `gpuWait` is
-~18 genuine serialized framebuffer-as-texture deps at min GPU clock, so no fence-policy change cures
-it. **Remaining levers: (a) copies-on mitigation, DVFS/clock, (c) cut the pair count [engine].** UPDATE
-2026-07-19 (later session): the desktop rig is now working and **(c) has been decomposed** — the 20
-pairs are a ~6×-repeated color-cycling background effect that ping-pongs the render target; see
-"Option-(c) RE: the 20 pairs decoded" below. DVFS/clock is still a pending firmware-mode capture.
+Status: **diagnosis confirmed, decomposed, and DVFS resolved.** Fix (b) precise-barrier is crossed off
+(18 genuine deps). Fix (a) `copyWithGPU=true` is crossed off **as a serialization cure** — but it is a
+**real +24% mitigation** (14.0→17.4 FPS, glitch-free on the worst screen), so it is *retained as the
+cheapest evidenced smoothness lever for this game*, pending a copies-on validation pass on
+gameplay/other screens. (An earlier revision wrote (a) off entirely; corrected 2026-07-19.)
+
+**UPDATE 2026-07-19 (device session, DVFS RESOLVED — the headline):** DVFS/GPU clock is the **dominant
+lever**, not a minor one. With per-pair fence timing (rt64 diag `bba84ab`) plus GPU clock/busy reads,
+toggling the Retroid "high performance" profile raised the clock 305/400→587 MHz and **nearly doubled
+menu FPS (12–15 → 26)**. `GPU_hw ∝ 1/clock` (near-zero fixed latency) → the ~46 ms gpuWait is
+**clock-inflated per-renderpass GPU compute, not a fixed floor and not draw-scaled**. In default power
+mode the `msm-adreno-tz` utilization governor parks the clock at 305–400 MHz because GPU busy (~68 %)
+never crosses its ramp threshold. See "DVFS feedback loop" below and
+[`fixtures/menu-framerate-device-fence-timing.txt`](re-notes/fixtures/menu-framerate-device-fence-timing.txt).
+This **refutes** the earlier lean toward "DVFS is out." **Two stackable levers now:** GPU clock (~2×,
+via Android ADPF/`PerformanceHintManager` or the device perf profile) and cutting the pair/fence count
+(engine — removes the ~32 % serialization bubble and raises utilization so the governor can ramp).
+The 20 pairs are a ~6×-repeated color-cycling background effect ping-ponging the render target; see
+"Option-(c) RE: the 20 pairs decoded" below.
 
 ## Provenance
 
@@ -82,20 +91,38 @@ detector short-circuited it is format-changes only, an artifact. The screen's tr
 dependency count is **~18** (see "The 12→18 anomaly" below), so of the 20 forced fences only ~2 are
 actually gratuitous. This is exactly why a precise-barrier fix cannot help — detailed below.
 
-## DVFS feedback loop (reasoned, **unmeasured on this device**)
+## DVFS feedback loop (**MEASURED and CONFIRMED 2026-07-19** — the dominant lever)
 
-The GPU sat pinned at its **minimum** clock (305 MHz of 670) throughout, thermal status 0 — not
-throttling. The likely mechanism: 20 tiny gap-separated submits never sustain enough load for the
-`msm-adreno-tz` governor to ramp, so each fence's GPU work runs at half clock, inflating the ~2.3 ms.
-This is a **feedback loop** — serialization causes the low clock, the low clock slows each fence —
-which cuts optimistically: any fix that reduces serialization should let the GPU ramp, shrinking the
-per-fence cost *on top of* cutting the count. So the 46 ms gpuWait is not a fixed floor.
+The reasoned hypothesis below was **confirmed on device**; DVFS/GPU clock is the *dominant* menu-FPS
+lever, ~2×. Evidence: [`fixtures/menu-framerate-device-fence-timing.txt`](re-notes/fixtures/menu-framerate-device-fence-timing.txt).
 
-**This is reasoned, not measured.** The clean test — pin the GPU to max via
-`/sys/class/kgsl/kgsl-3d0/` and re-measure — needs root, which this device does not have (`su`
-absent, kgsl nodes root-only `rw`). **Open user-side ask**: the Retroid firmware may expose a
-"performance mode" that raises the DVFS floor; dev-device can toggle it manually in a future session and
-re-capture to bound how much of the 2.3 ms/fence is clock-inflated vs fixed sync overhead.
+Three clock points on the Diary screen (per-pair fence timing, rt64 diag `bba84ab`):
+
+| Mode | Clock | GPU busy | GPU_hw | FPS |
+|---|---|---|---|---|
+| normal (governor-parked) | 305 MHz | 67–69 % | 43.2 ms | 12.0 |
+| normal (governor-parked) | 400 MHz | 65–69 % | 35.4 ms | 14.8 |
+| **high performance** | **587 MHz** | 67–69 % | **21.5 ms** | **25.8** |
+
+Toggling the Retroid "high performance" profile raised the clock to 587 MHz and **nearly doubled FPS
+(12–15 → 26)**. `GPU_hw ≈ 13778 / clock_MHz` (fixed term ≈ −2 ms, i.e. ~0) — the GPU work is
+**~purely core-clock-bound compute**, near-zero fixed submit latency. So the ~46 ms gpuWait is *not* a
+fixed floor (as reasoned) — it is clock-inflated, and it is per-renderpass composite/pixel work across
+the 20 upscaled render targets, **decoupled from N64 draw count** (the 144-draw UI pair costs ~1.4 ms;
+the single ~37 ms fence is always a **2-draw** pair — it is the frame's clock-bound GPU compute
+surfacing at the one CPU/GPU sync catch-up point).
+
+The **feedback loop is real and measured**: GPU busy holds at ~68 % at *all three* clocks, so the
+`msm-adreno-tz` utilization governor never crosses its ramp threshold and parks the clock at 305–400
+MHz in default power mode — starving the clock-bound work. The ~32 % idle is the CPU-side per-fence
+serialization bubble, a constant proportion at every clock. Therefore the two levers **stack**:
+cutting serialization removes the ~32 % bubble *and* raises utilization, which in default mode could
+let the governor ramp on its own.
+
+**Original reasoned text (now confirmed):** 20 tiny gap-separated submits never sustain enough load
+for the governor to ramp, so each fence's GPU work runs at reduced clock. The root-pin test
+(`/sys/class/kgsl/kgsl-3d0/`) needs root this device lacks; the firmware perf-mode toggle substituted
+for it and settled the question.
 
 ## Fix-option ledger
 
@@ -142,7 +169,11 @@ screen's dependencies. Conclusions:
 
 1. **Fix (a) is dead as a *serialization cure*.** Enabling GPU copies moved fences 20→19 and `gpuWait`
    not at all. The ~46 ms serialized GPU-fence cost is **inherent to 20 framebuffer pairs**, not an
-   artifact of the `copyWithGPU=false` forced-sync policy.
+   artifact of the `copyWithGPU=false` forced-sync policy. **(Refinement 2026-07-19 device session:**
+   "inherent to 20 pairs" is right about the *cause* but the ~46 ms is **not a fixed floor** — it is
+   clock-inflated per-renderpass GPU compute. Per-pair fence timing showed it scales ~1/clock and
+   nearly halves under the device perf profile: 305 MHz→43 ms, 587 MHz→22 ms. See "DVFS feedback
+   loop.")
 2. **But (a) is a real mitigation, NOT moot** (correction 2026-07-19 later session — the original
    "moot" reading below was wrong). The 14.0→17.4 FPS gain is **+24% on the worst screen, glitch-free**,
    entirely from **CPU-side** command-building savings (remainder ~17→~9 ms). "Doesn't fix the
@@ -189,15 +220,19 @@ setter of `fbPair.syncRequired` is `:558` (color/depth **format change**).
 - (b) precise barrier — **crossed off**: the true dependency count is ~18, so precise fencing can't
   beat copies-on's ~17 FPS, and the cheap version is incorrect. (Fully verified via the anomaly
   trace above — the counter and the A/B together did their job.)
-- (c) **reduce the pair/dependency count** — the leading structural lever. The ~46 ms `gpuWait` is
-  ~18 genuine serialized framebuffer-as-texture deps at min clock; only cutting the count helps.
-  Entry point: the desktop RT64 inspector already visualizes per-pair `syncRequired`. Needs RE into
-  why this screen composites via ~20 framebuffer pairs and whether they can be merged.
-- **DVFS / clock** — co-leading, config-independent: the ~46 ms is at 305 MHz (min). Note **(b)/(c)
-  differ here**: (b)'s 18 tiny serialized submits still won't let the governor ramp, so (b) gets no
-  DVFS bonus; (c) — fewer, fatter submits — is the only fix that could *also* raise the clock, so its
-  upside compounds. Unmeasurable on this device (no root); the Retroid firmware performance-mode
-  toggle is the only lever, and is a pending user-side capture.
+- (c) **reduce the pair/dependency count** — a leading structural lever. The ~46 ms `gpuWait` is
+  ~18 genuine serialized framebuffer-as-texture deps; cutting the count removes both the per-renderpass
+  GPU compute *and* the ~32 % CPU-side serialization bubble, and by raising utilization can let the
+  governor ramp the clock (see DVFS). Entry point: the desktop RT64 inspector already visualizes
+  per-pair `syncRequired`. Needs RE into why this screen composites via ~20 framebuffer pairs and
+  whether they can be merged.
+- **DVFS / clock** — **now the co-dominant, MEASURED lever (2026-07-19).** The perf profile
+  305/400→587 MHz nearly doubled FPS (12–15→26); `GPU_hw ∝ 1/clock`. In default mode the governor
+  parks at 305–400 MHz because GPU busy (~68 %) never crosses its ramp threshold. **App-side lever:**
+  Android ADPF / `PerformanceHintManager` — report the real per-frame work duration so the platform
+  raises the clock without the user touching a firmware profile. Stacks with (c). (The earlier "(b)'s
+  tiny submits won't ramp, only (c) gets the DVFS bonus" note stands, and is now confirmed: raising
+  utilization is what unlocks the clock.)
 
 ## Desktop-inspector on-ramp (for the option-(c) RE)
 
@@ -379,7 +414,12 @@ code, not a rebase/cherry-pick**.
 1. Fixes the **6 loadBlock deps** only. The other **12 fences are format-changes** (`rt64_state.cpp:558`),
    a separate mechanism — unknown whether those can also be satisfied on-GPU. If not, ~12+ fences remain.
 2. Whether fewer fences → proportionally faster is the **latency-vs-compute question** (step iv,
-   device-only; llvmpipe can't answer it). If fixed per-fence latency dominates, 12 fences ≈ 28ms.
+   device-only; llvmpipe can't answer it). **ANSWERED 2026-07-19:** per-pair fence timing shows the
+   cost is **clock-bound GPU compute, decoupled from draw count** (`GPU_hw ∝ 1/clock`; the 144-draw
+   pair is ~1.4 ms, the one ~37 ms fence is always a 2-draw pair — it's the frame's GPU compute
+   surfacing at the CPU/GPU sync catch-up point). So fewer *renderpasses* (not just fewer fences) is
+   what cuts the GPU term; the CPU-side per-fence serialization is a separate ~32 % bubble on top. See
+   "DVFS feedback loop" + `fixtures/menu-framerate-device-fence-timing.txt`.
 3. Only helps with **copies-on** (with copies off, `makeFramebufferTile` is never called) — rides on
    the copies-on validation pass.
 
@@ -405,11 +445,16 @@ mitigation, not nothing. Levers, best-evidenced first:
    specific), plus device timing. If the device sweep is clean, ship copies-on for mnsg via a per-game
    `copyWithGPU` config (what the `rt64_render_context.cpp:353` TODO already proposes) and retire the
    `G64_COPY_GPU` env toggle into it. Compounds with lever 2.
-2. **DVFS / GPU clock (pending, zero-build, user-side).** The device measured `pairSync≈46ms` at a
-   **DVFS-floored 305 MHz** — the light menu workload never triggers a clock boost, so the serialized
-   fences run at minimum clock. A firmware performance-mode capture tests how much of the stall is
-   clock-inflation vs genuine work. Best value-per-effort of the *cure*-side options; run it together
-   with copies-on for the true best-available configuration.
+2. **DVFS / GPU clock (MEASURED 2026-07-19 — the single biggest lever, ~2×).** The Retroid perf
+   profile raised the clock 305/400→587 MHz and took the diary screen **12–15→26 FPS**; `GPU_hw ∝
+   1/clock`. The light menu workload holds GPU busy at only ~68 %, so the `msm-adreno-tz` utilization
+   governor never ramps and parks at 305–400 MHz in default power mode. **The productizable form is
+   app-side, not a user firmware toggle:** integrate Android **ADPF / `PerformanceHintManager`** —
+   create a hint `Session` for the render thread and report actual per-frame work durations, so the
+   platform raises the clock during these heavy-readback frames without the user changing a profile.
+   Zero-risk to visuals, config-independent, stacks with copies-on and with lever 3/4 (which also raise
+   utilization). This is the top follow-up. Evidence:
+   `re-notes/fixtures/menu-framerate-device-fence-timing.txt`.
 3. **Improve tile-copy coverage: a linear/1D loadBlock path (targeted, the promising cure-candidate).**
    See "Why tile copies decline the scratch reads" above. The per-pair `execute()/wait()` fires only
    for pairs with `syncRequired` set, and a tile-copied dependency doesn't set it — so making the

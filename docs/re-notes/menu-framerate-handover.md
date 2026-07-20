@@ -12,9 +12,13 @@ Date of this handover: 2026-07-19.
 ## 0. One-line status
 
 The Select Adventure Diary screen runs ~14 FPS (gameplay 30) on a Retroid Pocket 5. The mechanism is
-decomposed and two fence-side fixes are refuted; the **root-cause *category*** (fixed submit/fence
-latency vs GPU compute) is **not yet proven** because the one experiment that would settle it (DVFS)
-is unvalidated. Do not treat "submit-latency-bound" as established.
+decomposed and two fence-side fixes are refuted. **RESOLVED 2026-07-19 device session (this closes the
+two [HELD] items below):** the root cause is **clock-bound per-renderpass GPU compute** — `GPU_hw ∝
+1/clock`, decoupled from N64 draw count — and **DVFS is the dominant lever**: the device perf profile
+(305/400→587 MHz) **nearly doubled FPS (12–15→26)**. The default-mode `msm-adreno-tz` governor parks
+the clock at 305–400 MHz because GPU busy holds at ~68 %. This **refutes** the earlier lean toward
+"DVFS is out / fixed submit-latency." Full evidence + numbers:
+[`fixtures/menu-framerate-device-fence-timing.txt`](fixtures/menu-framerate-device-fence-timing.txt).
 
 ## 1. Two measurement environments — never conflate (this is the #1 review trap)
 
@@ -61,17 +65,23 @@ is unvalidated. Do not treat "submit-latency-bound" as established.
     the per-pair sync *trigger*, potentially folding pairs into the end-of-frame sync **within the
     current architecture**. (from #6, code read) — **candidate, not proven to reach 60 FPS.**
 
-### Held / unvalidated [HELD] — attack these first
-12. **"DVFS/clock is not the bottleneck."** Basis: user reports Retroid performance modes "make no
-    difference." **NOT VALID EVIDENCE YET** — no manipulation check that the toggle actually raised
-    the GPU clock. If perf mode leaves the clock floored (~305 MHz per an earlier sysfs read), the
-    null means *the toggle didn't fire*, not *clock doesn't matter*. Free device-side check:
-    `cat /sys/class/kgsl/kgsl-3d0/gpuclk` (or `devfreq/cur_freq`) during both captures.
-13. **"The 46ms is fixed submit/fence latency (compute-independent)."** Rests on #12 plus the smell
-    test (an 865 dwarfs an N64). Plausible and directionally likely, but the decisive measurement
-    (per-fence timing vs draw count) has **not been taken**. If it's fixed latency, a 2-draw pair and
-    the 144-draw pair cost the same; if compute, they differ. Device-only (llvmpipe can't answer).
-14. **"Inherent 46ms" is deliberately NOT written into the authoritative doc** pending #12/#13.
+### Resolved 2026-07-19 (were [HELD] — now settled by device measurement)
+12. **"DVFS/clock is not the bottleneck." — REFUTED. DVFS is the DOMINANT lever.** The device perf
+    profile raised the clock 305/400→587 MHz and nearly doubled FPS (12–15→26). The earlier "perf mode
+    makes no difference" report does not hold on this screen with this toggle. The manipulation check
+    the old note demanded was done: `devfreq/cur_freq` confirmed the toggle raised the clock, and
+    `gpu_busy_percentage` held at ~68 % at every clock — so in default mode the `msm-adreno-tz`
+    utilization governor never crosses its ramp threshold and parks at 305–400 MHz, starving the
+    clock-bound work.
+13. **"The 46ms is fixed submit/fence latency (compute-independent)." — REFUTED.** Per-pair fence
+    timing (rt64 diag `bba84ab`) settled it: cost is **clock-bound GPU compute, decoupled from draw
+    count**. `GPU_hw ∝ 1/clock` (near-zero fixed term); the 144-draw pair costs ~1.4 ms while the one
+    ~37 ms fence per frame is **always a 2-draw pair** — it is the frame's GPU compute surfacing at the
+    single CPU/GPU sync catch-up point, not fixed latency and not draw-scaled. The old "2.3 ms/fence"
+    was a misleading 46÷20 average (exactly the trap flagged in §4 #2). The compute is per-renderpass
+    composite/pixel work across the 20 upscaled render targets.
+14. **The authoritative doc now carries the corrected conclusion** (DVFS resolved, clock-inflated not a
+    fixed floor) — see `android-profiling-results.md` "DVFS feedback loop (MEASURED and CONFIRMED)".
 
 ## 3. Refuted hypotheses (do not re-litigate; attack the refutations if you disagree)
 
@@ -85,10 +95,12 @@ is unvalidated. Do not treat "submit-latency-bound" as established.
 
 ## 4. Attack surface (where this is weakest — enumerated so you don't have to hunt)
 
-1. **The whole "latency-bound" story hangs on the unvalidated DVFS null (#12).** If a reviewer only
-   breaks one thing, break this. The clock-reading check is free and gating.
-2. **Per-fence latency-vs-compute (#13) is unmeasured.** The 2.3ms/fence figure is 46ms÷20, an
-   *average*, not a per-fence measurement. It could be dominated by the 144-call pair.
+1. **~~The whole "latency-bound" story hangs on the unvalidated DVFS null (#12).~~ RESOLVED** — the
+   "latency-bound" story was itself wrong. DVFS measured as the dominant lever (#12); the clock-reading
+   check was done and refuted the null.
+2. **~~Per-fence latency-vs-compute (#13) is unmeasured.~~ RESOLVED** — per-pair fence timing measured
+   it: clock-bound compute, draw-count-decoupled. The 2.3ms/fence average was indeed misleading (one
+   ~37ms fence + nineteen ~1–3ms fences), exactly as this item warned.
 3. **The tile-copy fix (INF #11) addresses only 6 of ~18 deps.** The other **12 are format-change
    fences** (`rt64_state.cpp:558`). Whether they're a *separate* mechanism is itself open: they may
    share origin with the *same* background effect — the scratch is re-specified `w=8 → w=256` every
@@ -112,7 +124,11 @@ is unvalidated. Do not treat "submit-latency-bound" as established.
 
 1. **Ship copyWithGPU=true for mnsg** — +24% measured mitigation, glitch-free on this screen; needs a
    device visual sweep on gameplay/other screens. Not a cure (gpuWait unchanged).
-2. **DVFS** — likely out, **pending #12**.
+2. **DVFS / GPU clock** — **MEASURED as the single biggest lever (~2×), #12 resolved.** Perf profile
+   305/400→587 MHz took the screen 12–15→26 FPS. Default-mode governor parks at 305–400 MHz (busy
+   ~68 % < ramp threshold). **Productize app-side, not via a user firmware toggle:** Android ADPF /
+   `PerformanceHintManager` — report real per-frame work durations so the platform ramps the clock.
+   Zero visual risk, config-independent, stacks with copies-on and with lever 3/4.
 3. **Linear/1D loadBlock tile-copy path** — targeted cure-*candidate* (INF #11); net-new (upstream
    lacks it, #7); gated by attack-surface #3. **Sequencing:** after the two [HELD]-closing captures,
    the first RE question is the scratch buffer's full lifecycle — whether the 12 format-change fences
@@ -156,11 +172,22 @@ latency (46ms compute-independent, [HELD] #13 → confirmed); sync that tracks c
 - Main repo (branch `dev`, local, unpushed): `c4d896b` FILE_TO_C fix · `a82e44d` G64_COPY_GPU toggle ·
   docs `e8d1879`/`aaf460a` (+ this file).
 
-## 7. Next data to collect (closes the two [HELD] items in one device session)
+## 7. Data collected 2026-07-19 device session (both [HELD] items CLOSED)
 
-1. **(i)** sysfs GPU clock during normal vs performance mode + the `g64prof` gpuWait in each →
-   validates or kills #12/#13.
-2. **(iv)** per-pair fence timing — **INSTRUMENTATION ADDED** (rt64 `bba84ab`, APK rebuilt 23:04).
-   Resolves attack-surface #2: the enumeration now prints `sync=NN.NNms` per pair. Does every fence cost
-   ~equal regardless of the pair's draw count (fixed latency) or scale with it? Compare pair 19 (144
-   calls) against the ~1–4-call scratch pairs. **Investigating side done — awaits the device capture.**
+Done. Both captures were taken in one session (rt64 `bba84ab`, per-pair fence timing).
+Evidence: [`fixtures/menu-framerate-device-fence-timing.txt`](fixtures/menu-framerate-device-fence-timing.txt).
+
+1. **(i) sysfs GPU clock + busy, normal vs perf mode — DONE.** normal-mode governor parks at
+   305–400 MHz (busy ~68 %); perf profile → 587 MHz; FPS 12–15 → 26. DVFS is the dominant lever.
+2. **(iv) per-pair fence timing — DONE.** Every frame = one ~37 ms fence (always a 2-draw pair) +
+   nineteen ~1–3 ms fences; the 144-draw pair is ~1.4 ms. `GPU_hw ∝ 1/clock`. Clock-bound compute,
+   draw-decoupled.
+
+**Next (new work, no longer blocked on a capture):**
+- **Ship the DVFS lever app-side** — Android ADPF / `PerformanceHintManager` (§5 lever 2). Top
+  follow-up; ~2× measured, zero visual risk.
+- **Device copies-on visual sweep** on gameplay/other menus (still the one un-run validation; the rig
+  sweep was clean but Adreno-specific breakage is untested). Needs a device build with copies-on
+  hardcoded (`G64_COPY_GPU` doesn't work on Android).
+- **RE the scratch lifecycle** (§4 #3) toward cutting the pair count (lever 3/4), which also raises
+  utilization and lets the governor ramp on its own.
