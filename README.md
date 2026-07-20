@@ -1,10 +1,10 @@
 # Goemon 64 Recompiled — Android
 
-This fork packages [Goemon 64: Recompiled](https://github.com/klorfmorf/Goemon64Recomp) for Android. It is an early beta Android port of the recompilation, running the native game through [RT64](https://github.com/rt64/rt64) Vulkan rendering with SDL input, in-APK asset installation, and app-scoped ROM storage.
+This fork packages [Goemon 64: Recompiled](https://github.com/klorfmorf/Goemon64Recomp) for Android. It is an Android port of the recompilation, running the native game through [RT64](https://github.com/rt64/rt64) Vulkan rendering with SDL input, in-APK asset installation, and app-scoped ROM storage.
 
-## Beta Notes
+## Notes
 
-- This is an **early Android beta** (`0.2.0-dev`) and may still have device-specific Vulkan or driver issues.
+- This is the **first public release** (`1.0.0`); it may still have device-specific Vulkan or driver issues.
 - Primarily developed and tested on **Retroid Pocket 5** and **AYN Thor** class handhelds (Snapdragon / Adreno, Android 13).
 - Requires a working **Vulkan** driver. On devices with incomplete drivers, a custom Turnip driver (e.g. [Mr Purple](https://github.com/MrPurple666/purple-turnip/releases)) may help.
 - `arm64-v8a` only for now. Other ABIs (including x86_64 for emulators) are not built yet.
@@ -41,6 +41,29 @@ This port has been tested primarily on Snapdragon / Adreno handhelds. If graphic
 - Physical controller support through SDL
 - Landscape-locked, fullscreen game presentation
 
+## Default Controls
+
+The default gamepad layout (Xbox-style face buttons). Everything is remappable in **Settings → Controls**.
+
+| Button | N64 | In-game action |
+|---|---|---|
+| A | A | Jump |
+| B | B | Attack |
+| X | C-Up | Magic |
+| Y | C-Left | Weapon swap |
+| Right Bumper | C-Down | Change character |
+| Left Trigger | Z | Crouch |
+| Right Trigger | R | Camera control (zoom modifier when Analog Camera is on) |
+| Left Bumper | L | Unused by the game (free for mods) |
+| D-Pad ↑ ↓ ← → | C-Up / C-Down / C-Left / C-Right | Magic / Character / Weapon / Map |
+| Left stick | Analog stick | Move |
+| Right stick | C-buttons | Drives the camera instead when Analog Camera is on |
+| Right stick click (R3) | — | Recenter the analog camera |
+| Start | Start | Pause |
+| Select | — | Open this app's settings menu |
+
+The right stick and the D-Pad both cover the C-buttons, so with Analog Camera on the right stick orbits while the D-Pad keeps the C-button actions.
+
 ## Features
 
 Beyond the Android packaging above, this fork adds the following. Everything here is optional and off by default unless noted, and lives in the in-game settings menu.
@@ -50,11 +73,12 @@ Beyond the Android packaging above, this fork adds the following. Everything her
 A free-look camera on the right analog stick, which the original game does not have.
 
 - **Analog Camera** (General) — orbit the camera around Goemon with the right stick. The camera holds the angle you set; area transitions and scripted camera moves still take over as normal.
-- **Analog Camera Invert** — per-axis inversion (None / X / Y / Both).
+- **Zoom** — hold **R** (the right trigger) and push the right stick up or down to zoom the camera in and out.
+- **Analog Camera Invert** — per-axis inversion (None / X / Y / Both). Also flips the zoom direction.
 - **Camera Sensitivity X / Y** — 0–100 per axis, 50 being the tuned default rate. Zero disables that axis.
 - Click the right stick (**R3**) to hand the camera back to the game so it resumes following behind you.
 
-While enabled, the right stick's C-button mapping is silenced so it can drive the camera.
+While enabled, the right stick's C-button mapping is silenced so it can drive the camera, and **R** becomes the zoom modifier instead of the game's native camera control.
 
 ### Swap Characters While Moving
 
@@ -66,7 +90,7 @@ Note this does not make swapping faster. Changing character reloads the new char
 
 - **Autosave** (General) — saves your progress using the game's own save system, so an autosave is an ordinary save: loading one starts you where a save made at that point normally would. It writes to the save slot you loaded.
 
-While it is on, press **L + R + D-Pad Up** during normal gameplay to save immediately.
+While it is on, press **L + R + Z** during normal gameplay to save immediately.
 
 Saving is refused unless the game is in normal gameplay — the check reuses the game's own "can the player open the pause menu right now" conditions, so cutscenes, dialogue, the pause menu, area transitions and loading are all excluded, as are the Impact and sidescroller stages.
 
