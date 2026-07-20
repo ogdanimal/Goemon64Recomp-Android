@@ -90,13 +90,23 @@ is unvalidated. Do not treat "submit-latency-bound" as established.
 2. **Per-fence latency-vs-compute (#13) is unmeasured.** The 2.3ms/fence figure is 46ms÷20, an
    *average*, not a per-fence measurement. It could be dominated by the 144-call pair.
 3. **The tile-copy fix (INF #11) addresses only 6 of ~18 deps.** The other **12 are format-change
-   fences** (`rt64_state.cpp:558`), an unexamined separate mechanism. If those can't be GPU-satisfied,
-   the fix caps well short of the serialization collapse it's pitched as enabling.
+   fences** (`rt64_state.cpp:558`). Whether they're a *separate* mechanism is itself open: they may
+   share origin with the *same* background effect — the scratch is re-specified `w=8 → w=256` every
+   cycle, and a SetColorImage re-spec is exactly what `:558` keys on. (Nuance: the enumeration shows
+   the scratch's `fmt/siz` **constant** across those re-specs, so if `:558` fences them it's via the
+   width/re-spec, not a true fmt change — needs confirming against what `:558` actually reads.) If
+   they do share origin, the loadBlock fix and the format-change question are **not independent** and a
+   full grasp of the scratch's lifecycle may resolve both; if not, the linear-loadBlock candidate caps
+   at 6 of 18 as stated. Either way this is the **first RE question after the two [HELD]-closing
+   captures** (see §5 lever 3).
 4. **All rig timings are llvmpipe** (§1). Any number in ms from the rig is non-transferable.
 5. **copies-on device validation is incomplete** — visual sweep is clean on the *rig* across
    gameplay+menus, but Adreno-specific breakage is untested; only the diary screen has device timing.
 6. **Enumeration is "one representative frame"** printed once/sec, not a full-frame-set audit; the
    pattern was stable across samples but the sampler could miss an occasional variant.
+7. **Every device number is from a `assembleDebug` build** — the 14 FPS, the 46ms, the +24% delta.
+   Relative conclusions almost certainly survive, but *absolute* figures may shift in a release build;
+   no release-build capture exists.
 
 ## 5. Remaining levers (best-evidenced first)
 
@@ -104,7 +114,10 @@ is unvalidated. Do not treat "submit-latency-bound" as established.
    device visual sweep on gameplay/other screens. Not a cure (gpuWait unchanged).
 2. **DVFS** — likely out, **pending #12**.
 3. **Linear/1D loadBlock tile-copy path** — targeted cure-*candidate* (INF #11); net-new (upstream
-   lacks it, #7); gated by attack-surface #3.
+   lacks it, #7); gated by attack-surface #3. **Sequencing:** after the two [HELD]-closing captures,
+   the first RE question is the scratch buffer's full lifecycle — whether the 12 format-change fences
+   (§4 #3) share its origin (`w=8 → w=256` re-spec each cycle). If they do, one understanding resolves
+   both the loadBlock decline and the format-change fences; if not, this lever caps at 6 of 18.
 4. **Submit-loop rework** (large fallback cure). Consistency constraint: RDRAM must stay *eventually*
    consistent (game CPU reads FB memory between frames), so the shape is barriers/tile-copies
    intra-frame, **one** fence + **one** RDRAM copy-back at frame end — never "skip the copies".
