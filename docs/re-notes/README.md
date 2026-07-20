@@ -157,3 +157,5 @@ long-standing "no resolvable writer" mystery in `goemon_save_re.md`.
 - `goemon_cheats_re.md`, `goemon_character_swap_re.md`, `goemon_overlay_scan.md`,
   `goemon_trace_0800037C.md`, `goemon_critic.md`, `vulkan_device_floor.md`
 - `fixtures/` — evidence corpus; cite it rather than re-deriving
+
+- [Menu-framerate handover](menu-framerate-handover.md) — adversarial-review synthesis: claim ledger (OBS/INF/HELD), refuted hypotheses, attack surface, reproduction.
