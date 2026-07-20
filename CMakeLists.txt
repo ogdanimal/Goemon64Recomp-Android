@@ -12,6 +12,18 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Strip absolute build paths out of the compiled binaries' debug info and __FILE__
+# strings, so a shared build never embeds the builder's home directory / username
+# (e.g. /home/<user>/... locally, or the CI runner path). Remaps the source and
+# binary roots to neutral relative prefixes. Clang/GCC only (not MSVC). Applied
+# before any target/subdirectory so it covers the recomp code AND the vendored libs.
+if (NOT MSVC)
+    add_compile_options(
+        "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=."
+        "-ffile-prefix-map=${CMAKE_BINARY_DIR}=./build"
+    )
+endif()
+
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-everything /W4")
 endif()

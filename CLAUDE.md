@@ -180,7 +180,9 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   neither workflow triggers on `pull_request`, so fork PRs can't run CI or reach
   the ROM secret. Before flipping, the whole repo + history + submodules + APK were
   scrubbed of PII (local usernames, device labels, the maintainer's name) and
-  secret-scanned (gitleaks, 0 real findings). GitHub hardening enabled: **secret scanning, push protection,
+  secret-scanned (gitleaks, 0 real findings). Builds also strip absolute source
+  paths via `-ffile-prefix-map` (top of `CMakeLists.txt`), so no compiled binary
+  (local debug or CI release) embeds the builder's home dir / username. GitHub hardening enabled: **secret scanning, push protection,
   Dependabot** (Dependabot has opened PRs for `assets/scss` build-tooling npm
   deps — build-time only, not shipped in the APK).
 - **Releases are tag-triggered + signed** via `.github/workflows/android-release.yml`:
