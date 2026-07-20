@@ -1,7 +1,15 @@
 # RESUME — Autosave feature
 
+> **STATUS: SUPERSEDED — the feature is now COMPLETE.** All five steps (manual
+> trigger, differential test, `.manual.bak` rollback, settled check, 2-minute
+> timer) are implemented and device-verified (2026-07-19), the submodule hooks
+> are pushed to `fork` and CI is green, and the manual combo is `L + R + Z`.
+> CLAUDE.md § "Autosave" and `docs/autosave.md` are authoritative. Passages
+> below that describe the timer as "not wired up" or the submodule as "not yet
+> pushed" are stale history, kept only for the derivation record.
+
 Handoff note for a fresh session. Written 2026-07-18, at the point where the
-implementation is complete and builds, but nothing has run on device.
+implementation was complete and built but nothing had yet run on device.
 
 ## Read these first
 
@@ -47,10 +55,11 @@ code in `.file_12` and so not callable from gameplay). Every function it calls i
 in `.main` and always resident, so the sequence is reproduced in
 `goemon_save_now()`.
 
-Currently **manual trigger only** — `L + R + Z` (was `L + R + D-Pad Up`; changed
-when the D-pad was remapped to C-buttons), edge-triggered. This is
-step 1 of a staged rollout; the timer is deliberately not wired up until the
-write path is proven against a real save file.
+Two triggers, both edge-triggered and both device-verified: the **manual combo**
+`L + R + Z` (was `L + R + D-Pad Up`; changed when the D-pad was remapped to
+C-buttons) and the **2-minute timer**. (This doc was written when only the manual
+trigger existed and the timer was gated on proving the write path — that gate has
+since been met.)
 
 The setting is in the General config menu and defaults to **Off**, because this
 overwrites the player's real save.
@@ -120,9 +129,10 @@ overwrites the player's real save.
    `lib/N64ModernRuntime` submodule, and the bracket wrapper in
    `patches/autosave.c`.
 
-   **The submodule change is not yet pushed.** `lib/N64ModernRuntime` carries the
-   two hook points on branch `goemon-android`; CI will not build the pointer bump
-   until that commit is pushed to `fork` (ogdanimal/N64ModernRuntime).
+   **The submodule change is pushed (corrected 2026-07-19).** `lib/N64ModernRuntime`
+   carries the two hook points on branch `goemon-android`; the recorded pointer
+   `b6f6253` matches the `fork` (ogdanimal/N64ModernRuntime) `goemon-android` tip
+   and CI is green. (This originally read "not yet pushed" — that was stale.)
 
 4. ~~**The save-data-settled check.**~~ **DONE and VERIFIED on device
    2026-07-19.** Watches four ranges across BOTH the live block `0x8015C5D8`

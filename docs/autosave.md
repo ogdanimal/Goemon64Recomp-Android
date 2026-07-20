@@ -1,12 +1,15 @@
 # Autosave — implementation rundown
 
-Status as of 2026-07-18. Ported from Zelda64Recomp's `patches/autosaving.c`.
+**STATUS: FUNCTIONALLY COMPLETE — all five steps device-verified (2026-07-19).**
+Ported from Zelda64Recomp's `patches/autosaving.c`. See CLAUDE.md § "Autosave"
+for the authoritative rollup.
 
-**Verified on device (2026-07-18).** The manual trigger commits a real save that
-the game loads normally, and the differential test against the game's own save
-routine **passed**: the `0x304` payload is byte-identical apart from the CRC word
-and a play-time counter. Details in "Verifying it" below. Still manual-only —
-the timer is step 2 and is not wired up.
+**Verified on device.** The manual trigger commits a real save that the game
+loads normally, and the differential test against the game's own save routine
+**passed**: the `0x304` payload is byte-identical apart from the CRC word and a
+play-time counter. Details in "Verifying it" below. The 2-minute timer, the
+settled check, and the `.manual.bak` rollback point are all implemented and
+verified — see the corresponding sections below.
 
 ## What it does
 
@@ -15,8 +18,8 @@ resulting save loads through the normal load path and starts you where a save
 made at that point would. It writes to whichever slot you loaded. No custom
 format, no separate slot, no bespoke checksum.
 
-**Current state: manual trigger only.** Step 1 of a staged rollout — the timer
-is not wired up until the write path is proven on-device.
+Both a **manual trigger** (`L + R + Z`) and a **2-minute timer** commit saves;
+both are implemented and device-verified. The whole feature defaults to **Off**.
 
 **Trigger: `L` + `R` + `Z`** (physically LB + RT + LT), edge-triggered (holding
 it saves once, not every frame), and only while the safety gate passes. See the
@@ -44,7 +47,7 @@ proved the payload matches on the states tested rather than on every state that
 exists, so Off means anyone exposed to that opted in.
 
 **Off disables the whole feature, not just the timer.** The early return in
-`update_autosave` (`patches/autosave.c:583`) sits above the combo handling, so
+`update_autosave` (`patches/autosave.c:605`) sits above the combo handling, so
 the manual `L + R + Z` trigger does nothing either, the settle tracking
 does not accumulate, and the Saved indicator is never seen. A fresh install is
 entirely inert until the player enables it. The default applies only when the
@@ -460,12 +463,12 @@ Added 2026-07-18, from the on-device session and three static scans:
 
 ## Deferred
 
-- **The timer** (step 2). The write path is now verified, so this is unblocked.
-  **A timer is confirmed to be the right trigger shape**, not merely a default: a
-  whole-ROM scan established that Goemon has **no automatic commit points** —
-  every one of the 12 pak-write sites is behind an explicit player confirmation.
-  There is nothing to hook, so the alternative of piggybacking on the game's own
-  notion of a checkpoint does not exist.
+- ~~**The timer** (step 2).~~ **DONE and VERIFIED on device 2026-07-19.** See
+  "The timer" below. **A timer is the right trigger shape**, not merely a
+  default: a whole-ROM scan established that Goemon has **no automatic commit
+  points** — every one of the 12 pak-write sites is behind an explicit player
+  confirmation. There is nothing to hook, so the alternative of piggybacking on
+  the game's own notion of a checkpoint does not exist.
 - ~~**Save-data-settled check**~~ — **DONE and VERIFIED on device 2026-07-19.**
   See "The settled check" below.
 - ~~**On-screen "Saved" indicator**~~ — **DONE and VERIFIED on device 2026-07-19.**

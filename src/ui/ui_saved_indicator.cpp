@@ -1,5 +1,5 @@
 // A transient "Saved" toast shown over live gameplay when the autosave feature
-// commits a save (timed or via the manual L + R + D-Pad Up combo).
+// commits a save (timed or via the manual L + R + Z combo).
 //
 // Why this is its own context rather than recompui::open_notification: that
 // function is the modal prompt with its buttons hidden (ui_prompt.cpp:405). It

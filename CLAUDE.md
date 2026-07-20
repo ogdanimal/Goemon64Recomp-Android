@@ -61,8 +61,8 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     on the states tested, not on every state that exists. Off means anyone
     exposed to that opted in.
   - **"Defaults Off" means the WHOLE feature is off, not just the timer.**
-    There is one setting, `autosave_mode` (`src/game/config.cpp:262`), and the
-    early return at the top of `update_autosave` (`patches/autosave.c:583`) sits
+    There is one setting, `autosave_mode` (`src/game/config.cpp:266`), and the
+    early return at the top of `update_autosave` (`patches/autosave.c:605`) sits
     *above* the combo handling — so with the default in place the manual
     `L + R + Z` combo does nothing either, the settle tracking does not
     accumulate, and the Saved indicator is never seen. On a fresh install the

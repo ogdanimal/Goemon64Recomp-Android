@@ -31,9 +31,10 @@ false and would disable them permanently). The dense
 [acamR]/[acamU]/[acamB]/[acamH] diagnostics are GONE, along with the then-dead
 `acam_get_pivot`/`ACAM_PLAYER_POS_NODE` (the override pivots on look_at now).
 
-NEXT (optional polish only): feel tuning of the base rates now that
-sensitivity is adjustable; the pitch-sign default (stick up = eye rises) is
-still unconfirmed; C-button UX.
+NEXT: nothing outstanding. Feel/rates, pitch-sign (stick up = eye rises), and
+the Y-invert↔zoom coupling were all confirmed good and DECIDED settled
+2026-07-20 (see CLAUDE.md § "Analog camera"); zoom shipped in v1.0.0. Do not
+tune proactively.
 
 Build in ONE call: `wsl -d Ubuntu bash ~/goemon-build-all.sh` (avoids the
 PowerShell→wsl.exe quote mangling — see [[wsl-bash-tool-gotchas]]). After ANY
@@ -52,7 +53,7 @@ Repo: `~/projects/Goemon64Recomp` (WSL "Ubuntu", branch dev). Read
 CLAUDE.md first — its "Analog camera" section is authoritative; full
 critic-verified RE reports live in `docs/re-notes/goemon_*.md` (8 files).
 All camera work is UNCOMMITTED on dev. Device: Retroid Pocket 5, adb serial
-351039b7 (Windows-side adb only; WSL adb can't see it).
+<device-serial> (Windows-side adb only; WSL adb can't see it).
 
 STATE: **v13 deployed** (built, installed, briefly test-driven — diagnostics
 healthy, awaiting the user's final verdict). The architecture is DONE and
@@ -125,7 +126,7 @@ BUILD/TEST LOOP (patches + host):
 
 APK: android/app/build/outputs/apk/debug/app-debug.apk (copy to Windows
 before adb install — Git Bash mangles UNC/device paths; use PowerShell).
-Windows: adb -s 351039b7 install -r <apk>; force-stop; logcat -c; launch.
+Windows: adb -s <device-serial> install -r <apk>; force-stop; logcat -c; launch.
 Logcat tag Goemon64-stdio; diags: [acamP] yaw/pitch/player-pos rubber
 stamp, [acamB] basis-swap engagement, [acamH] input mapping.
 Testing needs the user (human) — batch diagnostics; screen recordings land

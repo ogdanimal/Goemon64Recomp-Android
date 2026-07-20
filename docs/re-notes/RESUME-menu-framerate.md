@@ -1,5 +1,12 @@
 # Resume prompt — Android menu-framerate investigation
 
+> **STATUS: SUPERSEDED.** The gating device session was completed 2026-07-19 —
+> both `[HELD]` items are CLOSED (DVFS/clock is the dominant lever; root cause =
+> clock-bound GPU compute) and the 4x/MSAA-off defaults shipped in v1.0.0. See
+> [`menu-framerate-handover.md`](menu-framerate-handover.md) §0 and §7. The
+> "STATUS … NOT yet proven" line and the "NEXT — ONE device session" block below
+> are stale; kept for the investigation record.
+
 Paste the block below as the first message of a fresh session. **Single entry point is the handover
 doc** ([`menu-framerate-handover.md`](menu-framerate-handover.md)); it leads with its own weaknesses
 and tags every claim OBS/INF/HELD. Authoritative detail:

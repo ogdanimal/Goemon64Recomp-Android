@@ -1,73 +1,116 @@
 # Building Guide
 
-This guide will help you build the project on your local machine. The process will require you to provide a decompressed ROM of the US version of the game.
+This guide covers building the **Android** app from source. The shipped product
+is an Android APK (arm64-v8a); there is no supported desktop build in this fork.
 
-These steps cover: decompressing the ROM, running the recompiler and finally building the project.
+Building requires you to provide a **decompressed** ROM of the US version of the
+game — it is a build-time input only and its data is never shipped in the APK.
 
-## 1. Clone the Goemon64Recomp Repository
-This project makes use of submodules so you will need to clone the repository with the `--recurse-submodules` flag.
+The steps below: clone with submodules, install the toolchain, decompress the
+ROM, run the recompiler to generate C sources, then build the APK with Gradle.
 
-```bash
-git clone --recurse-submodules
-# if you forgot to clone with --recurse-submodules
-# cd /path/to/cloned/repo && git submodule update --init --recursive
-```
+## 1. Clone the repository (with submodules)
 
-## 2. Install Dependencies
-
-### Linux
-For Linux the instructions for Ubuntu are provided, but you can find the equivalent packages for your preferred distro.
+This project uses submodules, so clone recursively.
 
 ```bash
-# For Ubuntu, simply run:
-sudo apt-get install cmake ninja-build libsdl2-dev libgtk-3-dev lld llvm clang
+git clone --recurse-submodules https://github.com/ogdanimal/Goemon64Recomp-Android.git
+cd Goemon64Recomp-Android
+# if you forgot --recurse-submodules:
+# git submodule update --init --recursive
 ```
 
-### Windows
-You will need to install [Visual Studio 2022](https://visualstudio.microsoft.com/downloads/).
-In the setup process you'll need to select the following options and tools for installation:
-- Desktop development with C++
-- C++ Clang Compiler for Windows
-- C++ CMake tools for Windows
+## 2. Install dependencies
 
-The other tool necessary will be `make` which can be installe via [Chocolatey](https://chocolatey.org/):
-```bash
-choco install make
-```
+You need a host toolchain (to build and run the recompiler) plus the Android SDK.
 
-## 3. Decompressing the target ROM
-You will need to decompress the NTSC-U Mystical Ninja Starring Goemon ROM (sha1: df8083a54296b8c151917c5333e1c85f014a2a66) before running the recompiler.
-
-Follow the build instructions for the [Mystical Ninja Starring Goemon Decompilation Project](https://github.com/klorfmorf/mnsg) in order to generate a decompressed ROM.
-
-Copy the decompressed ROM with the name `baserom.us.decompressed.z64` from the root of the decompilation project to the root of the Goemon64Recomp repository and rename it to `mnsg.us.decompressed.z64`.
-
-## 4. Generating the C code
-
-Now that you have the required files, you must build [N64Recomp](https://github.com/Mr-Wiseguy/N64Recomp) and run it to generate the C code to be compiled. The building instructions can be found [here](https://github.com/Mr-Wiseguy/N64Recomp?tab=readme-ov-file#building). That will build the executables: `N64Recomp` and `RSPRecomp` which you should copy to the root of the Goemon64Recomp repository.
-
-After that, go back to the repository root, and run the following commands:
-```bash
-./N64Recomp mnsg.us.toml
-./RSPRecomp aspMain.us.toml
-```
-
-## 5. Building the Project
-
-Finally, you can build the project! :rocket:
-
-On Windows, you can open the repository folder with Visual Studio, and you'll be able to `[build / run / debug]` the project from there.
-
-If you prefer the command line or you're on a Unix platform you can build the project using CMake:
+### Host toolchain (Linux / WSL)
 
 ```bash
-cmake -S . -B build-cmake -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -G Ninja -DCMAKE_BUILD_TYPE=Release # or Debug if you want to debug
-cmake --build build-cmake --target Goemon64Recompiled -j$(nproc) --config Release # or Debug
+sudo apt-get install -y ninja-build cmake clang lld llvm make
 ```
+
+### Android SDK
+
+Install via Android Studio or the command-line SDK tools, then install the
+pinned NDK and CMake versions the native build expects:
+
+- **NDK 27.1.12297006**
+- **CMake 3.22.1**
+- **JDK 17**
+
+```bash
+sdkmanager "ndk;27.1.12297006" "cmake;3.22.1"
+```
+
+## 3. Decompress the target ROM
+
+You need a decompressed NTSC-U *Mystical Ninja Starring Goemon* ROM
+(decompressed ROM sha1: `df8083a54296b8c151917c5333e1c85f014a2a66`).
+
+Follow the build instructions for the
+[Mystical Ninja Starring Goemon Decompilation Project](https://github.com/klorfmorf/mnsg)
+to generate the decompressed ROM, then copy it to the **repository root** and
+name it **`mnsg.z64`** (this is the path `mnsg.toml` and `aspMain.toml` expect).
+
+## 4. Generate the C sources (host)
+
+Build [N64Recomp](https://github.com/Mr-Wiseguy/N64Recomp)
+(building instructions [here](https://github.com/Mr-Wiseguy/N64Recomp?tab=readme-ov-file#building)).
+That produces the `N64Recomp` and `RSPRecomp` executables; copy both to the
+repository root.
+
+You also need the `file_to_c` host tool, built from the bundled rt64 source:
+
+```bash
+mkdir -p build-host-tools
+clang++ -std=c++17 -O2 lib/rt64/src/tools/file_to_c/file_to_c.cpp -o build-host-tools/file_to_c
+```
+
+Then, from the repository root, recompile the game, the RSP microcode, and the
+mod patches:
+
+```bash
+# Game + RSP microcode  ->  RecompiledFuncs/*.c , rsp/aspMain.cpp
+./N64Recomp mnsg.toml
+./RSPRecomp aspMain.toml
+
+# Patches  ->  patches/patches.bin + RecompiledPatches/*
+make -C patches CC=clang LD=ld.lld
+./N64Recomp patches.toml
+./build-host-tools/file_to_c \
+  patches/patches.bin mm_patches_bin \
+  RecompiledPatches/patches_bin.c RecompiledPatches/patches_bin.h
+```
+
+> [!NOTE]
+> `RecompiledFuncs/` and `RecompiledPatches/` are **generated**, not committed.
+> The Android CMake build does not run the patches codegen for you, so this step
+> must be done before building the APK.
+
+## 5. Build the APK
+
+The Android app is a Gradle module under `android/` that drives the native CMake
+build (`-DGOEMON_ANDROID=ON`, `arm64-v8a`).
+
+```bash
+cd android
+./gradlew assembleDebug --no-daemon --stacktrace
+```
+
+The debug APK lands at `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+To build a **release** APK, supply a signing keystore via `keystore.properties`
+(at the repo root or in `android/`) and run `./gradlew assembleRelease`. Note
+that a release signed with a different key will not install over an existing
+install. (CI cuts signed releases automatically on `v*` tags.)
 
 ## 6. Success
 
-Voilà! You should now have a `Goemon64Recompiled` executable in the build directory! If you used Visual Studio this will be `out/build/x64-[Configuration]` and if you used the provided CMake commands then this will be `build-cmake`. You will need to run the executable out of the root folder of this project or copy the assets folder to the build folder to run it.
+Sideload the debug APK onto an arm64 Android device. It is not an emulator and
+ships no game assets — on first launch it asks you to select your own ROM
+through the Android file picker.
 
-> [!IMPORTANT]  
-> In the game itself, you should be using a standard ROM, not the decompressed one.
+> [!IMPORTANT]
+> In the app you provide a **standard** ROM through the file picker, not the
+> decompressed one. The decompressed ROM is only a build-time input for step 3.
