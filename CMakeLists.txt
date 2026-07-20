@@ -485,6 +485,13 @@ elseif (ANDROID)
     set (FILE_TO_C "${GOEMON_FILE_TO_C}")
     set (FILE_TO_C_DEP "${GOEMON_FILE_TO_C}")
 else()
+    # Desktop (Linux/macOS): file_to_c is built in-tree as a native CMake target.
+    # rt64 sets FILE_TO_C in its own directory scope, but the app-level
+    # build_vertex_shader()/build_pixel_shader() calls below run in THIS scope,
+    # so it must be set here too -- otherwise the shader-embed COMMAND is emitted
+    # with an empty ${FILE_TO_C} and tries to exec the .spv itself (exit 126).
+    set (FILE_TO_C file_to_c)
+    set (FILE_TO_C_DEP file_to_c)
     if (APPLE)
         # Apple's binary is universal, so it'll work on both x86_64 and arm64
         set (DXC "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/arm64/dxc-macos")
