@@ -34,3 +34,4 @@ recomp_get_infinite_lives_enabled = 0x8F000074;
 recomp_get_swap_while_moving_enabled = 0x8F000078;
 recomp_set_autosave_in_progress = 0x8F00007C;
 recomp_notify_saved = 0x8F000080;
+recomp_get_camera_zoom_held = 0x8F000084;

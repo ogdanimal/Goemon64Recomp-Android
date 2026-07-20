@@ -31,6 +31,9 @@ DECLARE_FUNC(u32, recomp_time_us);
 DECLARE_FUNC(void, recomp_get_analog_cam_sensitivity, s32* x, s32* y);
 // R3 (right-stick click) held state — edge-detected by the patch to recenter.
 DECLARE_FUNC(s32, recomp_get_camera_recenter_pressed);
+// Physical right-trigger held state, read directly (not via N64 R, which is
+// suppressed in analog-camera mode) -- the analog camera's zoom modifier.
+DECLARE_FUNC(s32, recomp_get_camera_zoom_held);
 // Cheats menu toggles.
 DECLARE_FUNC(s32, recomp_get_infinite_health_enabled);
 DECLARE_FUNC(s32, recomp_get_infinite_money_enabled);

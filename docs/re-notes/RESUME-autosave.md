@@ -47,7 +47,8 @@ code in `.file_12` and so not callable from gameplay). Every function it calls i
 in `.main` and always resident, so the sequence is reproduced in
 `goemon_save_now()`.
 
-Currently **manual trigger only** — `L + R + D-Pad Up`, edge-triggered. This is
+Currently **manual trigger only** — `L + R + Z` (was `L + R + D-Pad Up`; changed
+when the D-pad was remapped to C-buttons), edge-triggered. This is
 step 1 of a staged rollout; the timer is deliberately not wired up until the
 write path is proven against a real save file.
 

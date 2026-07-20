@@ -61,7 +61,7 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     There is one setting, `autosave_mode` (`src/game/config.cpp:262`), and the
     early return at the top of `update_autosave` (`patches/autosave.c:583`) sits
     *above* the combo handling — so with the default in place the manual
-    `L + R + D-Pad Up` combo does nothing either, the settle tracking does not
+    `L + R + Z` combo does nothing either, the settle tracking does not
     accumulate, and the Saved indicator is never seen. On a fresh install the
     feature is entirely inert until the player enables it. Earlier notes said
     "the timer defaults to Off", which wrongly implies manual saving works out
@@ -115,6 +115,45 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   without a round trip. **All three submodule levels are pushed to their forks**
   — verify with `git ls-remote` before trusting a pointer bump, since a bump
   committed while the submodule commit stays local is unbuildable by CI.
+- **Controller input rework + analog-camera zoom — DONE and DEVICE-VERIFIED
+  2026-07-20** (on `dev` working tree; not yet committed as of this note).
+  Authored fresh from `docs/input/n64-goemon-input-assignment.csv` (the design
+  doc — keep it in sync with the code).
+  - **New default controller map** (`default_n64_controller_mappings`,
+    `src/game/input.cpp`), Xbox face layout: A=SOUTH, B=EAST, **X=NORTH→C-Up**,
+    **Y=WEST→C-Left** (X/Y swapped from the CSV's first pass per user), RB=C-Down,
+    LB=**N64 L**, LT=Z, RT=R, Start, Select=menu. Right stick → C-buttons
+    (suppressed→camera in analog mode). **Physical D-pad → C-buttons; N64 D-pad
+    left UNBOUND** (menu nav reads the physical D-pad directly via SDL in
+    `ui_state.cpp`, so menus are unaffected).
+  - **`bindings_per_input` raised 2→3** (`include/recomp_input.h`) so each
+    C-button holds face + right-stick + D-pad. In analog mode the stick binding
+    self-suppresses, leaving face + D-pad — this is how "D-pad covers C while the
+    stick drives the camera" works with no mode-swap logic.
+  - **Analog-camera ZOOM** (`patches/camera.c`): hold **R (RT) + right-stick Y**
+    = uniform dolly zoom (`g_analog_cam_zoom`, applied in `acam_rotate_in_place`;
+    tunables `ACAM_ZOOM_RATE_PER_S` 0.9, `ACAM_ZOOM_MIN/MAX` 0.45/2.5). Stick up
+    = in; resets with recenter/area-change/disengage; added to all four "engaged"
+    predicates so zoom-only still reconstructs. Distance was already read live, so
+    zoom is just a scale — azimuth-neutral, safe for the movement/skybox/audio
+    consumers.
+  - **Native N64 R suppressed while analog cam On** (`get_n64_input`,
+    `controls.cpp`) so holding RT to zoom does not hijack the C-buttons into the
+    game's own camera control (and native R+C zoom cannot compound). The zoom
+    modifier reads the PHYSICAL trigger via the new
+    `recomp_get_camera_zoom_held()` (plumbed: `recomp_api.cpp` / `main.cpp`
+    REGISTER / `syms.ld` 0x8F000084 / `input.h` / `recomp_input.h` /
+    `input.cpp`), so it is unaffected by the mask. R is untouched in Standard mode.
+  - **Save combo moved to `L + R + Z`** and its R part now reads the physical
+    trigger too, so it survives the R-mask in both modes. See the Autosave
+    section.
+  - **GOTCHA (will recur every default-binding change):** new defaults only apply
+    to inputs ABSENT from the saved `controls.json`; existing installs keep their
+    file. To pick up new defaults: in-game **Controls → Reset to Defaults**, or
+    delete `controls.json` **and** `controls.json.bak` on device (both, or the
+    `.bak` reloads) then relaunch. Fresh installs get the new defaults for free.
+    On device the config lives at
+    `/storage/<uuid>/Android/data/com.goemon64.recomp/files/data/`.
 - **NOW: back to general bug-fixing** on the Android port (test via the CI debug
   APK), unless something else takes priority.
 - **PARKED — do not start without the user's say-so:**
@@ -142,9 +181,17 @@ Evidence corpus (cite it, don't re-derive): `docs/re-notes/fixtures/`.
 Commits on `dev`: `70d3e4d` feature, `9522fe8` docs+RE corrections,
 `49fedf8` `.bak` hazard reframing, `71e56a5` fixtures.
 
-WHAT WORKS: manual trigger `L + R + D-Pad Up`, edge-triggered. The single
-`autosave_mode` setting defaults **Off**, which disables this combo too — see
-the note above.
+WHAT WORKS: manual trigger `L + R + Z` (was `L + R + D-Pad Up`; changed 2026-07-20
+when the reworked controller map bound the physical D-pad to the C-buttons,
+making N64 D-Up unproducible — Z is the third harmless input alongside L and R).
+Edge-triggered. The single `autosave_mode` setting defaults **Off**, which
+disables this combo too — see the note above.
+- **Analog-camera zoom interaction (RESOLVED 2026-07-20):** analog-camera zoom
+  uses R (right trigger) as its modifier, so `get_n64_input` masks N64 R out of
+  the button word while Analog Camera mode is On. The `L+R+Z` combo therefore
+  reads its **R part from the physical trigger** (`recomp_get_camera_zoom_held`),
+  so it works identically in both modes; L and Z stay in the N64 button word. See
+  docs/autosave.md.
 Commits through Goemon's own save data/slot format by reimplementing
 `func_80214D58_5D0228` (overlay code, so not callable). Writes the slot the
 player loaded — which is the game's *native* semantic, since an in-game save
@@ -250,9 +297,12 @@ dependent rows grey out + focus-disable while Analog Camera is Off
 (`data-attrif-disabled`, NOT `data-attr-` — the latter sets the attribute even
 when false), and the dense [acamR]/[acamU]/[acamB]/[acamH] diagnostics are
 STRIPPED. Committed on dev as 83daa6a.
-NEXT (optional polish): feel tuning of the base rates now that sensitivity is
-adjustable; pitch-sign default (stick up = eye rises) still unconfirmed;
-C-button UX. Build = one call: `wsl -d Ubuntu bash ~/goemon-build-all.sh`.
+ZOOM — DONE and device-verified 2026-07-20 (hold R/RT + right-stick Y; see the
+input-rework bullet in "Current focus"). NEXT (optional polish): feel tuning of
+the base rates now that sensitivity is adjustable; pitch-sign default (stick up =
+eye rises) still unconfirmed; zoom feel/clamps and whether Y-invert should stay
+coupled to zoom direction (currently it is). Build = one call:
+`wsl -d Ubuntu bash ~/goemon-build-all.sh`.
 GOTCHA: after any `assets/` change, delete the device's
 `files/data/.assets_version` stamp or the app keeps the OLD extracted UI.
 

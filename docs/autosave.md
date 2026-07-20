@@ -18,9 +18,24 @@ format, no separate slot, no bespoke checksum.
 **Current state: manual trigger only.** Step 1 of a staged rollout — the timer
 is not wired up until the write path is proven on-device.
 
-**Trigger: `L` + `R` + `D-Pad Up`**, edge-triggered (holding it saves once, not
-every frame), and only while the safety gate passes. See the
+**Trigger: `L` + `R` + `Z`** (physically LB + RT + LT), edge-triggered (holding
+it saves once, not every frame), and only while the safety gate passes. See the
 `AUTOSAVE_TEST_COMBO` define in `patches/autosave.c`.
+
+> Was `L + R + D-Pad Up`. Changed when the controller map was reworked to bind
+> the physical D-pad to the C-buttons, which makes N64 D-Up unproducible. `Z` is
+> the replacement because L/Z/R are the only three N64 inputs harmless to hold at
+> once — every other candidate fires an action (any C-button), triggers native
+> camera zoom (R+C), or opens the pause menu (Start). See the define's comment.
+
+> **Interaction with analog-camera zoom (resolved).** The analog camera uses R
+> (the right trigger) as its zoom modifier, so `get_n64_input` (`controls.cpp`)
+> masks N64 R out of the button word whenever Analog Camera mode is On. To stay
+> reachable in both modes, this combo reads its **R part from the physical trigger**
+> (`recomp_get_camera_zoom_held`) rather than the N64 R bit; `L` and `Z` still come
+> from the N64 button word (they are not masked). So `L + R + Z` behaves
+> identically whether analog cam is on or off. The trigger threshold is the same
+> `axis_threshold` N64 R itself uses, so the activation point is unchanged.
 
 The single `autosave_mode` setting defaults to **Off** — decided 2026-07-19 and
 settled. Zelda64Recomp defaults theirs On; this one overwrites your real save
@@ -30,7 +45,7 @@ exists, so Off means anyone exposed to that opted in.
 
 **Off disables the whole feature, not just the timer.** The early return in
 `update_autosave` (`patches/autosave.c:583`) sits above the combo handling, so
-the manual `L + R + D-Pad Up` trigger does nothing either, the settle tracking
+the manual `L + R + Z` trigger does nothing either, the settle tracking
 does not accumulate, and the Saved indicator is never seen. A fresh install is
 entirely inert until the player enables it. The default applies only when the
 JSON key is **absent**; existing users keep what they chose.
@@ -901,7 +916,7 @@ this reimplementation and the real `func_80214D58_5D0228` marshaling.
 
 The only thing that validates the marshaling is a differential test:
 
-1. At a fixed point in the game, save via `L + R + D-Pad Up`. Pull the file.
+1. At a fixed point in the game, save via `L + R + Z`. Pull the file.
 2. At the same point, save for real through a save NPC or inn. Pull that file.
 3. Compare **the slot region only**, masking known-volatile fields.
 4. Load each and confirm identical state.

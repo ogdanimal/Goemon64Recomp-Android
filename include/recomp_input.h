@@ -151,7 +151,11 @@ namespace recomp {
     extern const DefaultN64Mappings default_n64_keyboard_mappings;
     extern const DefaultN64Mappings default_n64_controller_mappings;
 
-    constexpr size_t bindings_per_input = 2;
+    // 3 so each N64 C-button can hold face/shoulder + right-stick + D-pad at once.
+    // In analog-camera mode the right-stick binding is suppressed at runtime
+    // (see right_analog_suppressed), leaving face/shoulder + D-pad -- i.e. the
+    // D-pad takes over the C-buttons precisely when the stick drives the camera.
+    constexpr size_t bindings_per_input = 3;
 
     size_t get_num_inputs();
     const std::string& get_input_name(GameInput input);
@@ -185,6 +189,9 @@ namespace recomp {
     // R3 (right-stick click): analog-camera recenter. Raw held state; the
     // consumer edge-detects it.
     bool get_camera_recenter_pressed();
+    // Physical right trigger held past the button threshold, read directly so it
+    // works even while N64 R is suppressed in analog-camera mode.
+    bool get_camera_zoom_held();
     // Analog-camera yaw (s16 binary angle) reported by the patches each frame;
     // get_n64_input() counter-rotates the left stick by it so movement matches
     // the yawed view. 0 when the analog camera is off.

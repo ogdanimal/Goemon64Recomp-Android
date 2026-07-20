@@ -1,0 +1,49 @@
+Retroid Controls,N64 Equivalent - Standard,N64 Equivalent - Analog Camera,,In-game action,Robot Action,N64 input,Keyboard,Gamepad - Built-in Camera,Gamepad - Analog Camera,,,,,
+A,A,A,,Jump,Fierce punch,A,Space,A,A,,,,,
+B,B,B,,Attack,Quick punch,B,Left Shift,B,B,,,,,
+X,C-Up,C-Up,,Magic Power,Combo,C-Up,E,Left Bumper (LB),,,,,,
+Y,C-Left,C-Left,,Weapon Swap,Combo,C-Left,R,Right Trigger (RT),,,,,,
+Left Bumper,L,L,,(Unused natively – mod/save modifier),,L,Q,Left Trigger (LT),Left Trigger (LT),,,,,
+Left Trigger,Z,Z,,Lie down/crouch,Nasal bullet throw,Z,,,,,,,,
+Right Bumper,C-Down,C-Down,,Change character,Combo,C-Down,Enter,Start,Start,,,,,
+Right Trigger,R,R,,Camera Control,Chain hook,R,,,,,,,,
+D-Pad Left,C-Left,C-Left,,Enable/hide map,Combo,C-Right,↓ Down Arrow,Right Stick ↓ or Right Bumper (RB),D-Pad Down,,,,,
+D-Pad Right,C-Right,C-Right,,Magic Power,Combo,C-Up,J,,,,,,,
+D-Pad Up,C-Up,C-Up,,Weapon Swap,Combo,C-Left,L,,,,,,,
+D-Pad Down,C-Down,C-Down,,Change character,Combo,C-Down,I,,,,,,,
+Left Joystick - Left,Analog Left (Movement),Analog Left (Movement),,Walk/running,Move sights,Analog Left,K,,,,,,,
+Left Joystick - Right,Analog Right (Movement),Analog Right (Movement),,Walk/running,Move sights,Analog Right,A,Left Stick ←,,,,,,
+Left Joystick - Up,Analog Up (Movement),Analog Up (Movement),,Walk/running,Move sights,Analog Up,D,Left Stick →,,,,,,
+Left Joystick - Down,Analog Down (Movement),Analog Down (Movement),,Walk/running,Move sights,Analog Down,W,Left Stick ↑,,,,,,
+Right Joystick - Left,C-Left,Analog Left (Camera),,Enable/hide map,Combo,C-Right,S,Left Stick ↓,,,,,,
+Right Joystick - Right,C-Right,Analog Right (Camera),,Magic Power,Combo,C-Up,,,,,,,,
+Right Joystick - Up,C-Up,Analog Up (Camera),,Weapon Swap,Combo,C-Left,,,,,,,,
+Right Joystick - Down,C-Down,Analog Down (Camera),,Change character,Combo,C-Down,,,,,,,,
+Right Joystick - Click (R3),– (unassigned),Camera Reset / Recenter,,Recenter camera – hand control back to game (analog-cam mode only),,– (host action),,,R3 (stick click),,,,,
+Start,Start,Start,,Menu/Pause,Menu/Pause?,Start,→ Right Arrow,Right Stick → or ,D-Pad Right,,,,,
+Select,Select/Back (device-related),Select/Back (device-related),,App Menu/Settings,App Menu/Settings,Select/Back,↑ Up Arrow,Right Stick ↑ or R3 (stick click),D-Pad Up,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,Robot Action,N64 input,,,,,,
+,,,,,,,Fierce punch,A,,,,In-game action,Robot Action,N64 input
+,,,,,,,Quick punch,B,,,,Jump,Fierce punch,A
+,,,,,,,Combo,C-Left,,,,Attack,Quick punch,B
+,,,,,,,Combo,C-Up,,,,Weapon Swap,Combo,C-Left
+,,,,,,,,,,,,Magic Power,Combo,C-Up
+,,,,,,,Nasal bullet throw,Z,,,,,,
+,,,,,,,Menu/Pause,Start,,,,Lie down/crouch,Nasal bullet throw,Z
+,,,,,,,Chain hook,R,,,,Menu,Menu/Pause,Start
+,,,,,,,-,D-Pad Left,,,,Camera Control,Chain hook,R
+,,,,,,,-,D-Pad Right,,,,,-,D-Pad Left
+,,,,,,,-,D-Pad Up,,,,,-,D-Pad Right
+,,,,,,,-,D-Pad Down,,,,,-,D-Pad Up
+,,,,,,,Move sights,Analog Left,,,,,-,D-Pad Down
+,,,,,,,Move sights,Analog Right,,,,Walk/running,Move sights,Analog Left
+,,,,,,,Move sights,Analog Up,,,,Walk/running,Move sights,Analog Right
+,,,,,,,Move sights,Analog Down,,,,Walk/running,Move sights,Analog Up
+,,,,,,,Combo,C-Right,,,,Walk/running,Move sights,Analog Down
+,,,,,,,Combo,C-Up,,,,Enable/hide map,Combo,C-Right
+,,,,,,,Combo,C-Left,,,,Magic Power,Combo,C-Up
+,,,,,,,Combo,C-Down,,,,Weapon Swap,Combo,C-Left
+,,,,,,,,,,,,Change character,Combo,C-Down

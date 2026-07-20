@@ -47,6 +47,16 @@
 s16 g_analog_cam_yaw = 0;
 s16 g_analog_cam_pitch = 0;
 
+// Accumulated analog-camera zoom: a multiplicative scale on the eye offset.
+// 1.0 = the game's live framing distance; <1 dollies the eye toward the
+// character (zoom in), >1 away (zoom out). Held like yaw/pitch and reset on the
+// same events. It is a UNIFORM scale of the eye->look_at offset, so it changes
+// only how far the eye sits, never the view azimuth or elevation angle -- which
+// is exactly why applying it inside acam_rotate_in_place is safe for the
+// movement-basis, skybox and audio consumers too (they read direction only, and
+// a uniform scale normalizes away).
+f32 g_analog_cam_zoom = 1.0f;
+
 // Absolute-override state (v14). PROBLEM this fixes: rotating the LIVE game
 // camera each frame inherits Goemon's follow-cam, which swings its own azimuth
 // behind your movement — so an added offset visibly drifts back while walking.
@@ -95,6 +105,16 @@ static s32 g_acam_last_map = -1;
 // floor looks broken long before the math does).
 #define ACAM_PITCH_MAX 0x2000
 #define ACAM_PITCH_MIN (-0x1000)
+
+// Zoom (R / right trigger held + right-stick Y). Multiplicative per-step rate so
+// the feel is roughly exponential and symmetric in vs out, and the scale can
+// never walk to zero or negative. Clamped to a sane dolly range. Stick up = in.
+// Independent of the pitch sensitivity for now (a dedicated zoom-sensitivity
+// setting could be added later). NOTE: the Y-invert setting is applied to the
+// stick before this, so turning Y-invert on also flips the zoom direction.
+#define ACAM_ZOOM_RATE_PER_S 0.9f
+#define ACAM_ZOOM_MIN 0.45f
+#define ACAM_ZOOM_MAX 2.5f
 
 // Absolute eye-elevation clamp (v13): the TOTAL angle of eye−pivot above
 // the horizontal is limited to [−10°, +55°] whenever analog pitch is
@@ -177,6 +197,7 @@ void update_analog_camera(void) {
         if (prev != -1) {
             g_analog_cam_yaw = 0;
             g_analog_cam_pitch = 0;
+            g_analog_cam_zoom = 1.0f;
             g_acam_captured = 0;
         }
     }
@@ -184,6 +205,7 @@ void update_analog_camera(void) {
     if (!enabled || !acam_in_gameplay()) {
         g_analog_cam_yaw = 0;
         g_analog_cam_pitch = 0;
+        g_analog_cam_zoom = 1.0f;
         g_acam_captured = 0;  // re-snapshot the offset on the next engagement
         recomp_set_analog_cam_yaw(0);
         return;
@@ -211,6 +233,7 @@ void update_analog_camera(void) {
     if (recenter && !acam_prev_recenter) {
         g_analog_cam_yaw = 0;
         g_analog_cam_pitch = 0;
+        g_analog_cam_zoom = 1.0f;
         g_acam_captured = 0;
     }
     acam_prev_recenter = recenter;
@@ -231,6 +254,14 @@ void update_analog_camera(void) {
     f32 yaw_rate = (f32)ACAM_YAW_RATE_PER_S * ((f32)sens_x * (1.0f / 50.0f));
     f32 pitch_rate = (f32)ACAM_PITCH_RATE_PER_S * ((f32)sens_y * (1.0f / 50.0f));
 
+    // Zoom modifier: R (the right trigger) held swaps the stick's Y axis from
+    // pitch to a dolly zoom -- mirroring the original, where R is the camera
+    // modifier (R + C-Up/Down zooms). Read the PHYSICAL trigger, because N64 R is
+    // suppressed in the host input layer while analog cam is on (so that holding R
+    // to zoom does not hijack the C-buttons into native camera control). Yaw stays
+    // live either way, so you can orbit while zooming.
+    s32 zoom_mod = recomp_get_camera_zoom_held();
+
     // Quadratic response curve (input * |input|): fine control near center,
     // full rate at full tilt.
     if (input_x != 0.0f) {
@@ -238,7 +269,16 @@ void update_analog_camera(void) {
         s32 delta = (s32)(-curved * yaw_rate * dt);
         g_analog_cam_yaw = (s16)(g_analog_cam_yaw + delta);
     }
-    if (input_y != 0.0f) {
+    if (zoom_mod) {
+        if (input_y != 0.0f) {
+            // Stick up (input_y > 0) zooms in (scale shrinks). Multiplicative so
+            // the step is symmetric in vs out and the scale can never go <= 0.
+            f32 curved = input_y * (input_y < 0.0f ? -input_y : input_y);
+            g_analog_cam_zoom *= (1.0f - ACAM_ZOOM_RATE_PER_S * dt * curved);
+            if (g_analog_cam_zoom < ACAM_ZOOM_MIN) g_analog_cam_zoom = ACAM_ZOOM_MIN;
+            if (g_analog_cam_zoom > ACAM_ZOOM_MAX) g_analog_cam_zoom = ACAM_ZOOM_MAX;
+        }
+    } else if (input_y != 0.0f) {
         f32 curved = input_y * (input_y < 0.0f ? -input_y : input_y);
         s32 pitch = (s32)g_analog_cam_pitch + (s32)(curved * pitch_rate * dt);
         if (pitch > ACAM_PITCH_MAX) pitch = ACAM_PITCH_MAX;
@@ -330,6 +370,17 @@ static void acam_rotate_in_place(Camera* cam) {
         }
     }
 
+    // Zoom: uniform dolly along the eye->look_at ray. Scaling all three offset
+    // components together moves the eye in/out around the character without
+    // touching the azimuth or the elevation angle (angles are scale-invariant),
+    // so this is safe for the direction-only consumers and composes cleanly with
+    // the yaw/pitch above.
+    if (g_analog_cam_zoom != 1.0f) {
+        dx *= g_analog_cam_zoom;
+        dz *= g_analog_cam_zoom;
+        dy *= g_analog_cam_zoom;
+    }
+
     // Reconstruct the eye from the live look_at + our held/rotated offset. The
     // look_at (game-updated to track the player) is left untouched, so the aim
     // stays on the character while we own the orbit angle.
@@ -361,7 +412,8 @@ Camera* apply_analog_camera(Camera* cam) {
     // the game drives — pass it straight through. Once engaged we ALWAYS
     // reconstruct, even at yaw/pitch == 0, so the held pose stays put instead of
     // flashing back to the live (drifted) game camera for a frame.
-    if (g_analog_cam_yaw == 0 && g_analog_cam_pitch == 0 && !g_acam_captured) {
+    if (g_analog_cam_yaw == 0 && g_analog_cam_pitch == 0 &&
+        g_analog_cam_zoom == 1.0f && !g_acam_captured) {
         return cam;
     }
 
@@ -436,7 +488,8 @@ RECOMP_PATCH s32 func_801CE3F0_58A300(u8* task, f32 speed) {
     u32 old_cam = 0;
     s32 swapped = 0;
     if (recomp_get_analog_cam_enabled() &&
-        (g_analog_cam_yaw != 0 || g_analog_cam_pitch != 0 || g_acam_captured) &&
+        (g_analog_cam_yaw != 0 || g_analog_cam_pitch != 0 ||
+         g_analog_cam_zoom != 1.0f || g_acam_captured) &&
         acam_in_gameplay()) {
         node = *(u32*)(obj + 0x18);
         if (node >= 0x80000000u && node < 0x80800000u) {
@@ -504,7 +557,8 @@ void func_801F8670_5B4580(void* node, s32 width, s32 height);
 // case, which is correct (it is not gameplay anyway).
 static s32 acam_sky_swap(u32* out_node, u32* out_old) {
     if (!recomp_get_analog_cam_enabled() ||
-        (g_analog_cam_yaw == 0 && g_analog_cam_pitch == 0 && !g_acam_captured) ||
+        (g_analog_cam_yaw == 0 && g_analog_cam_pitch == 0 &&
+         g_analog_cam_zoom == 1.0f && !g_acam_captured) ||
         !acam_in_gameplay()) {
         return 0;
     }
@@ -650,7 +704,8 @@ RECOMP_PATCH void func_8000F6E8_102E8(u32 sound_id, void* cam, u32 x, u32 z,
     void* use_cam = cam;
 
     if (cam != NULL && recomp_get_analog_cam_enabled() &&
-        (g_analog_cam_yaw != 0 || g_analog_cam_pitch != 0 || g_acam_captured) &&
+        (g_analog_cam_yaw != 0 || g_analog_cam_pitch != 0 ||
+         g_analog_cam_zoom != 1.0f || g_acam_captured) &&
         acam_in_gameplay()) {
         Camera* real = (Camera*)(((u32)cam) & 0x8FFFFFFE);
         if ((u32)real >= 0x80000000u && (u32)real < 0x80800000u &&

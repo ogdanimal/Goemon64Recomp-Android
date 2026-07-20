@@ -177,8 +177,10 @@ void func_8002338C_23F8C(void);
 // START is pressed, which is unsatisfiable while holding the save combo. It was
 // briefly added as a guard on a misreading and refused every save; the live
 // value read 0x0010 (CONT_R, from the combo) against a demanded 0x1000.
-// Kept only as a diagnostic -- it usefully confirms the combo is reaching the
-// game's own button word.
+// Kept only as a diagnostic -- it usefully confirms the L/Z part of the combo is
+// reaching the game's own button word. (As of 2026-07-20 the combo's R part is
+// read from the physical trigger, not this word, and N64 R is masked out of it
+// entirely while analog cam is on -- so do not expect 0x0010 here in that mode.)
 #define G_BUTTONS    (*(volatile u16*)0x800C7D3C)
 
 static s32 autosave_is_safe(void) {
@@ -573,10 +575,25 @@ static void autosave_note_committed(u32 now_us, s32 status) {
 // Per-frame poll.
 // ---------------------------------------------------------------------------
 
-// Manual test trigger: L + R + D-Up. Step 1 of the rollout is manual-only, so
-// the timed autosave is deliberately not wired up yet -- the write path is
-// proven on device against a backed-up save first.
-#define AUTOSAVE_TEST_COMBO (L_TRIG | R_TRIG | U_JPAD)
+// Manual save trigger: L + R + Z (physically LB + RT + LT on a modern pad).
+//
+// Was L + R + D-Up. The reworked controller map binds the physical D-pad to the
+// C-buttons, so N64 D-Up is no longer producible -- the old combo became
+// unreachable. Z is the replacement third button because it is one of only three
+// N64 inputs that are harmless to hold simultaneously: L (natively unused), Z
+// (crouch), and R (camera-hold, only when NO C-button accompanies it). Every
+// other candidate fires a side effect while the combo is held -- any C-button
+// casts magic / swaps weapon / changes character / opens the map, R+C triggers
+// native camera zoom, and Start opens the pause menu (the gate already
+// special-cases 0x1000=Start). Three shoulders/triggers is also a deliberate
+// grip that will not be hit by accident during play.
+//
+// The R part is read from the PHYSICAL right trigger (recomp_get_camera_zoom_held)
+// rather than the N64 R bit, because the analog camera masks N64 R out of the
+// button word while it is on (R is its zoom modifier). Reading the trigger
+// directly makes the combo behave identically whether analog cam is on or off. L
+// and Z are unaffected by that mask and stay in the N64 button word.
+#define AUTOSAVE_LZ_MASK (L_TRIG | Z_TRIG)
 
 void update_autosave(void) {
     static s32 combo_was_held = 0;
@@ -604,7 +621,8 @@ void update_autosave(void) {
     is_safe = autosave_is_safe();
 
     held = D_8008CCC0_8D8C0.controller[0].button_held_down;
-    combo_held = ((held & AUTOSAVE_TEST_COMBO) == AUTOSAVE_TEST_COMBO);
+    combo_held = ((held & AUTOSAVE_LZ_MASK) == AUTOSAVE_LZ_MASK) &&
+                 recomp_get_camera_zoom_held();
 
     // Edge-triggered, so holding the combo saves once rather than every frame.
     if (combo_held && !combo_was_held) {

@@ -726,6 +726,7 @@ int main(int argc, char** argv) {
     REGISTER_FUNC(recomp_get_analog_inverted_axes);
     REGISTER_FUNC(recomp_get_analog_cam_sensitivity);
     REGISTER_FUNC(recomp_get_camera_recenter_pressed);
+    REGISTER_FUNC(recomp_get_camera_zoom_held);
     REGISTER_FUNC(recomp_get_swap_while_moving_enabled);
     REGISTER_FUNC(recomp_get_infinite_health_enabled);
     REGISTER_FUNC(recomp_get_infinite_money_enabled);

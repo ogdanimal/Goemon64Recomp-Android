@@ -443,11 +443,14 @@ const recomp::DefaultN64Mappings recomp::default_n64_keyboard_mappings = {
 };
 
 const recomp::DefaultN64Mappings recomp::default_n64_controller_mappings = {
+    // Fresh default authored from docs/input/n64-goemon-input-assignment.csv.
+    // Face buttons use Xbox positional layout: A = SOUTH (bottom), B = EAST
+    // (right), X = WEST (left), Y = NORTH (top).
     .a = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_SOUTH},
     },
     .b = {
-        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_WEST},
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_EAST},
     },
     .l = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_LEFTSHOULDER},
@@ -461,34 +464,38 @@ const recomp::DefaultN64Mappings recomp::default_n64_controller_mappings = {
     .start = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_START},
     },
+    // C-buttons carry three bindings each: a face/shoulder button, the right
+    // stick, and the D-pad. The right-stick binding is suppressed in analog-camera
+    // mode (right_analog_suppressed), so C falls back to face/shoulder + D-pad
+    // there -- the D-pad covers the C-buttons exactly while the stick orbits.
     .c_left = {
-        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = -(SDL_CONTROLLER_AXIS_RIGHTX + 1)},
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_NORTH},
-    },
-    .c_right = {
-        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_RIGHTX + 1},
-        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_EAST},
-    },
-    .c_up = {
-        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = -(SDL_CONTROLLER_AXIS_RIGHTY + 1)},
-        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_RIGHTSTICK},
-    },
-    .c_down = {
-        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_RIGHTY + 1},
-        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER},
-    },
-    .dpad_left = {
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = -(SDL_CONTROLLER_AXIS_RIGHTX + 1)},
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_DPAD_LEFT},
     },
-    .dpad_right = {
+    .c_right = {
+        // No face button by design (A/B/X/Y are taken); stick + D-pad only.
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_RIGHTX + 1},
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_DPAD_RIGHT},
     },
-    .dpad_up = {
+    .c_up = {
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_WEST},
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = -(SDL_CONTROLLER_AXIS_RIGHTY + 1)},
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_DPAD_UP},
     },
-    .dpad_down = {
+    .c_down = {
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER},
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_RIGHTY + 1},
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_DPAD_DOWN},
     },
+    // N64 D-pad is intentionally unbound -- the physical D-pad drives the C-buttons
+    // above. Menu navigation reads the physical D-pad directly via SDL
+    // (ui_state.cpp), so menus are unaffected; the game ignores the N64 D-pad
+    // natively regardless.
+    .dpad_left = {},
+    .dpad_right = {},
+    .dpad_up = {},
+    .dpad_down = {},
     .analog_left = {
         {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = -(SDL_CONTROLLER_AXIS_LEFTX + 1)},
     },
@@ -836,6 +843,16 @@ bool recomp::get_camera_recenter_pressed() {
         }
     }
     return false;
+}
+
+// Analog-camera zoom modifier: the physical right trigger, read the same way N64
+// R is (controller_axis_state past axis_threshold) so it engages at the same
+// point -- but read here directly, so it still works even though N64 R itself is
+// masked out of the game's button word while analog cam is on. No suppression
+// (the pass-false), and the trigger axis is unaffected by right-stick suppression
+// anyway.
+bool recomp::get_camera_zoom_held() {
+    return controller_axis_state(SDL_CONTROLLER_AXIS_TRIGGERRIGHT + 1, false) >= axis_threshold;
 }
 
 void recomp::set_right_analog_suppressed(bool suppressed) {

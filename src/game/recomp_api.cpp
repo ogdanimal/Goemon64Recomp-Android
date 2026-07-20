@@ -203,6 +203,12 @@ extern "C" void recomp_get_camera_recenter_pressed(uint8_t* rdram, recomp_contex
     _return<s32>(ctx, recomp::get_camera_recenter_pressed() ? 1 : 0);
 }
 
+// Physical right-trigger held state — the analog camera's zoom modifier. Read
+// directly rather than through N64 R, which is suppressed while analog cam is on.
+extern "C" void recomp_get_camera_zoom_held(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, recomp::get_camera_zoom_held() ? 1 : 0);
+}
+
 extern "C" void recomp_get_camera_inputs(uint8_t* rdram, recomp_context* ctx) {
     float* x_out = _arg<0, float*>(rdram, ctx);
     float* y_out = _arg<1, float*>(rdram, ctx);

@@ -3,6 +3,7 @@
 
 #include "librecomp/helpers.hpp"
 #include "recomp_input.h"
+#include "goemon_config.h"
 #include "ultramodern/ultramodern.hpp"
 
 // Arrays that hold the mappings for every input for keyboard and controller respectively.
@@ -196,6 +197,22 @@ bool recomp::get_n64_input(int controller_num, uint16_t* buttons_out, float* x_o
         float rot_y = cur_y * cs - cur_x * sn;
         cur_x = rot_x;
         cur_y = rot_y;
+    }
+
+    // @recomp Analog-camera zoom uses the physical R trigger as its modifier, so
+    // native N64 R -- which the game turns into camera control that hijacks the
+    // C-buttons (and whose R+C zoom would fight the analog zoom) -- is masked out
+    // while analog camera mode is on. Native camera control is redundant there:
+    // the right stick orbits and R+stick zooms via the patch. The zoom modifier
+    // reads the physical trigger directly (recomp::get_camera_zoom_held), so it is
+    // unaffected by this mask.
+    // NOTE: this also removes N64 R from the button word the autosave L+R+Z combo
+    // reads, so that combo reads the R part from the physical trigger instead
+    // (recomp_get_camera_zoom_held) and is unaffected -- see docs/autosave.md.
+    if (goemon64::get_analog_cam_mode() == goemon64::AnalogCamMode::On) {
+        constexpr size_t r_index =
+            (size_t)GameInput::R - (size_t)GameInput::N64_BUTTON_START;
+        cur_buttons = (uint16_t)(cur_buttons & ~n64_button_values[r_index]);
     }
 
     *buttons_out = cur_buttons;
