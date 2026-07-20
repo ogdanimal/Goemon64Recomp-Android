@@ -80,9 +80,9 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     part. Note the two hazards recorded there: the tick MUST stay above
     `draw_hook`'s `ui_state_mutex` lock (non-recursive → self-deadlock), and the
     guest thread may only touch an atomic.
-  - Optional follow-ups, none blocking: make the interval configurable (it is a
-    `#define` today; the settings text now hardcodes "every 2 minutes", so
-    update it in the same change).
+  - Interval configurability: **DECIDED 2026-07-20 — stays a `#define`, NOT
+    configurable.** The user confirmed the fixed 2-minute interval is fine; do not
+    re-raise. (Settings text hardcodes "every 2 minutes", which now matches intent.)
 - **Analog camera consumer fixes — DONE and DEPLOYED 2026-07-19** (`8dc748d`
   code, `80e9ace` docs, pushed to `dev`). Four fixes, all device-verified by the
   user: area-transition reset via the map id at `0x800C7AB2`; capture the
@@ -157,8 +157,10 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     `.bak` reloads) then relaunch. Fresh installs get the new defaults for free.
     On device the config lives at
     `/storage/<uuid>/Android/data/com.goemon64.recomp/files/data/`.
-- **NOW: v1.0.0 is PUBLIC and RELEASED (2026-07-20).** The repo is public and the
-  first signed release is live. Monitor the GitHub **issue tracker** for
+- **NOW: v1.0.0 is PUBLIC, RELEASED, and DEVICE-VERIFIED on the release build
+  (2026-07-20).** The repo is public, the first signed release is live, and the
+  user smoke-tested the release-signed APK on the RP5 (launches + loads a restored
+  save). Monitor the GitHub **issue tracker** for
   device-specific bug reports (Vulkan/driver issues on non-Adreno GPUs are the
   likely class) and triage; otherwise back to general bug-fixing. Test via the CI
   debug APK, or cut a new signed release by pushing a `v*` tag (see release setup
@@ -324,11 +326,11 @@ dependent rows grey out + focus-disable while Analog Camera is Off
 (`data-attrif-disabled`, NOT `data-attr-` — the latter sets the attribute even
 when false), and the dense [acamR]/[acamU]/[acamB]/[acamH] diagnostics are
 STRIPPED. Committed on dev as 83daa6a.
-ZOOM — DONE and device-verified 2026-07-20 (hold R/RT + right-stick Y; see the
-input-rework bullet in "Current focus"). NEXT (optional polish): feel tuning of
-the base rates now that sensitivity is adjustable; pitch-sign default (stick up =
-eye rises) still unconfirmed; zoom feel/clamps and whether Y-invert should stay
-coupled to zoom direction (currently it is). Build = one call:
+ZOOM — DONE, device-verified, and SHIPPED IN v1.0.0 2026-07-20 (hold R/RT +
+right-stick Y; see the input-rework bullet in "Current focus"). FEEL/POLISH:
+**DECIDED 2026-07-20 — good as-is, do not tune proactively.** The user confirmed
+the rates, clamps, pitch-sign, and the Y-invert↔zoom coupling all feel right;
+revisit only if players actually complain. Build = one call:
 `wsl -d Ubuntu bash ~/goemon-build-all.sh`.
 GOTCHA: after any `assets/` change, delete the device's
 `files/data/.assets_version` stamp or the app keeps the OLD extracted UI.
