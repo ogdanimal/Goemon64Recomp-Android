@@ -139,12 +139,18 @@ CMake branch (dev `c4d896b`).
 staged into `~/.config/Goemon64Recompiled/`. Set `developer_mode:true` in `graphics.json` for the F1
 inspector. `G64_COPY_GPU=1` forces copies on. `g64prof`/`g64tile` lines print to stderr.
 
-**Device APK (has g64prof+enum, copies-off):**
-`android/app/build/outputs/apk/debug/app-debug.apk` — built from the tree with rt64 on
-`diag/menu-framerate`. Capture: `adb logcat -s Goemon64-stdio | grep -E 'g64prof|g64tile'`.
+**Device APK (has g64prof+enum+per-pair fence timing, copies-off):**
+`android/app/build/outputs/apk/debug/app-debug.apk` — REBUILT 2026-07-19 23:04 from the tree with rt64
+on `diag/menu-framerate` @ `bba84ab`. Now emits a `sync=NN.NNms` column per pair in the enumeration.
+Capture: `adb logcat -s Goemon64-stdio | grep -E 'g64prof|g64tile'`. On the Diary screen read the
+`sync=` column against `calls=`: **flat sync across wildly different call counts ⇒ fixed submit/fence
+latency (46ms compute-independent, [HELD] #13 → confirmed); sync that tracks calls ⇒ GPU compute.**
 
 **Provenance (all pushed to `ogdanimal/rt64` `diag/menu-framerate`):**
-- `6c07782` per-second g64prof · `7e49e1f` per-pair enumeration · `fa91fd6` tile accept/decline trace.
+- `6c07782` per-second g64prof · `7e49e1f` per-pair enumeration · `fa91fd6` tile accept/decline trace ·
+  `bba84ab` **per-pair fence timing** (adds a `sync=NN.NNms` column to the enumeration — the decisive
+  per-fence measurement for [HELD] #13; see §7). Verified in the arm64 object: new format strings baked
+  in, old ones gone.
 - Parent gitlink stays `8c73b3f` (goemon-android release line); diag is checked out locally so CI
   builds the release line. Instrumentation is behind `RT64_PROFILE_LOGCAT` — remove/gate before release.
 - Main repo (branch `dev`, local, unpushed): `c4d896b` FILE_TO_C fix · `a82e44d` G64_COPY_GPU toggle ·
@@ -154,5 +160,7 @@ inspector. `G64_COPY_GPU=1` forces copies on. `g64prof`/`g64tile` lines print to
 
 1. **(i)** sysfs GPU clock during normal vs performance mode + the `g64prof` gpuWait in each →
    validates or kills #12/#13.
-2. **(iv)** per-pair fence timing (instrumentation not yet added) → resolves attack-surface #2:
-   does every fence cost ~equal regardless of the pair's draw count (fixed latency) or scale with it?
+2. **(iv)** per-pair fence timing — **INSTRUMENTATION ADDED** (rt64 `bba84ab`, APK rebuilt 23:04).
+   Resolves attack-surface #2: the enumeration now prints `sync=NN.NNms` per pair. Does every fence cost
+   ~equal regardless of the pair's draw count (fixed latency) or scale with it? Compare pair 19 (144
+   calls) against the ~1–4-call scratch pairs. **Investigating side done — awaits the device capture.**
