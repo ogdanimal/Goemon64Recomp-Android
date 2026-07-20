@@ -27,7 +27,20 @@ constexpr auto res_default            = ultramodern::renderer::Resolution::Auto;
 constexpr auto hr_default             = ultramodern::renderer::HUDRatioMode::Clamp16x9;
 constexpr auto api_default            = ultramodern::renderer::GraphicsApi::Auto;
 constexpr auto ar_default             = ultramodern::renderer::AspectRatio::Expand;
+// MSAA default is device-class-dependent. On handheld GPUs (Adreno 650 on the
+// Retroid Pocket 5, the reference Android target) MSAA is paid per-sample on EVERY
+// framebuffer pair, and heavy multi-pass menu screens submit ~20 render-target
+// composites per frame — so 2x MSAA is a ~20% frame-cost multiplier stacked on top
+// of the already-supersampled Auto resolution, for little visible gain at that
+// scale. Device profiling (docs/android-profiling-results.md, 2026-07-19) traced
+// the ~14 FPS Select-Adventure-Diary screen to exactly this pixel/sample cost.
+// Default MSAA off on Android; desktop keeps 2x. Non-destructive: from_or_default
+// only applies this when the JSON key is ABSENT, so existing users keep their choice.
+#if defined(__ANDROID__)
+constexpr auto msaa_default           = ultramodern::renderer::Antialiasing::None;
+#else
 constexpr auto msaa_default           = ultramodern::renderer::Antialiasing::MSAA2X;
+#endif
 constexpr auto rr_default             = ultramodern::renderer::RefreshRate::Display;
 constexpr auto hpfb_default           = ultramodern::renderer::HighPrecisionFramebuffer::Auto;
 constexpr int ds_default              = 1;
