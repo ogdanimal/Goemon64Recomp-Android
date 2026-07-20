@@ -15,13 +15,13 @@
   "license": "ISC",
   "devDependencies": {
     "postcss-scss": "^4.0.9",
-    "stylelint": "^15.11.0",
-    "stylelint-config-property-sort-order-smacss": "^9.1.0",
-    "stylelint-config-sass-guidelines": "^10.0.0",
+    "stylelint": "^17.14.1",
+    "stylelint-config-property-sort-order-smacss": "^11.2.0",
+    "stylelint-config-sass-guidelines": "^13.0.0",
     "stylelint-config-scss": "^1.0.0-security",
-    "stylelint-config-standard": "^34.0.0",
-    "stylelint-config-standard-scss": "^11.1.0",
-    "stylelint-scss": "^5.3.1"
+    "stylelint-config-standard": "^40.0.0",
+    "stylelint-config-standard-scss": "^17.0.0",
+    "stylelint-scss": "^7.2.0"
   },
   "dependencies": {
     "sass": "^1.75.0"
