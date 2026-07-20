@@ -36,3 +36,12 @@
 [g64prof] fullSync 21.0/s  pairs/frame=8.0  fences/frame=7.0  naturalFences/frame=6.0  pairSync=45.54ms/frame (gpuWait=42.71 cpuCopy=0.18 uploadWait=0.00)  copyWithGPU=1
 [g64prof] fullSync 13.5/s  pairs/frame=13.1  fences/frame=12.1  naturalFences/frame=11.1  pairSync=71.52ms/frame (gpuWait=65.83 cpuCopy=0.25 uploadWait=0.01)  copyWithGPU=1
 [g64prof] fullSync 9.9/s  pairs/frame=20.0  fences/frame=19.0  naturalFences/frame=18.0  pairSync=98.72ms/frame (gpuWait=91.88 cpuCopy=0.26 uploadWait=0.00)  copyWithGPU=1
+
+# --- makeFramebufferTile decline trace (desktop rig, copies-on, 2026-07-19) ---
+# Only reason seen is loadblk-misalign, only on the 001E46F0 scratch. Other FBs always ACCEPT.
+# Scratch w=256 siz=2 (512B stride); 3 of 4 loadBlock chunks row-align (ACCEPT), the mid-row one DECLINES:
+  28252  DECL:loadblk-misalign fb=001E46F0..001E86F0 w=256 siz=2 lastFmt=0 load=001E4E70..001E55F0 lineW=0 tileH=0 RGBA32=0
+ ACCEPT fb=001E46F0..001E86F0 w=256 siz=2 lastFmt=0 load=001E46F0..001E4E70 lineW=0 tileH=0 RGBA32=0
+ ACCEPT fb=001E46F0..001E86F0 w=256 siz=2 lastFmt=0 load=001E66F0..001E76F0 lineW=0 tileH=0 RGBA32=0
+ ACCEPT fb=001E46F0..001E86F0 w=256 siz=2 lastFmt=0 load=001E76F0..001E86F0 lineW=0 tileH=0 RGBA32=0
+# Upstream RT64 (rt64/rt64 main) has the identical decline, no linear path -> fix is net-new.

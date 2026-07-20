@@ -20,7 +20,8 @@ pairs are a ~6×-repeated color-cycling background effect that ping-pongs the re
 - **Device**: Retroid Pocket 5 (Snapdragon 865 / Adreno 650), 1080×1920 @ 60 Hz, **not rooted**.
 - **Numbers below** come from the `[g64prof]` instrumentation on rt64 branch `diag/menu-framerate`,
   **pushed to `fork` (ogdanimal/rt64)**: the per-second fullSync/render lines are commit `6c07782`;
-  the per-pair enumeration (§"Option-(c) RE") is commit `7e49e1f`. Deliberately kept off
+  the per-pair enumeration (§"Option-(c) RE") is commit `7e49e1f`; the `[g64tile]` makeFramebufferTile
+  accept/decline trace (§"Why tile copies decline") is commit `fa91fd6`. Deliberately kept off
   `goemon-android` — diagnostic scaffolding, remove-or-gate before release. The parent gitlink is NOT
   bumped to this branch (stays at `8c73b3f` goemon-android); `diag/menu-framerate` is checked out
   locally to reproduce, so CI keeps building the release line.
@@ -329,6 +330,59 @@ screen re-captured. Direct comparison on the same rig:
   comment cites is therefore likely device/driver-specific or specific to the other game (its TODO
   names Goemon's Great Adventure underwater), not mnsg's file-select.
 
+### Why tile copies decline the scratch reads — the cheaper suspect (step ii, 2026-07-19)
+
+Before scoping a submit-batching rework, trace why rt64's *existing* GPU-side dependency mechanism
+(tile copies) declines the scratch reads: copies-on `naturalFences=18` means 6 reads had
+`syncRequired && !tileCopyUsed`, i.e. `makeFramebufferTile` was asked and **declined**. Instrumented
+every exit of `makeFramebufferTile` (`rt64_framebuffer_manager.cpp`, `[g64tile]`, behind
+`RT64_PROFILE_LOGCAT`) and captured the diary screen with copies on. Result — **one reason, one
+buffer**:
+
+```
+15276  ACCEPT                fb=001E46F0..001E86F0   (scratch, MOST reads get a tile copy)
+ 5092  DECL:loadblk-misalign fb=001E46F0..001E86F0   (a SUBSET decline)
+ 6792  ACCEPT                fb=002AC000..002D1800
+ 6792  ACCEPT                fb=00261000..00286800
+ 6784  ACCEPT                fb=00286800..002AC000
+```
+
+Geometry (scratch `w=256, siz=2` → 512-byte row stride; loadBlock = `lineW=0, tileH=0`):
+
+| loadBlock read | offset | in stride terms | result |
+| --- | --- | --- | --- |
+| `001E46F0` | 0 | row 0, aligned | ACCEPT |
+| `001E66F0` | 0x2000 | row 16, aligned | ACCEPT |
+| `001E76F0` | 0x3000 | row 24, aligned | ACCEPT |
+| **`001E4E70`** | **0x780** | **row 3 + 384 B (pixel 192)** | **DECL:loadblk-misalign** |
+
+The scratch is loaded as **four linear `loadBlock` chunks**; three land on a 512-byte row boundary and
+get GPU tile copies, the fourth starts **mid-row** and spans ~3.75 rows — a linear run tracing a
+**staircase** across the 2D target, which a rectangular tile copy can't represent, so
+`makeFramebufferTile` correctly bails at `:478` (`fromLoadBlock && multipleRows && misalignedRow`) and
+it falls back to a CPU fence. This is a **1D-loadBlock-vs-2D-rectangular-tile impedance mismatch**, not
+a correctness bug.
+
+**Why this matters more than "6 fewer fences":** with copies on, `renderAndSynchronize` (the per-pair
+`execute()/wait()`) only fires for pairs whose `syncRequired` is set, and a dependency satisfied by a
+tile copy does **not** set it (`rt64_state.cpp:1012`). So improving tile-copy *coverage* removes the
+per-pair sync *trigger* — if tile copies covered all deps, most pairs would fold into the single
+end-of-frame sync and the 20 serial round-trips collapse toward one, **inside the current
+architecture** (no submit-loop rewrite). The fix shape is a **linear/1D framebuffer-tile-copy path**
+for loadBlock reads.
+
+**Step iii (upstream check, 2026-07-19):** canonical upstream RT64 (`rt64/rt64` main)
+`makeFramebufferTile` has the **identical decline, no linear path** — so this is **net-new engine
+code, not a rebase/cherry-pick**.
+
+**Open questions before this is "the fix" (do not overclaim 60 FPS):**
+1. Fixes the **6 loadBlock deps** only. The other **12 fences are format-changes** (`rt64_state.cpp:558`),
+   a separate mechanism — unknown whether those can also be satisfied on-GPU. If not, ~12+ fences remain.
+2. Whether fewer fences → proportionally faster is the **latency-vs-compute question** (step iv,
+   device-only; llvmpipe can't answer it). If fixed per-fence latency dominates, 12 fences ≈ 28ms.
+3. Only helps with **copies-on** (with copies off, `makeFramebufferTile` is never called) — rides on
+   the copies-on validation pass.
+
 ### What actually remains for smoothness
 
 The 20 passes are a genuine serial dependency chain (render tiny scratch → composite samples it →
@@ -356,12 +410,21 @@ mitigation, not nothing. Levers, best-evidenced first:
    fences run at minimum clock. A firmware performance-mode capture tests how much of the stall is
    clock-inflation vs genuine work. Best value-per-effort of the *cure*-side options; run it together
    with copies-on for the true best-available configuration.
-3. **RT64 engine: pipeline dependent fbPairs on-GPU** (large — the actual cure). RT64 does a blocking
-   submit+fence per framebuffer pair in `renderAndSynchronize(f)` **regardless of copy mode** — that
-   per-pair CPU round-trip is the serialization. Satisfying the scratch→composite dependency with a
-   GPU-side barrier instead of a CPU fence would let the 6 cycles pipeline, but this reworks how RT64
-   processes the fbPair loop and is well beyond a menu-specific tweak.
-4. **Game-side patch to the effect** (risky, changes visuals) — collapse the 6 serial composite cycles.
+3. **Improve tile-copy coverage: a linear/1D loadBlock path (targeted, the promising cure-candidate).**
+   See "Why tile copies decline the scratch reads" above. The per-pair `execute()/wait()` fires only
+   for pairs with `syncRequired` set, and a tile-copied dependency doesn't set it — so making the
+   declined loadBlock reads succeed on-GPU could fold most pairs into one end-of-frame sync *within the
+   current architecture*. Net-new (upstream RT64 lacks it too), but far smaller than a submit-loop
+   rewrite. Gated by the three open questions above (format-change fences, latency-vs-compute, requires
+   copies-on).
+4. **RT64 engine: rework the submit loop to pipeline fbPairs on-GPU** (large — the fallback cure). Only
+   if lever 3 can't reach all the deps (notably the 12 format-change fences). RT64 does a blocking
+   submit+fence per framebuffer pair in `renderAndSynchronize(f)` regardless of copy mode; coalescing
+   into one submission with intra-frame barriers is the general fix but reworks the fbPair loop.
+   **Consistency constraint:** RDRAM must stay *eventually* consistent (game CPU reads framebuffer
+   memory between frames), so the shape is barriers/tile-copies intra-frame, **one** fence + **one**
+   RDRAM copy-back at frame end — "coalesce" must never become "skip the copies".
+5. **Game-side patch to the effect** (risky, changes visuals) — collapse the 6 serial composite cycles.
    Not recommended; the effect is a deliberate look.
 
 ## Out of scope but open
