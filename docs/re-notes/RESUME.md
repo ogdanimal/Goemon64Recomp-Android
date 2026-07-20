@@ -37,7 +37,7 @@ the Y-invert↔zoom coupling were all confirmed good and DECIDED settled
 tune proactively.
 
 Build in ONE call: `wsl -d Ubuntu bash ~/goemon-build-all.sh` (avoids the
-PowerShell→wsl.exe quote mangling — see [[wsl-bash-tool-gotchas]]). After ANY
+PowerShell→wsl.exe quote mangling). After ANY
 `assets/` change, delete the device's `files/data/.assets_version` stamp or the
 app keeps serving the OLD extracted UI and your edit looks like it never built.
 

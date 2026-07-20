@@ -515,7 +515,7 @@ Sketch (do **not** treat as final code — the widened whitelist needs the real
 locomotion action ids, which must be observed on device):
 
 ```c
-/* patches/character_swap.c */
+/* patches/charswap.c */
 #define G_CAMERA_TASK   (*(u8**)0x801FC624)
 
 RECOMP_PATCH u32 func_801DD3C4_5992D4(u8 *task) {
