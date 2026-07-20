@@ -6,9 +6,12 @@ Zelda64Recomp/N64Recomp ecosystem). GitHub: `ogdanimal/Goemon64Recomp-Android`
 `upstream`=klorfmorf.
 
 ## Environment
-- Repo lives in WSL at `/home/user/projects/Goemon64Recomp`; work as user `user`
+- Repo lives in WSL at `~/projects/Goemon64Recomp`; work as a normal (non-root) user
   (no sudo/root needed — the repo was relocated out of `/root` on 2026-07-17).
-- `gh` is authed as `ogdanimal`; git identity is `ogdanimal <the.ogdanimal@gmail.com>`.
+- `gh` is authed as `ogdanimal`; git commit identity is
+  `ogdanimal <306057786+ogdanimal@users.noreply.github.com>` (GitHub noreply, set
+  2026-07-20; the old `the.ogdanimal@gmail.com` remains on earlier commits and is
+  fine to stay public).
 - **`gh` defaults to `upstream` (klorfmorf) unless told otherwise** — with no
   default set it prefers the remote named `upstream` over `origin`, so bare
   `gh run list` silently returns klorfmorf's public workflow runs (they even have
@@ -21,7 +24,7 @@ Zelda64Recomp/N64Recomp ecosystem). GitHub: `ogdanimal/Goemon64Recomp-Android`
   the recompiler consumes. Never commit it.
 - **Back up on-device data BEFORE installing anything that changes storage paths,
   and before any uninstall / `pm clear`.** Verify the backup by CHECKSUM, not by
-  `adb pull`'s success message. Latest: `C:\Users\user\goemon-backups\2026-07-19\data`
+  `adb pull`'s success message. Latest: `%USERPROFILE%\goemon-backups\2026-07-19\data`
   (93 files, 43 MB — saves, configs, ROM, assets). Saves live in
   `<dataDir>/saves/mnsg.us.bin` plus `.bak` and `.manual.bak`.
   NOTE: `mnsg.us.z64` in the data dir is written by the native runtime when it

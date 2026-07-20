@@ -1,6 +1,6 @@
 # Goemon64 — Player World Position (writer-side trace)
 
-Static RE over `RecompiledFuncs/funcs_*.c` (WSL: `/home/user/projects/Goemon64Recomp`). All addresses are VRAM; disasm quoted from the recompiled C comments.
+Static RE over `RecompiledFuncs/funcs_*.c` (WSL: `~/projects/Goemon64Recomp`). All addresses are VRAM; disasm quoted from the recompiled C comments.
 
 ## TL;DR — the answer
 

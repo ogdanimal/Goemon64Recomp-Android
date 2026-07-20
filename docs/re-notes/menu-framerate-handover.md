@@ -199,7 +199,7 @@ Evidence: [`fixtures/menu-framerate-device-fence-timing.txt`](fixtures/menu-fram
 
 **Next:**
 - **Device-verify** default-mode FPS at 4x/MSAA-off with the perf profile OFF → confirms the shipped
-  fix makes it playable without perf mode (can't fresh-install-verify on dev-device's device — config
+  fix makes it playable without perf mode (can't fresh-install-verify on the dev device — config
   already has MSAA off manually).
 - **RE the scratch lifecycle** (§4 #3) toward cutting the pair count (lever 3/4), which also raises
   utilization and lets the governor ramp on its own — the durable route to retire "perf mode essential".

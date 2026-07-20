@@ -48,7 +48,7 @@ TWO [HELD] / UNVALIDATED — attack first (handover §2 #12-14, §4):
 NEXT — ONE device session closes both [HELD] (handover §7):
 1. Investigating side: add per-pair fence timing to the enumeration (rt64 diag),
    rebuild the arm64 debug APK.
-2. Device (dev-device): capture sysfs GPU clock in normal vs performance mode
+2. Device (dev handheld): capture sysfs GPU clock in normal vs performance mode
    (cat /sys/class/kgsl/kgsl-3d0/gpuclk, or devfreq/cur_freq) + g64prof gpuWait in
    each + the per-pair fence timing. Plus the copies-on VISUAL sweep on gameplay
    and other menus (Adreno-specific breakage untested; rig sweep was clean).

@@ -48,7 +48,7 @@ Copy-paste the block below to resume in a fresh session.
 ---
 
 Resume the analog (right-stick) camera work on Goemon64Recomp-Android.
-Repo: `~/projects/Goemon64Recomp` (WSL "Ubuntu", user user, branch dev). Read
+Repo: `~/projects/Goemon64Recomp` (WSL "Ubuntu", branch dev). Read
 CLAUDE.md first — its "Analog camera" section is authoritative; full
 critic-verified RE reports live in `docs/re-notes/goemon_*.md` (8 files).
 All camera work is UNCOMMITTED on dev. Device: Retroid Pocket 5, adb serial
