@@ -288,8 +288,9 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     them — a batch worth cutting (do a `v1.0.2-rc1` dry-run first per the release
     section). Pass-2 MED/LOW tail (S2/S3/N5–N16/P2–P7/B1–B4/C4–C6/D1–D5/R1–R2) NOT
     started.
-- **Attack While Moving — DONE, device-verified, COMMITTED on `dev` (`9bae463`),
-  but NOT pushed and deployment HELD (2026-07-20, user's explicit call).** A
+- **Attack While Moving — DONE, device-verified, deployment hold RELEASED
+  2026-07-21 (user's call).** Base feature `9bae463`; the level-2 (upgraded)
+  weapon coverage is a follow-up commit on `dev`. A
   novelty setting `attack_while_moving_mode` (default **Off**) that lets the
   player keep moving during a ground attack instead of rooting in place. Wired
   end-to-end like the "Swap While Moving" toggle (config+JSON, `ui_config.cpp`,
@@ -309,11 +310,23 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     saw). Movement is NOT collision-checked during the swing (inferred, not
     verified — do not claim wall-clipping as fact; the wall-clip line was cut
     from the UI copy for exactly that reason).
-  - **Covered action states (device-identified via a temporary action_id
-    logger):** melee/jump family `0x58`–`0x5E`, ryo throw `0x7C`, bombs `0x90`.
-    **Hookshot/extension `0x70`–`0x72` deliberately EXCLUDED** — it anchors the
+  - **Covered action states (device-identified via the `[astate]` action_id
+    logger in `attack_move.c`, gated by `ATTACK_MOVE_STATE_DIAG`, left in the
+    file behind its `#if` for future discovery):**
+    - LEVEL 1: melee/jump family `0x58`–`0x5E`, ryo throw `0x7C`, bombs `0x90`.
+    - LEVEL 2 (upgraded weapon, added 2026-07-21): melee combo `0x60`–`0x65`
+      (observed cycling `0x60/0x61/0x62/0x65` on ALL four characters; `0x63/0x64`
+      first inferred, then OBSERVED on the verify pass — real swing frames);
+      Goemon coin-throw variant `0x7F`; character specials `0x82`–`0x89`
+      (Goemon `0x82/0x83`, Ebisumaru `0x84/0x85/0x86/0x89`; `0x87/0x88` inferred);
+      Sasuke special `0x93`–`0x94`. All read `vel==0` (rooted), same as L1.
+    - **Yae's (char 3) L2 special was NOT captured** — she only did the `0x60`
+      combo. If one exists it stays rooted; flip the logger back on to catch it.
+    - The specials are inference-plus-feel-check, not per-id device-confirmed.
+    - **Hookshot/extension `0x70`–`0x72` deliberately EXCLUDED** — it anchors the
     pipe to a world point; sliding during it risks desyncing the grapple (ladder
-    hazard class). This extends the char-swap RE `action_id` map.
+    hazard class). `0xBA` (swap-in-progress) also excluded. Extends the
+    char-swap RE `action_id` map.
   - **Gotcha reused:** the RML change needs the device's `.assets_version` stamp
     deleted or the old UI stays extracted. Node-chain writes crash the renderer
     (a pointer field at `+0x8`) — only the proven vec3f head node is safe to poke.

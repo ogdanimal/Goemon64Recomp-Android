@@ -36,6 +36,15 @@
 // re-tune speed / ramp / hold on device.
 #define ATTACK_MOVE_DIAG 0
 
+// Temporary state-discovery logger ([astate] ...). Flip to 1 to capture the
+// action_id / character_id / velocity of attacks that the whitelist does NOT
+// currently cover — e.g. LEVEL-2 (upgraded) weapon swings. Fires (throttled)
+// for any state that is neither idle nor locomotion, i.e. exactly the attack /
+// special states, WITHOUT needing to know their ids in advance. Read the
+// [astate] lines from logcat while performing a level-2 attack, then add the
+// confirmed ids to is_attack_state() and set this back to 0.
+#define ATTACK_MOVE_STATE_DIAG 0
+
 // Peak per-frame world units at full stick deflection (mag ~0.7). Run is ~2.8;
 // held under a run so it reads as a deliberate lunge. Scaled by deflection and
 // by the ease envelope below.
@@ -64,21 +73,44 @@
 #define STICK_REC_BASE   0x800C7DB0
 #define STICK_REC_STRIDE 24
 
-// Covered attack states (device-identified via the action_id logger):
-//   0x58-0x5E : melee pipe swing / jump-attack family
+// Covered attack states (device-identified via the [astate] action_id logger).
+// Every one of these is a ROOTED attack: the game holds world velocity at 0 for
+// the whole swing (all logged vel==0), so our injected displacement is what
+// actually moves the player.
+//
+// LEVEL 1 (base weapon) -- device-identified 2026-07-18:
+//   0x58-0x5E : melee pipe swing / jump-attack family (0x5B/0x5C inferred)
 //   0x7C      : ryo (coin) throw
 //   0x90      : bombs
-// The pipe hookshot/extension (0x70-0x72) is deliberately EXCLUDED: it anchors
-// the pipe to a world point, and sliding the player during it risks desyncing
-// the grapple (same hazard class as the ladder character-swap failure).
-#define ACT_ATK_LO 0x58
-#define ACT_ATK_HI 0x5E
-#define ACT_RYO    0x7C
-#define ACT_BOMB   0x90
-
+//
+// LEVEL 2 (upgraded weapon) -- device-identified 2026-07-21 after the level-2
+// report, [astate] logger, all four characters swapped through:
+//   0x60-0x65 : level-2 melee combo. Observed cycling 0x60/0x61/0x62/0x65 on
+//               ALL FOUR characters; 0x63/0x64 inferred as the in-family swing
+//               frames (mirrors the 0x5B/0x5C inference above).
+//   0x7F      : Goemon level-2 coin-throw variant (seen between 0x7C throws).
+//   0x82-0x89 : character level-2 specials. Observed 0x82/0x83 (Goemon) and
+//               0x84/0x85/0x86/0x89 (Ebisumaru); 0x87/0x88 inferred in-family.
+//   0x93-0x94 : Sasuke level-2 special (sustained, alternating 0x93<->0x94).
+//   NOTE: Yae's (char 3) level-2 special was NOT captured -- she only performed
+//   the 0x60 combo. If one exists it will still root the player and log
+//   whitelisted=0; the [astate] logger is left on to catch it.
+//
+// EXCLUDED ON PURPOSE:
+//   0x70-0x72 : pipe hookshot/extension -- anchors the pipe to a world point;
+//               sliding during it risks desyncing the grapple (same hazard
+//               class as the ladder character-swap failure).
+//   0xBA      : character-swap-in-progress -- NOT an attack; it only appears in
+//               the log because swapping to test each character passes through
+//               it. Injecting movement here is exactly the kind of untested
+//               state the whitelist exists to keep out.
 static inline s32 is_attack_state(u8 act) {
-    return (act >= ACT_ATK_LO && act <= ACT_ATK_HI) ||
-           act == ACT_RYO || act == ACT_BOMB;
+    return (act >= 0x58 && act <= 0x5E) ||   // L1 melee / jump family
+           (act >= 0x60 && act <= 0x65) ||   // L2 melee combo (all characters)
+           act == 0x7C || act == 0x7F ||     // ryo throw (+ L2 variant)
+           (act >= 0x82 && act <= 0x89) ||   // L2 character specials
+           (act >= 0x93 && act <= 0x94) ||   // Sasuke L2 special
+           act == 0x90;                      // bombs
 }
 
 static inline s32 in_ram(u32 p) {
@@ -223,6 +255,34 @@ void attack_move_tick(void) {
     }
 
     amove_track_dir();   // keep the tracked world heading fresh every frame
+
+#if ATTACK_MOVE_STATE_DIAG
+    // State discovery: log every non-idle, non-locomotion action_id so a
+    // level-2 attack's state (and whether the game drives its own velocity)
+    // shows up in logcat even though the whitelist never engages for it.
+    {
+        PlayerTask *dt = D_801FC604_5B8514;
+        if (dt != NULL) {
+            u8 dact = dt->action_id;
+            s32 idle = (dact == 0x00 || dact == 0x01 || dact == 0x42);
+            s32 loco = (dact >= 0x0C && dact <= 0x11) ||
+                       (dact >= 0x17 && dact <= 0x1C);
+            if (!idle && !loco) {
+                static u8 last = 0xFF;
+                if (dact != last) {   // one line per state transition
+                    last = dact;
+                    f32 vx = dt->unknown_c0;
+                    f32 vz = dt->unknown_c8;
+                    recomp_printf(
+                        "[astate] act=0x%02X char=%d whitelisted=%d "
+                        "vel=(%d,%d)milli\n",
+                        dact, dt->character_id, is_attack_state(dact),
+                        (s32)(vx * 1000.0f), (s32)(vz * 1000.0f));
+                }
+            }
+        }
+    }
+#endif
 
     // Smoothed ease envelope + last full-strength target, persistent so the
     // glide-out continues after the attack/input ends.
