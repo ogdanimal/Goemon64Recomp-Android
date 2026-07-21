@@ -24,6 +24,18 @@ public class MainActivity extends SDLActivity {
      */
     public static final String EXTRA_AUTOSTART = "com.goemon64.recomp.AUTOSTART";
 
+    // True while this process has a live game MainActivity. LauncherActivity (same
+    // process) reads it to skip the ROM SHA-1 + storage/asset re-checks and resume
+    // the running game on an icon relaunch, instead of re-running the whole
+    // pipeline. A dead/killed process resets the static to false, so a genuine cold
+    // launch still takes the full verify path. volatile: set on the main thread in
+    // onCreate/onDestroy, read on the main thread in LauncherActivity.
+    private static volatile boolean sGameRunning = false;
+
+    public static boolean isGameRunning() {
+        return sGameRunning;
+    }
+
     // Must match goemon64::RestartTarget in include/goemon_support.h.
     private static final int RESTART_NONE = 0;
     private static final int RESTART_APP_MENU = 1;
@@ -61,6 +73,10 @@ public class MainActivity extends SDLActivity {
         AssetInstaller.installIfNeeded(this, dataDir);
         nativeInit(dataDir.getAbsolutePath(),
                 getIntent().getBooleanExtra(EXTRA_AUTOSTART, false));
+
+        // Committed to booting the game in this process now — let LauncherActivity
+        // fast-resume us on an icon relaunch instead of re-verifying the ROM.
+        sGameRunning = true;
 
         super.onCreate(savedInstanceState);
 
@@ -103,6 +119,9 @@ public class MainActivity extends SDLActivity {
 
     @Override
     protected void onDestroy() {
+        // The game is going away (quit or restart-to-fresh-process); stop
+        // advertising a live instance so a subsequent launch takes the full path.
+        sGameRunning = false;
         int restartTarget = nativeGetRestartTarget();
         nativeDestroy();
         super.onDestroy();

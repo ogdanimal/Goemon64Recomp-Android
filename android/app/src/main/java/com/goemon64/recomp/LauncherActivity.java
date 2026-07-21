@@ -43,6 +43,23 @@ public class LauncherActivity extends AppCompatActivity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Fast path: the game is already alive in this process (an icon relaunch of
+        // a running game). Skip the ~16 MB ROM SHA-1 and the storage/asset re-checks
+        // — they were all validated when the game booted — and just forward to the
+        // running game task. MainActivity is singleTask, so this resolves to
+        // onNewIntent on the live instance (an instant resume, no splash pause). A
+        // dead process resets MainActivity.isGameRunning() to false, so a genuine
+        // cold launch still falls through to the full verify path below.
+        if (MainActivity.isGameRunning()) {
+            android.util.Log.i("Goemon64", "LauncherActivity: game already running, fast-resume (skipping ROM verify)");
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+            finish();
+            return;
+        }
+
         setContentView(R.layout.activity_launcher);
 
         missingRomView = findViewById(R.id.missingRomContainer);
