@@ -21,6 +21,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Ensures the Mystical Ninja Starring Goemon (USA) ROM is present in app-private
@@ -36,6 +38,14 @@ public class LauncherActivity extends AppCompatActivity {
     private View missingRomView;
     private TextView infoText;
     private Button pickRomButton;
+    private View progressContainer;
+    private TextView progressText;
+
+    // Single background thread for the launch I/O (ROM copy, SHA-1, asset extract)
+    // so it never blocks the UI thread. `destroyed` gates UI callbacks posted back
+    // from that thread after the activity is gone.
+    private ExecutorService ioExecutor;
+    private volatile boolean destroyed = false;
 
     private final ActivityResultLauncher<String[]> romPicker =
             registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onRomPicked);
@@ -66,6 +76,9 @@ public class LauncherActivity extends AppCompatActivity {
         infoText = findViewById(R.id.infoText);
         pickRomButton = findViewById(R.id.pickRomButton);
         pickRomButton.setOnClickListener(v -> romPicker.launch(new String[]{"*/*"}));
+        progressContainer = findViewById(R.id.progressContainer);
+        progressText = findViewById(R.id.progressText);
+        ioExecutor = Executors.newSingleThreadExecutor();
 
         // Storage location is chosen ONCE, before any data exists. Existing
         // installs are grandfathered to internal and never prompted.
@@ -116,7 +129,7 @@ public class LauncherActivity extends AppCompatActivity {
 
         File rom = romFile();
         if (rom != null && rom.exists() && rom.length() > 0) {
-            verifyAndMaybeStart(rom);
+            prepareAndLaunch(rom);
         } else {
             showMissingRomUi();
         }
@@ -166,18 +179,8 @@ public class LauncherActivity extends AppCompatActivity {
         } catch (Exception ignored) {
             // Some providers don't support persistable permissions; not critical.
         }
-        try {
-            copyRom(uri);
-        } catch (IOException e) {
-            Toast.makeText(this, "Failed to copy ROM: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            return;
-        }
-        File rom = romFile();
-        if (rom != null && rom.exists() && rom.length() > 0) {
-            verifyAndMaybeStart(rom);
-        } else {
-            Toast.makeText(this, "ROM copy failed", Toast.LENGTH_LONG).show();
-        }
+        // Copy (16 MB) + verify + extract all run on the background thread now.
+        runPreparePipeline(uri, romFile(), true);
     }
 
     private void copyRom(Uri source) throws IOException {
@@ -200,23 +203,122 @@ public class LauncherActivity extends AppCompatActivity {
         }
     }
 
-    private void verifyAndMaybeStart(File rom) {
-        String sha1;
-        try {
-            sha1 = computeSha1(rom);
-        } catch (Exception e) {
-            // Couldn't read the file (or hash it) — that is NOT a checksum
-            // mismatch, and must not route into the mismatch dialog whose primary
-            // action deletes the ROM. A transient read error should never delete a
-            // possibly-valid file.
-            showRomUnreadableDialog(rom);
+    /** ROM present; SHA-1 verify + asset extract + launch, all off the UI thread. */
+    private void prepareAndLaunch(File rom) {
+        runPreparePipeline(null, rom, true);
+    }
+
+    /**
+     * The single background launch pipeline. Runs the heavy launch I/O off the UI
+     * thread (previously all synchronous → ANR on slow SD cards): optionally copy
+     * the picked ROM, optionally SHA-1 verify it, extract the ~45 MB UI assets, and
+     * launch. Status text, error dialogs, and the final launch are posted back to
+     * the main thread; `verify` is false for the "Start anyway" / extract-retry
+     * paths where the ROM has already been accepted.
+     */
+    private void runPreparePipeline(@Nullable Uri copyFrom, @Nullable File rom, boolean verify) {
+        showProgress(copyFrom != null ? R.string.copying_rom : R.string.verifying_rom);
+        ioExecutor.execute(() -> {
+            // 1. Copy the picked ROM into private storage.
+            if (copyFrom != null) {
+                try {
+                    copyRom(copyFrom);
+                } catch (IOException e) {
+                    postToUi(() -> {
+                        hideProgress();
+                        Toast.makeText(this, "Failed to copy ROM: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        showMissingRomUi();
+                    });
+                    return;
+                }
+            }
+            final File romFile = rom != null ? rom : romFile();
+            if (romFile == null || !romFile.exists() || romFile.length() == 0) {
+                postToUi(() -> {
+                    hideProgress();
+                    Toast.makeText(this, "ROM copy failed", Toast.LENGTH_LONG).show();
+                    showMissingRomUi();
+                });
+                return;
+            }
+
+            // 2. SHA-1 verify (skipped on "Start anyway" / extract retry).
+            if (verify) {
+                String sha1;
+                try {
+                    sha1 = computeSha1(romFile);
+                } catch (Exception e) {
+                    // A read error is NOT a mismatch — route to the retry dialog, not
+                    // the one whose primary action deletes the ROM.
+                    postToUi(() -> { hideProgress(); showRomUnreadableDialog(romFile); });
+                    return;
+                }
+                if (!SHA1_NTSC_U.equalsIgnoreCase(sha1)) {
+                    final String got = sha1;
+                    postToUi(() -> { hideProgress(); showHashMismatchDialog(romFile, got); });
+                    return;
+                }
+            }
+
+            // 3. Extract the UI assets. This is the launch chokepoint that can refuse:
+            // MainActivity runs installIfNeeded too but cannot bail (SDLActivity's
+            // onCreate commits to SDL_main), so pre-flighting here means a failure is
+            // caught before the native side reads a partial asset tree. Populates the
+            // same data dir MainActivity resolves, so its call is a no-op on success.
+            setProgressText(R.string.preparing_files);
+            File dataDir = DataPaths.dataDir(this);   // nullable variant: refuse if the volume vanished
+            if (dataDir == null) {
+                postToUi(() -> { hideProgress(); showStorageUnavailableDialog(); });
+                return;
+            }
+            if (!AssetInstaller.installIfNeeded(this, dataDir)) {
+                postToUi(() -> { hideProgress(); showAssetExtractionFailedDialog(romFile); });
+                return;
+            }
+
+            // 4. Launch.
+            postToUi(this::launchGame);
+        });
+    }
+
+    private void launchGame() {
+        Intent intent = new Intent(this, MainActivity.class);
+        // NEW_TASK routes into MainActivity's own (distinct-affinity) task; if the
+        // game is already alive, singleTask resolves it via onNewIntent. CLEAR_TOP
+        // used to be here to force a clean top, but under singleTask it is inert —
+        // and on the old standard launchMode it was exactly what destroyed and
+        // recreated the running game on an icon relaunch. Dropped.
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
+        finish();
+    }
+
+    // ---- progress UI + main-thread posting ----
+
+    private void showProgress(int textRes) {
+        missingRomView.setVisibility(View.GONE);
+        progressText.setText(textRes);
+        progressContainer.setVisibility(View.VISIBLE);
+    }
+
+    private void hideProgress() {
+        progressContainer.setVisibility(View.GONE);
+    }
+
+    private void setProgressText(int textRes) {
+        postToUi(() -> progressText.setText(textRes));
+    }
+
+    /** Run r on the UI thread, unless this activity has gone away. */
+    private void postToUi(Runnable r) {
+        if (destroyed) {
             return;
         }
-        if (SHA1_NTSC_U.equalsIgnoreCase(sha1)) {
-            startGame();
-        } else {
-            showHashMismatchDialog(rom, sha1);
-        }
+        runOnUiThread(() -> {
+            if (!destroyed && !isFinishing()) {
+                r.run();
+            }
+        });
     }
 
     private void showRomUnreadableDialog(File rom) {
@@ -225,20 +327,20 @@ public class LauncherActivity extends AppCompatActivity {
                 .setMessage("The ROM file couldn't be read to verify it. This is "
                         + "usually a temporary storage issue, not a bad ROM.\n\n"
                         + "Retry, or start anyway?")
-                .setPositiveButton("Retry", (d, w) -> verifyAndMaybeStart(rom))
-                .setNegativeButton("Start anyway", (d, w) -> startGame())
+                .setPositiveButton("Retry", (d, w) -> prepareAndLaunch(rom))
+                .setNegativeButton("Start anyway", (d, w) -> runPreparePipeline(null, rom, false))
                 .setCancelable(false)
                 .show();
     }
 
-    private void showAssetExtractionFailedDialog() {
+    private void showAssetExtractionFailedDialog(File rom) {
         new AlertDialog.Builder(this)
                 .setTitle("Setup failed")
                 .setMessage("The app couldn't unpack its UI/asset files into "
                         + "storage, so the game can't start. This is usually a "
                         + "low-storage or permissions issue.\n\nFree up space and "
                         + "try again.")
-                .setPositiveButton("Retry", (d, w) -> startGame())
+                .setPositiveButton("Retry", (d, w) -> runPreparePipeline(null, rom, false))
                 .setNegativeButton("Close", (d, w) -> finish())
                 .setCancelable(false)
                 .show();
@@ -254,41 +356,22 @@ public class LauncherActivity extends AppCompatActivity {
                     rom.delete();
                     showMissingRomUi();
                 })
-                .setNegativeButton("Start anyway", (d, w) -> startGame())
+                .setNegativeButton("Start anyway", (d, w) -> runPreparePipeline(null, rom, false))
                 .setCancelable(false)
                 .show();
     }
 
-    private void startGame() {
-        // Pre-flight asset extraction HERE, the launch chokepoint that can refuse.
-        // MainActivity runs it too but cannot bail (SDLActivity's onCreate has
-        // already committed to starting SDL_main), so a failure there launches the
-        // native side against a partial asset tree and crashes opaquely. This
-        // populates the same data dir MainActivity resolves, so its own call is a
-        // no-op on success.
-        //
-        // Use the nullable dataDir() per DataPaths' convention — the OrInternal
-        // variant is MainActivity's (it can't handle null). If the chosen volume
-        // vanished between the storage choice and this button press, refuse like
-        // the ROM path does rather than silently extracting to a fallback location.
-        File dataDir = DataPaths.dataDir(this);
-        if (dataDir == null) {
-            showStorageUnavailableDialog();
-            return;
+    @Override
+    protected void onDestroy() {
+        // Stop posting UI work from the background thread and interrupt any in-flight
+        // copy/extract. A partial extract just leaves the version stamp unwritten, so
+        // the next launch retries — the same failure-retry contract installIfNeeded
+        // already relies on.
+        destroyed = true;
+        if (ioExecutor != null) {
+            ioExecutor.shutdownNow();
         }
-        if (!AssetInstaller.installIfNeeded(this, dataDir)) {
-            showAssetExtractionFailedDialog();
-            return;
-        }
-        Intent intent = new Intent(this, MainActivity.class);
-        // NEW_TASK routes into MainActivity's own (distinct-affinity) task; if the
-        // game is already alive, singleTask resolves it via onNewIntent. CLEAR_TOP
-        // used to be here to force a clean top, but under singleTask it is inert —
-        // and on the old standard launchMode it was exactly what destroyed and
-        // recreated the running game on an icon relaunch. Dropped.
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(intent);
-        finish();
+        super.onDestroy();
     }
 
     private String computeSha1(File file) throws Exception {

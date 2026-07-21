@@ -36,4 +36,34 @@
             android:text="@string/pick_rom" />
     </LinearLayout>
 
+    <!-- Shown while the ROM copy / SHA-1 verify / asset extraction run on a
+         background thread (see LauncherActivity), so those multi-second I/O
+         operations no longer block the UI thread and ANR on slow storage. -->
+    <LinearLayout
+        android:id="@+id/progressContainer"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ProgressBar
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:id="@+id/progressText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/white"
+            android:textSize="16sp"
+            android:gravity="center"
+            android:text="@string/preparing" />
+    </LinearLayout>
+
 </androidx.constraintlayout.widget.ConstraintLayout>
