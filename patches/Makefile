@@ -6,6 +6,7 @@ TARGET      := $(BUILD_DIR)/$(TARGET_NAME)
 # Tools
 CC      ?= clang
 LD      ?= ld.lld
+NM      ?= llvm-nm
 CMAKE   ?= cmake
 
 # Flags
@@ -49,6 +50,19 @@ $(TARGET): $(C_OBJS) $(S_OBJS) $(LDSCRIPTS)
 	@$(CMAKE) -E echo "Linking $@"
 	@$(CMAKE) -E make_directory $(BUILD_DIR)
 	$(LD) $(C_OBJS) $(S_OBJS) $(LDFLAGS) -o $@
+	@# --unresolved-symbols=ignore-all lets a mistyped host export (one referenced
+	@# from patch C but missing from syms.ld) link as address 0 instead of failing,
+	@# so it silently becomes a call into the wrong host function at runtime. Every
+	@# recomp_* shim is DEFINED in syms.ld, so an *undefined* recomp_* symbol here
+	@# is unambiguously that typo. Game symbols (func_/D_/...) and libultra symbols
+	@# are resolved by name downstream by N64Recomp and must stay undefined, so they
+	@# are deliberately not flagged.
+	@bad=`$(NM) $(TARGET) | awk '$$1=="U"||$$2=="U"{print $$NF}' | grep '^recomp_' || true`; \
+	if [ -n "$$bad" ]; then \
+		$(CMAKE) -E echo "ERROR: undefined recomp_* host export(s) — add to syms.ld:"; \
+		for s in $$bad; do $(CMAKE) -E echo "  $$s"; done; \
+		exit 1; \
+	fi
 
 # Compiler Rule
 $(BUILD_DIR)/%.o: %.c

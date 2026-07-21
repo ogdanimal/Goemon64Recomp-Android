@@ -115,6 +115,26 @@ static void amove_track_dir(void) {
     }
     static f32 lx = 0.0f, lz = 0.0f;
     static s32 have_last = 0;
+
+    // Area-transition reset (mirrors camera.c's map-id guard at 0x800C7AB2). The
+    // frozen direction, and the last-position anchor used to sample it, belong to
+    // the area they were captured in; a new area can be oriented differently in
+    // world space, so a stale direction would lunge the wrong way on the first
+    // post-transition attack. Drop the held direction so amove_target refuses
+    // until a fresh genuine run re-latches it, and drop the anchor so the
+    // transition's position discontinuity is not itself sampled as a bogus
+    // direction on the next frame.
+    static s32 last_map = -1;
+    s32 map = (s32)*(volatile u16*)0x800C7AB2;
+    if (map != last_map) {
+        s32 prev = last_map;
+        last_map = map;
+        if (prev != -1) {
+            g_have_move = 0;
+            have_last = 0;
+        }
+    }
+
     f32 x = *(f32*)(node + 0x8);
     f32 z = *(f32*)(node + 0x10);
 
