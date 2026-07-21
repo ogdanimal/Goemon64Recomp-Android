@@ -264,7 +264,12 @@ public class LauncherActivity extends AppCompatActivity {
             return;
         }
         Intent intent = new Intent(this, MainActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+        // NEW_TASK routes into MainActivity's own (distinct-affinity) task; if the
+        // game is already alive, singleTask resolves it via onNewIntent. CLEAR_TOP
+        // used to be here to force a clean top, but under singleTask it is inert —
+        // and on the old standard launchMode it was exactly what destroyed and
+        // recreated the running game on an icon relaunch. Dropped.
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(intent);
         finish();
     }
