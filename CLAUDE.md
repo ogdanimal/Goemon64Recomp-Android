@@ -1,9 +1,9 @@
 # Goemon64Recomp-Android — working context for Claude Code
 
-Private Android port of klorfmorf's Goemon64Recomp (N64 static recompilation,
+Unofficial Android port of klorfmorf's Goemon64Recomp (N64 static recompilation,
 Zelda64Recomp/N64Recomp ecosystem). GitHub: `ogdanimal/Goemon64Recomp-Android`
-(PRIVATE). Default branch `main`, work branch `dev`. Remotes: `origin`=ogdanimal,
-`upstream`=klorfmorf.
+(**PUBLIC** since 2026-07-20). Default branch `main`, work branch `dev`. Remotes:
+`origin`=ogdanimal, `upstream`=klorfmorf.
 
 ## Environment
 - Repo lives in WSL at `~/projects/Goemon64Recomp`; work as a normal (non-root) user
@@ -115,7 +115,9 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   - No migration exists by design; the first-run choice is final short of a
     reinstall. Adding migration later means copy-verify-then-delete, never move.
 - **Vulkan diagnostics — DEPLOYED 2026-07-19** (`4a6552f`, via plume `65783a0`
-  and rt64 `8c73b3f`). Startup now logs the selected physical device (vendor,
+  and rt64 `8c73b3f` — those were the fork tips THEN; **current tips are plume
+  `c69ce04` / rt64 `3b49b22`** after the pass-2 P1/S4 fix, see the code-review
+  bullet below). Startup now logs the selected physical device (vendor,
   device API, driver version) and the loader's Vulkan version vs what we
   request. Aimed at making bug reports from other people's hardware diagnosable
   without a round trip. **All three submodule levels are pushed to their forks**
@@ -160,10 +162,12 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     `.bak` reloads) then relaunch. Fresh installs get the new defaults for free.
     On device the config lives at
     `/storage/<uuid>/Android/data/com.goemon64.recomp/files/data/`.
-- **NOW: v1.0.0 is PUBLIC, RELEASED, and DEVICE-VERIFIED on the release build
-  (2026-07-20).** The repo is public, the first signed release is live, and the
+- **v1.0.0 + v1.0.1 are PUBLIC, RELEASED, and DEVICE-VERIFIED on the release
+  build (2026-07-20).** The repo is public, both signed releases are live, and the
   user smoke-tested the release-signed APK on the RP5 (launches + loads a restored
-  save). Monitor the GitHub **issue tracker** for
+  save). NOTE: both shipped WITHOUT any pass-1/pass-2 code-review fixes — those
+  live only on `dev` (tip `9518e2c`) awaiting the next cut. Monitor the GitHub
+  **issue tracker** for
   device-specific bug reports (Vulkan/driver issues on non-Adreno GPUs are the
   likely class) and triage; otherwise back to general bug-fixing. Test via the CI
   debug APK, or cut a new signed release by pushing a `v*` tag (see release setup
@@ -212,6 +216,55 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     (M9), widescreen stale-static (M10), autosave engine-guard off-by-one probe
     (M8). All in the doc. L12 (annotated commented-out reference blocks) is
     intentional/not-actionable; L8 (versionCode) is done — see release section.
+- **Code-review SECOND PASS remediation — DONE, build+CI-verified, PUSHED on
+  `dev` (2026-07-21; parent tip `9518e2c`).** The pass-2 gap hunt
+  (`docs/code-review-2026-07-20-pass2.md`) found HIGH crash bugs that shipped in
+  BOTH v1.0.0 and v1.0.1. Fixed all five HIGH + two integrity + three CI items;
+  each fixed row in that doc ends with a verified `→ FIXED` note (cite it, don't
+  re-derive). **Current submodule fork tips after this: plume `c69ce04`, rt64
+  `3b49b22`** (both pushed to their `goemon-android` forks; N64MR unchanged at
+  `b6f6253`). `git ls-remote`-verified the whole gitlink chain is CI-buildable.
+  What changed how the codebase works:
+  - **P1/S4 — resume-window use-after-free (the fix that most matters).** The
+    Android background→resume path could deref a freed `ANativeWindow` (host
+    published it with no `ANativeWindow_acquire`; plume's `recreateSurface`
+    failure path left `desc.renderWindow` at a window `vkDestroySurfaceKHR` just
+    un-refed). Fixed with ONE **ownership invariant**: every window in a slot
+    (`g_pending_resume_window` → plume `pendingRenderWindow` → `desc.renderWindow`)
+    carries exactly one owned ref; balanced acquire/release at each transfer; the
+    swap-chain ctor acquires the construction window; `recreateSurface` adopts the
+    new window BEFORE surface teardown so the failure path is deref-safe. Spans
+    `src/main/rt64_render_context.cpp` + plume. See [[anativewindow-ownership-model]].
+    **DEVICE-TEST STILL PENDING** — resume/background cycling on the RP5; WSL
+    can't reach USB, so it was build-verified only.
+  - **S1** — Android `SDL_QUIT` (from `onDestroy`, which then blocks the UI
+    thread) now quits immediately instead of opening an un-answerable prompt that
+    wedged the app until SIGKILL (`input.cpp`). Prompt kept desktop-only.
+  - **N1** — the four `load_*_config` bodies catch `nlohmann::json::exception`, so
+    a parseable-but-wrong-typed config resets to defaults instead of
+    `std::terminate`-ing pre-window (crash loop). `config.cpp`.
+  - **N2** — binding-scan cancel deferred off the SDL event thread (atomic
+    `request_cancel_scanning_input` / `poll_scan_cancel_requested`, drained in
+    `draw_hook` before `Context::Update()`), so it no longer races the render
+    thread's RmlUi `DirtyVariable` (was heap corruption).
+  - **N3** — the five On/Off enums that default Off now list **Off first** in
+    their `NLOHMANN_JSON_SERIALIZE_ENUM` map, so a corrupt/unknown value fails to
+    the default rather than silently enabling autosave/cheats/analog-cam.
+    `BackgroundInputMode` stays On-first ON PURPOSE (its default IS On) — the rule
+    is "fallback = the setting's own default." `goemon_config.h` / `recomp_input.h`.
+  - **N4** — all nine numeric setters (`ui_config.cpp`) clamp to `[0,100]`; the
+    deadzone==100 divide-by-zero is also guarded in `apply_joystick_deadzone`.
+    Kills NaN stick / rumble overflow / 100× volume from hand-edited config.
+  - **C1/C2/C3 (CI)** — `android.yml` gets `permissions: contents: read`; both
+    workflows validate the committed `gradle-wrapper.jar` via a SHA-pinned
+    `gradle/actions/wrapper-validation@ed408507` and `gradle-wrapper.properties`
+    pins `distributionSha256Sum` for gradle-8.0; `android-release.yml` rejects a
+    `v*` tag whose commit isn't an ancestor of `main`.
+  - **v1.0.0 AND v1.0.1 both shipped from `main` with NONE of pass-1's or pass-2's
+    fixes.** The next release (`v1.0.2`) off `dev` is the first to carry any of
+    them — a batch worth cutting (do a `v1.0.2-rc1` dry-run first per the release
+    section). Pass-2 MED/LOW tail (S2/S3/N5–N16/P2–P7/B1–B4/C4–C6/D1–D5/R1–R2) NOT
+    started.
 - **Attack While Moving — DONE, device-verified, COMMITTED on `dev` (`9bae463`),
   but NOT pushed and deployment HELD (2026-07-20, user's explicit call).** A
   novelty setting `attack_while_moving_mode` (default **Off**) that lets the
@@ -272,8 +325,10 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   workflow now also REJECTS a tag that isn't `vMAJOR.MINOR.PATCH[-suffix]` or has
   minor/patch ≥ 100; `-rc` tags intentionally share their final release's code.
   v1.0.0 shipped code 661 (old scheme); any release ≥ v1.0.1 → ≥ 10001, so the
-  switch is monotonic. **v1.0.0 is released.** A `v1.0.1-rc1` dry-run tag would
-  prove the derivation end-to-end before the next real cut.
+  switch is monotonic. **v1.0.0 AND v1.0.1 are released** (both from `main`, both
+  WITHOUT any pass-1/pass-2 fixes — see the code-review bullets). The next cut is
+  `v1.0.2` off `dev`; do a `v1.0.2-rc1` dry-run tag first to prove the versionCode
+  derivation end-to-end before the real cut.
   Repo secrets: `RELEASE_KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`,
   `RELEASE_KEY_ALIAS` (`goemon-upload`), `RELEASE_KEY_PASSWORD` (+ the existing
   `G64RS_REPO_WITH_PAT` ROM secret).
