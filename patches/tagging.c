@@ -1,6 +1,11 @@
 #include "patches.h"
 
-/* Not needed?
+/* NOT NEEDED — a plain reimplementation that adds no @recomp interpolation
+   tagging (unlike the active patches further down), so it changes nothing over
+   the base recompiled function; there is no reason to override it. Kept as
+   reference; do NOT enable — it also carries a transcription slip: the three
+   position adds below all target `position.x` (`.x += unknown_88.x/.y/.z`) where
+   a 3D update should write `.x/.y/.z` respectively.
 RECOMP_PATCH void func_801E99CC_5A58DC(ProjectileTask* task, Object *object, s32 type) {
     Object *current_object;
 
@@ -32,7 +37,22 @@ RECOMP_PATCH void func_801E99CC_5A58DC(ProjectileTask* task, Object *object, s32
 }
 */
 
-/* Wrong?
+/* WRONG — confirmed transcription bug, kept as a worked example; do NOT enable
+   (the base recompiled func_80036158_36D58 is correct and is what runs).
+   Checked against the ground truth at RecompiledFuncs/funcs_13.c:8891:
+
+   1. Predecessor search (the `while (next_element != heap_element ...)` loop):
+      the original walks the list updating s1 (= task_element) every step
+      (`or $s1, $v0, $zero` @ 0x800361B4), so on exit task_element is
+      heap_element's PREDECESSOR. This copy walks a separate `next_element` and
+      never writes the result back to task_element, so task_element stays the list
+      HEAD. The later `task_element->next = heap_element` then relinks the head and
+      corrupts the list whenever heap_element is not the head's immediate successor.
+   2. The `if (task_element == NULL) return NULL;` is misplaced: the original tests
+      task_element==0 AFTER the search (L_800361C4) to mean "heap_element not found",
+      but here task_element is never NULL at that point.
+
+   Also adds no @recomp tagging, so it would be pointless even if correct.
 RECOMP_PATCH HeapElement *func_80036158_36D58(Task* task, HeapElement *heap_element, s8 count) {
     HeapElement *task_element;
     HeapElement *current_element;
