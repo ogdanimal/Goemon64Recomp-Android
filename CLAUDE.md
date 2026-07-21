@@ -168,6 +168,50 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   likely class) and triage; otherwise back to general bug-fixing. Test via the CI
   debug APK, or cut a new signed release by pushing a `v*` tag (see release setup
   below).
+- **Code-review remediation — DONE, build+CI-verified, PUSHED on `dev`
+  (2026-07-20; tip `a27223a`).** A full-codebase critique (Java launcher, host
+  `src/`, `patches/`, CI) fixed the high tier (H1–H7) and the long tail (L1–L14).
+  Findings record with per-item verified-vs-review status and outcomes:
+  **`docs/code-review-2026-07-20.md`** (cite it, don't re-derive). Things that
+  change how the codebase works:
+  - **New CI guard** (`patches/Makefile`): fails the patch link if any *undefined*
+    `recomp_*` symbol exists — catches a host export referenced in patch C but
+    missing from `syms.ld`, which `--unresolved-symbols=ignore-all` otherwise
+    links as address 0 → wrong host fn at runtime. Game/libultra symbols stay
+    undefined by design and are NOT flagged. Needs `llvm-nm` (both workflows
+    `apt-get install llvm`). Soft spot, not hardened: if `llvm-nm` ever goes
+    missing the guard passes vacuously (`command -v` preflight is the fix if wanted).
+  - **Launcher `version_string` is now build-wired** (H6): gradle `vName`
+    (v-stripped) → `-DGOEMON_VERSION_STRING` → CMake define → `main.cpp` macro,
+    `1.0.0-dev` fallback for local host builds. No more hardcoded `0.2.0-dev`.
+  - **Controller-map race + handle leak + UAF fixed** (`src/game/input.cpp`): all
+    four SDL-thread writers take `cur_controllers_mutex`; disconnect closes the
+    handle AND purges the freed pointer from `cur_controllers` before the close.
+  - **`onDestroy` no longer kills the app on an accessibility font/display-size
+    change** (`fontScale|density` added to `configChanges`; `halt(0)` guarded by
+    `isFinishing()`).
+  - **attack_move resets its frozen direction on area transition** (map-id
+    `0x800C7AB2` guard mirroring camera.c) — first post-transition attack no
+    longer lunges the previous area's heading.
+  - **Analog-cam pointer swap hardened** (L9): both swap sites OR the original
+    word's flag bits into the replacement (`| (old_cam & ~0x8FFFFFFEu)`) so the
+    node word is bit-faithful DURING the swap window, not just after the restore.
+    An initial strike of this finding was WRONG and was reopened — the lesson is
+    in memory `review-findings-need-verification`.
+  - **`ui_state_mutex` is `std::recursive_mutex`** (draw_hook re-enters it at
+    `:738`); the old "non-recursive → self-deadlock" note (here and in comments)
+    was FALSE and corrected here, in the source comments, and in the autosave §
+    note. The tick runs before the launcher check for a visibility-ordering
+    reason, not deadlock.
+  - Device-verified: latest debug build `install -r`'d onto the RP5 (2026-07-20),
+    saves intact (backed up + checksummed first — see [[device-install-method]]).
+  - **BACKLOG (M-tier, NOT started):** launcher main-thread I/O (32 MB ROM copy +
+    45 MB asset extract on the UI thread — M2, biggest), recents-relaunch
+    storage-guard bypass (M4), non-atomic cross-thread settings ints (M6),
+    config-save reported success on disk-full (M7), `ui_prompt` callback-under-lock
+    (M9), widescreen stale-static (M10), autosave engine-guard off-by-one probe
+    (M8). All in the doc. L12 (annotated commented-out reference blocks) is
+    intentional/not-actionable; L8 (versionCode) is done — see release section.
 - **Attack While Moving — DONE, device-verified, COMMITTED on `dev` (`9bae463`),
   but NOT pushed and deployment HELD (2026-07-20, user's explicit call).** A
   novelty setting `attack_while_moving_mode` (default **Off**) that lets the
@@ -221,8 +265,15 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   deps — build-time only, not shipped in the APK).
 - **Releases are tag-triggered + signed** via `.github/workflows/android-release.yml`:
   push a `v*` tag → recompile → signed `assembleRelease` → publishes a GitHub
-  Release with the APK. `versionName` = the tag (`v1.0.0` → 1.0.0), `versionCode`
-  = commit count (`build.gradle` reads `-PvName`/`-PvCode`). **v1.0.0 is released.**
+  Release with the APK. `versionName` = the tag (`v1.0.0` → 1.0.0). `versionCode`
+  is **tag-derived semver** `major*10000+minor*100+patch` (changed 2026-07-20,
+  was `git rev-list --count` which drifts on a history rewrite — this repo has
+  scrubbed history once; `build.gradle` reads `-PvName`/`-PvCode`). The release
+  workflow now also REJECTS a tag that isn't `vMAJOR.MINOR.PATCH[-suffix]` or has
+  minor/patch ≥ 100; `-rc` tags intentionally share their final release's code.
+  v1.0.0 shipped code 661 (old scheme); any release ≥ v1.0.1 → ≥ 10001, so the
+  switch is monotonic. **v1.0.0 is released.** A `v1.0.1-rc1` dry-run tag would
+  prove the derivation end-to-end before the next real cut.
   Repo secrets: `RELEASE_KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`,
   `RELEASE_KEY_ALIAS` (`goemon-upload`), `RELEASE_KEY_PASSWORD` (+ the existing
   `G64RS_REPO_WITH_PAT` ROM secret).
