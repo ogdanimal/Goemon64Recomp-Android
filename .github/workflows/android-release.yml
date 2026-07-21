@@ -43,14 +43,37 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           submodules: recursive
-          fetch-depth: 0   # full history so versionCode = commit count is stable
+          fetch-depth: 0   # full history + tags (versionCode is now tag-derived, not commit count)
 
       - name: Derive version from tag
         id: ver
         run: |
           TAG="${GITHUB_REF_NAME}"
-          VNAME="${TAG#v}"                       # v1.0.0 -> 1.0.0
-          VCODE="$(git rev-list --count HEAD)"    # monotonic, increases each release
+          # Require a semver tag: vMAJOR.MINOR.PATCH with an optional -suffix/+suffix
+          # (e.g. v1.2.0, v1.1.0-rc1). Fail loudly rather than let a malformed tag
+          # arithmetic its way into a garbage versionCode.
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$'; then
+            echo "::error::Tag '$TAG' is not vMAJOR.MINOR.PATCH[-suffix]; refusing to release."
+            exit 1
+          fi
+          VNAME="${TAG#v}"                       # v1.1.0-rc1 -> 1.1.0-rc1
+          CORE="${VNAME%%[-+]*}"                 # 1.1.0-rc1  -> 1.1.0
+          IFS=. read -r MAJOR MINOR PATCH <<< "$CORE"
+          # versionCode = major*10000 + minor*100 + patch. Derived purely from the
+          # tag, so it is deterministic and CANNOT drift on a history rewrite the
+          # way `git rev-list --count` would. Any release >= v1.0.1 maps to >= 10001,
+          # comfortably above the 661 that v1.0.0 shipped with (commit count), so the
+          # switch is monotonic with no transition scheme. Scheme's only limit:
+          # minor and patch must each stay < 100.
+          if [ "$MINOR" -ge 100 ] || [ "$PATCH" -ge 100 ]; then
+            echo "::error::minor/patch must each be < 100 for the versionCode scheme (got $CORE)."
+            exit 1
+          fi
+          VCODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
+          # NOTE: a -rc tag maps to the SAME versionCode as its final release
+          # (v1.1.0-rc1 and v1.1.0 both -> 10100). rc builds are manual dry-run
+          # sideloads (adb install -r overwrites regardless of code), so this
+          # collision is intentional and accepted — rc is not encoded into the code.
           echo "vname=$VNAME" >> "$GITHUB_OUTPUT"
           echo "vcode=$VCODE" >> "$GITHUB_OUTPUT"
           echo "Release $TAG -> versionName=$VNAME versionCode=$VCODE"

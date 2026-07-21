@@ -50,8 +50,8 @@ Severity: **H** fix before next release · **M** soon · **L** long tail.
 
 > **Status 2026-07-20:** L1–L11 verified against source by three read-only passes
 > and fixed where real (build-verified, `assembleDebug` green + the new patches
-> guard exercised). L9 was a **false positive** and struck. L8 is a release-scheme
-> decision deferred to the maintainer. L12–L14 not yet triaged.
+> guard exercised). L9 was a **false positive** and struck. L8 (versionCode scheme)
+> was fixed with the maintainer's sign-off. L12–L14 not yet triaged.
 >
 > Actual location corrections found during verification: L1 is in `patches/Makefile`
 > (not CMake); L11 is in `rt64_render_context.cpp` (not `main.cpp`).
@@ -65,7 +65,7 @@ Severity: **H** fix before next release · **M** soon · **L** long tail.
 | L5 | REAL — FIXED | `src/game/input.cpp:693,723` | `get_input_analog`/`get_input_digital` switch on an untrusted `input_type` from `controls.json` with no `default` → fall off the end (UB) on an out-of-range value. Added `default`/trailing returns (treat unknown as unbound). |
 | L6 | REAL — FIXED | `ui_saved_indicator.cpp:33`, `ui_state.cpp:585` | `system_clock` used to measure elapsed expiry (toast + menu key-repeat) → a wall-clock jump misbehaves. Switched both to `steady_clock`. |
 | L7 | PARTIAL — FIXED | `AssetInstaller.java:86` | Fixed 64-byte single `read()` of `.assets_version` would truncate a >64-byte version and force 45 MB re-extraction every launch. Unreachable with semver tags, but read the whole file now (`Files.readAllBytes`) — also removes the single-`read` assumption. |
-| L8 | PARTIAL — DEFERRED | `build.gradle:39`, `android-release.yml:53` | `versionCode = git rev-list --count` is downgrade-fragile if history is ever rewritten (this repo has done a PII scrub). v1.0.0 shipped code 661; a semver-derived scheme (10000+) is a safe one-time jump up. Left to the maintainer — see the L8 decision note. |
+| L8 | PARTIAL — FIXED | `android-release.yml:48`, `build.gradle:39` | `versionCode = git rev-list --count` was downgrade-fragile if history is ever rewritten (this repo has done a PII scrub). Now tag-derived: `major*10000+minor*100+patch`, computed in the release workflow, deterministic and rewrite-proof. v1.0.0 shipped 661; any release ≥ v1.0.1 → ≥ 10001, so the switch is monotonic with no transition scheme. The workflow now also **rejects** non-`vMAJOR.MINOR.PATCH[-suffix]` tags and minor/patch ≥ 100. `-rc` tags intentionally share their final release's code (dry-run sideloads). |
 | L9 | **NOT-REAL — struck** | `patches/camera.c` | Claimed flag bits lost on the camera pointer swap. False: the `& 0x8FFFFFFE` mask is applied only to a *local* used as the memcpy source; the original word is saved and restored **verbatim** (`camera.c:496-512`, `579-596`). No defect. |
 | L10 | REAL — FIXED | `patches/attack_move.c:116` | Frozen lunge direction + `g_have_move` were never reset on area transition → first post-transition attack could lunge the wrong way. Added a map-id guard (`0x800C7AB2`, mirroring `camera.c`) that drops the held direction and the sample anchor on area change. |
 | L11 | REAL — FIXED | `rt64_render_context.cpp:353` | `G64_COPY_GPU` env fork (marked "Remove before release", shipped anyway) let an env var flip a render path in release builds. Removed the fork; hardcoded the shipping default (`copyWithGPU = false`). |
