@@ -116,7 +116,17 @@ public class MainActivity extends SDLActivity {
         // process, so if Android reuses this one for the next launch, game_main
         // returns immediately and the app comes up dead. Nothing is pending here
         // (unlike the restart path), so we can just take the process down.
-        Runtime.getRuntime().halt(0);
+        //
+        // But ONLY when the activity is genuinely finishing (user quit). onDestroy
+        // also fires for system-initiated recreation — e.g. a config change not
+        // listed in configChanges, or memory-pressure reclaim — and halting there
+        // would kill the app out from under a legitimate recreation. isFinishing()
+        // is exactly that distinction. (fontScale|density are now in configChanges
+        // so an accessibility font/display-size change no longer recreates us at
+        // all; this guard covers the remaining recreation cases.)
+        if (isFinishing()) {
+            Runtime.getRuntime().halt(0);
+        }
     }
 
     /**

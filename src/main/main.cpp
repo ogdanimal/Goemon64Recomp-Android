@@ -69,7 +69,9 @@ const std::string version_string = "0.2.0-dev";
 template<typename... Ts>
 void exit_error(const char* str, Ts ...args) {
     // TODO pop up an error
-    ((void)fprintf(stderr, str, args), ...);
+    // One call passing the whole pack — a fold that calls fprintf once per arg
+    // reuses the format string for each and is UB with two or more arguments.
+    fprintf(stderr, str, args...);
     assert(false);
 
     ultramodern::error_handling::quick_exit(__FILE__, __LINE__, __FUNCTION__);
@@ -83,7 +85,9 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK) > 0) {
+    // SDL_Init returns 0 on success and a negative value on failure; the old
+    // `> 0` check never fired, so init failures fell through to a null-window crash.
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK) != 0) {
         exit_error("Failed to initialize SDL2: %s\n", SDL_GetError());
     }
 
