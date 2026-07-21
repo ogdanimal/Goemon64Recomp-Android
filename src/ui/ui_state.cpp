@@ -559,10 +559,11 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
 
     recompui::sync_restart_button_visibility();
 
-    // Must run before the ui_state_mutex lock below -- it calls the public
-    // show_context/hide_context, which take that same non-recursive mutex.
-    // Runs before the launcher check so an expiring toast can't hold
-    // is_any_context_shown() true and suppress the launcher for a frame.
+    // Runs before the launcher check below so an expiring toast updates
+    // is_any_context_shown() first and can't suppress the launcher for a frame.
+    // (ui_state_mutex is recursive -- declared above -- and this re-locks it via
+    // show_context/hide_context; the ordering here is about that visibility check,
+    // not deadlock avoidance, which recursion already handles.)
     recompui::tick_saved_indicator();
 
     // Return to the launcher if no menu is open and the game isn't started.

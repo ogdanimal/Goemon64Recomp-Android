@@ -47,7 +47,13 @@ RECOMP_PATCH void func_80021740_22340(BackgroundGraphicsNode* node)
 	}
 
 	if (node->texture_data == (u8 *)-1) {
-		// Intentionally crash by writing to an invalid memory location, triggering the debugger.
+		// Upstream writes to address -1 here to hard-crash on this "should not
+		// happen" state (a broken/absent background texture). Under the static
+		// recompiler there is NO trap: the guest store to 0xFFFFFFFF is masked
+		// into RDRAM and silently writes high memory rather than faulting, so this
+		// no longer stops anything. Left in place as the closest analog to the
+		// original intent, but it is NOT a real crash/debugger trap.
+		// TODO: route to a genuine host-side abort/log if this path ever fires.
 		*((volatile s32 *)-1) = 0;
 	}
 

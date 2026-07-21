@@ -14,11 +14,15 @@
 // document mutation happens in tick_saved_indicator(), which runs on the render
 // thread from draw_hook.
 //
-// DEADLOCK: tick_saved_indicator() calls the public show_context/hide_context,
-// which take ui_state_mutex internally (ui_state.cpp:800-823). draw_hook holds
-// that same non-recursive mutex from ui_state.cpp:566 onward, so the tick MUST
-// be called before that lock is taken -- alongside the launcher's show_context
-// at ui_state.cpp:562, which is there for the same reason.
+// ORDERING: tick_saved_indicator() calls the public show_context/hide_context,
+// which take ui_state_mutex internally. That mutex is a std::recursive_mutex
+// (ui_state.cpp:433) and draw_hook itself re-enters it while holding it (e.g. the
+// show_context at ui_state.cpp:738), so re-locking on the render thread does NOT
+// deadlock -- that is NOT why the tick runs early. The real reason: the tick must
+// run before draw_hook's launcher-return check (ui_state.cpp:569) so an expiring
+// toast updates is_any_context_shown() before that check reads it; otherwise a
+// dismissing toast suppresses the launcher for a frame. It sits alongside the
+// launcher's own show_context (ui_state.cpp:562) for that same ordering reason.
 
 #include <atomic>
 #include <cstdio>

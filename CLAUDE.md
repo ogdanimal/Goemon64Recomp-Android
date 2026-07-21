@@ -78,8 +78,11 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     `set_captures_input(false)` is exactly the toast/modal switch. See
     `docs/autosave.md` § "The Saved indicator" — the mistake is the reusable
     part. Note the two hazards recorded there: the tick MUST stay above
-    `draw_hook`'s `ui_state_mutex` lock (non-recursive → self-deadlock), and the
-    guest thread may only touch an atomic.
+    `draw_hook`'s launcher-return check so an expiring toast updates
+    `is_any_context_shown()` before it is read (NOT a deadlock concern —
+    `ui_state_mutex` is a `std::recursive_mutex` that `draw_hook` itself re-enters;
+    the earlier "non-recursive → self-deadlock" note was wrong, corrected
+    2026-07-20), and the guest thread may only touch an atomic.
   - Interval configurability: **DECIDED 2026-07-20 — stays a `#define`, NOT
     configurable.** The user confirmed the fixed 2-minute interval is fine; do not
     re-raise. (Settings text hardcodes "every 2 minutes", which now matches intent.)

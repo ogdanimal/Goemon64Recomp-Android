@@ -51,7 +51,8 @@ Severity: **H** fix before next release · **M** soon · **L** long tail.
 > **Status 2026-07-20:** L1–L11 verified against source by three read-only passes
 > and fixed where real (build-verified, `assembleDebug` green + the new patches
 > guard exercised). L9 was a **false positive** and struck. L8 (versionCode scheme)
-> was fixed with the maintainer's sign-off. L12–L14 not yet triaged.
+> was fixed with the maintainer's sign-off. L12–L14 triaged: L12 not-actionable
+> (intentional annotated reference code), L13 comment corrected, L14 reworded.
 >
 > Actual location corrections found during verification: L1 is in `patches/Makefile`
 > (not CMake); L11 is in `rt64_render_context.cpp` (not `main.cpp`).
@@ -69,9 +70,9 @@ Severity: **H** fix before next release · **M** soon · **L** long tail.
 | L9 | **NOT-REAL — struck** | `patches/camera.c` | Claimed flag bits lost on the camera pointer swap. False: the `& 0x8FFFFFFE` mask is applied only to a *local* used as the memcpy source; the original word is saved and restored **verbatim** (`camera.c:496-512`, `579-596`). No defect. |
 | L10 | REAL — FIXED | `patches/attack_move.c:116` | Frozen lunge direction + `g_have_move` were never reset on area transition → first post-transition attack could lunge the wrong way. Added a map-id guard (`0x800C7AB2`, mirroring `camera.c`) that drops the held direction and the sample anchor on area change. |
 | L11 | REAL — FIXED | `rt64_render_context.cpp:353` | `G64_COPY_GPU` env fork (marked "Remove before release", shipped anyway) let an env var flip a render path in release builds. Removed the fork; hardcoded the shipping default (`copyWithGPU = false`). |
-| L12 | review — TODO | various | `#if 0` blocks referencing possibly-removed functions; three large commented-out patch blocks (one preserving a transcription bug in amber). |
-| L13 | review — TODO | `patches/background.c:49` | "Intentional crash" trap is probably a silent rdram write under the recomp memory model, not a trap. |
-| L14 | verified — TODO | `src/ui/ui_saved_indicator.cpp` | Comment calls `ui_state_mutex` non-recursive; it's `std::recursive_mutex` (`ui_state.cpp:433`) and `draw_hook` relies on the recursion. Invariant holds; reword the premise. |
+| L12 | NOT-ACTIONABLE | `patches/main.c:13`, `input.cpp:580`, `anime.c:449`, `tagging.c:3,35` | The two `#if 0` blocks are intentional/parked (a documented "quicksave disabled for now" path; a debug step-speed toggle). The three `/* ... */` blocks are **annotated reference reimplementations** (`/* Not needed */`, `/* Not needed? */`, `/* Wrong? */` — the last is the transcription-bug-in-amber). Each states why it's disabled; in a project this RE-heavy, deleting them destroys context. Left as-is by choice — not accidental cruft. |
+| L13 | REAL — COMMENT FIXED | `patches/background.c:49` | The "intentionally crash … triggering the debugger" write to `-1` does NOT trap under the static recompiler — the guest store to `0xFFFFFFFF` is masked into RDRAM and silently writes high memory. Corrected the comment to say so and flagged a TODO to route to a real host abort. Behavior left unchanged: it's an unreached "should not happen" error path, and choosing crash-vs-continue isn't safe to decide statically without device repro. |
+| L14 | verified — FIXED | `ui_saved_indicator.cpp:17`, `ui_state.cpp:562`, `CLAUDE.md` | Both comments (and CLAUDE.md) called `ui_state_mutex` "non-recursive → self-deadlock". It's actually `std::recursive_mutex` (`ui_state.cpp:433`) that `draw_hook` **re-enters** at `:738`, so re-locking never self-deadlocks — the deadlock rationale was false. Reworded all three to the real reason: the tick must precede the launcher-return check (`:569`) so an expiring toast updates `is_any_context_shown()` before it's read. No behavior change. |
 
 ## Recurring themes
 
