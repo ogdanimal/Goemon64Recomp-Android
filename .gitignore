@@ -86,3 +86,6 @@ compile_commands.json
 keystore.properties
 *.jks
 *.keystore
+
+# Local Claude Code session config — never commit (per-clone, not project state)
+.claude/
