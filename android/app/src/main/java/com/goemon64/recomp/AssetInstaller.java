@@ -20,7 +20,15 @@ final class AssetInstaller {
 
     private AssetInstaller() {}
 
-    static void installIfNeeded(Context ctx, File dataDir) {
+    /**
+     * @return true if the assets are present for this version (already extracted
+     *         or freshly extracted), false if extraction failed. On failure the
+     *         stamp is deliberately left unwritten so the next launch retries.
+     *         Callers that can refuse (LauncherActivity) should not launch the
+     *         game on false — the native side reads these assets immediately and
+     *         crashes opaquely if they are missing/partial.
+     */
+    static boolean installIfNeeded(Context ctx, File dataDir) {
         String version;
         try {
             version = ctx.getPackageManager()
@@ -31,7 +39,7 @@ final class AssetInstaller {
 
         File stamp = new File(dataDir, ".assets_version");
         if (stamp.exists() && version.equals(readStamp(stamp))) {
-            return; // already extracted for this version
+            return true; // already extracted for this version
         }
 
         AssetManager am = ctx.getAssets();
@@ -43,8 +51,10 @@ final class AssetInstaller {
             copyAsset(am, "recompcontrollerdb.txt", dataDir);
             writeStamp(stamp, version);
             Log.i(TAG, "Assets extracted for version " + version);
+            return true;
         } catch (IOException e) {
             Log.e(TAG, "Asset extraction failed", e);
+            return false;
         }
     }
 
@@ -84,10 +94,12 @@ final class AssetInstaller {
     }
 
     private static String readStamp(File stamp) {
-        try (InputStream in = new java.io.FileInputStream(stamp)) {
-            byte[] buf = new byte[64];
-            int n = in.read(buf);
-            return n > 0 ? new String(buf, 0, n, "UTF-8").trim() : "";
+        // Read the whole file — a fixed-size single read() would truncate a long
+        // version string (and isn't guaranteed to fill the buffer anyway), making
+        // the equals() below fail forever and re-extract ~45 MB every launch.
+        try {
+            return new String(java.nio.file.Files.readAllBytes(stamp.toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8).trim();
         } catch (IOException e) {
             return "";
         }

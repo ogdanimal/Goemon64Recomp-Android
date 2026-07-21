@@ -188,13 +188,43 @@ public class LauncherActivity extends AppCompatActivity {
         try {
             sha1 = computeSha1(rom);
         } catch (Exception e) {
-            sha1 = "<error>";
+            // Couldn't read the file (or hash it) — that is NOT a checksum
+            // mismatch, and must not route into the mismatch dialog whose primary
+            // action deletes the ROM. A transient read error should never delete a
+            // possibly-valid file.
+            showRomUnreadableDialog(rom);
+            return;
         }
         if (SHA1_NTSC_U.equalsIgnoreCase(sha1)) {
             startGame();
         } else {
             showHashMismatchDialog(rom, sha1);
         }
+    }
+
+    private void showRomUnreadableDialog(File rom) {
+        new AlertDialog.Builder(this)
+                .setTitle("Couldn't read the ROM")
+                .setMessage("The ROM file couldn't be read to verify it. This is "
+                        + "usually a temporary storage issue, not a bad ROM.\n\n"
+                        + "Retry, or start anyway?")
+                .setPositiveButton("Retry", (d, w) -> verifyAndMaybeStart(rom))
+                .setNegativeButton("Start anyway", (d, w) -> startGame())
+                .setCancelable(false)
+                .show();
+    }
+
+    private void showAssetExtractionFailedDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("Setup failed")
+                .setMessage("The app couldn't unpack its UI/asset files into "
+                        + "storage, so the game can't start. This is usually a "
+                        + "low-storage or permissions issue.\n\nFree up space and "
+                        + "try again.")
+                .setPositiveButton("Retry", (d, w) -> startGame())
+                .setNegativeButton("Close", (d, w) -> finish())
+                .setCancelable(false)
+                .show();
     }
 
     private void showHashMismatchDialog(File rom, String got) {
@@ -213,6 +243,17 @@ public class LauncherActivity extends AppCompatActivity {
     }
 
     private void startGame() {
+        // Pre-flight asset extraction HERE, the launch chokepoint that can refuse.
+        // MainActivity runs it too but cannot bail (SDLActivity's onCreate has
+        // already committed to starting SDL_main), so a failure there launches the
+        // native side against a partial asset tree and crashes opaquely. This
+        // populates the same data dir MainActivity resolves, so its own call is a
+        // no-op on success.
+        File dataDir = DataPaths.dataDirOrInternal(this);
+        if (!AssetInstaller.installIfNeeded(this, dataDir)) {
+            showAssetExtractionFailedDialog();
+            return;
+        }
         Intent intent = new Intent(this, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(intent);
