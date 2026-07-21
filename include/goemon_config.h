@@ -133,6 +133,22 @@ namespace goemon64 {
     SwapWhileMovingMode get_swap_while_moving_mode();
     void set_swap_while_moving_mode(SwapWhileMovingMode mode);
 
+    // Allow the player to keep moving during an attack (lunge in the direction
+    // last run) instead of rooting in place. Reuses the On/Off toggle shape.
+    enum class AttackWhileMovingMode {
+        On,
+        Off,
+		OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(goemon64::AttackWhileMovingMode, {
+        {goemon64::AttackWhileMovingMode::On, "On"},
+        {goemon64::AttackWhileMovingMode::Off, "Off"}
+    });
+
+    AttackWhileMovingMode get_attack_while_moving_mode();
+    void set_attack_while_moving_mode(AttackWhileMovingMode mode);
+
     void open_quit_game_prompt();
     void open_restart_game_prompt();
 };

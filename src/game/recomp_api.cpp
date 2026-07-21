@@ -185,6 +185,12 @@ extern "C" void recomp_get_swap_while_moving_enabled(uint8_t* rdram, recomp_cont
     _return<s32>(ctx, goemon64::get_swap_while_moving_mode() == goemon64::SwapWhileMovingMode::On);
 }
 
+// Allow the player to keep moving during an attack (feature in
+// patches/attack_move.c).
+extern "C" void recomp_get_attack_while_moving_enabled(uint8_t* rdram, recomp_context* ctx) {
+    _return<s32>(ctx, goemon64::get_attack_while_moving_mode() == goemon64::AttackWhileMovingMode::On);
+}
+
 // Cheats menu toggles, read once per frame by update_cheats().
 extern "C" void recomp_get_infinite_health_enabled(uint8_t* rdram, recomp_context* ctx) {
     _return<s32>(ctx, goemon64::get_infinite_health_mode() == goemon64::CheatMode::On);

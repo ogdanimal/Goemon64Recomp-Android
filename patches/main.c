@@ -3,6 +3,7 @@
 #include "camera.h"
 #include "cheats.h"
 #include "autosave.h"
+#include "attack_move.h"
 
 // @recomp Patched to enable RT64's extended GBI mode and set the correct refresh rate.
 RECOMP_PATCH void func_800012FC_1EFC() 
@@ -26,6 +27,11 @@ RECOMP_PATCH void func_800012FC_1EFC()
 
     // @recomp Poll the autosave timer/trigger.
     update_autosave();
+
+    // @recomp Attack while walking/running: re-inject movement during attacks.
+#if GOEMON_ATTACK_MOVE
+    attack_move_tick();
+#endif
 
     gEXEnable(D_8015C5CC_15D1CC++);
     // gEXSetRDRAMExtended(D_8015C5CC_15D1CC++, 1);

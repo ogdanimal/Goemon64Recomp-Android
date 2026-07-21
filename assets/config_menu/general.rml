@@ -216,7 +216,7 @@
                                 data-checked="swap_while_moving_mode"
                                 value="On"
                                 id="swap_moving_enabled"
-                                style="nav-up: #acam_sens_y_input"
+                                style="nav-up: #acam_sens_y_input; nav-down: #attack_moving_enabled"
                                 data-style-nav-up="analog_cam_mode == 'Off' ? '#analog_cam_disabled' : '#acam_sens_y_input'"
                             />
                             <label class="config-option__tab-label" for="swap_moving_enabled">On</label>
@@ -229,10 +229,40 @@
                                 data-checked="swap_while_moving_mode"
                                 value="Off"
                                 id="swap_moving_disabled"
-                                style="nav-up: #acam_sens_y_input"
+                                style="nav-up: #acam_sens_y_input; nav-down: #attack_moving_enabled"
                                 data-style-nav-up="analog_cam_mode == 'Off' ? '#analog_cam_disabled' : '#acam_sens_y_input'"
                             />
                             <label class="config-option__tab-label" for="swap_moving_disabled">Off</label>
+                        </div>
+                    </div>
+
+                    <!-- attacking while moving -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(13)" id="conf-general__Attack-While-Moving">
+                        <label class="config-option__title">Attack While Moving</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(13)"
+                                name="attack_while_moving_mode"
+                                data-checked="attack_while_moving_mode"
+                                value="On"
+                                id="attack_moving_enabled"
+                                style="nav-up: #swap_moving_enabled; nav-down: #autosave_enabled"
+                            />
+                            <label class="config-option__tab-label" for="attack_moving_enabled">On</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(13)"
+                                name="attack_while_moving_mode"
+                                data-checked="attack_while_moving_mode"
+                                value="Off"
+                                id="attack_moving_disabled"
+                                style="nav-up: #swap_moving_enabled; nav-down: #autosave_enabled"
+                            />
+                            <label class="config-option__tab-label" for="attack_moving_disabled">Off</label>
                         </div>
                     </div>
 
@@ -248,7 +278,7 @@
                                 data-checked="autosave_mode"
                                 value="On"
                                 id="autosave_enabled"
-                                style="nav-up: #swap_moving_enabled"
+                                style="nav-up: #attack_moving_enabled"
                             />
                             <label class="config-option__tab-label" for="autosave_enabled">On</label>
 
@@ -260,7 +290,7 @@
                                 data-checked="autosave_mode"
                                 value="Off"
                                 id="autosave_disabled"
-                                style="nav-up: #swap_moving_enabled"
+                                style="nav-up: #attack_moving_enabled"
                             />
                             <label class="config-option__tab-label" for="autosave_disabled">Off</label>
                         </div>
@@ -341,6 +371,12 @@
                         <br/>
                         <br/>
                         Swapping stays blocked while attacking, jumping, climbing, swimming, or riding, where a mid-action swap would leave the game in an inconsistent state. While this is on, C-Down also swaps once per press rather than repeating while held.
+                    </p>
+                    <p data-if="cur_config_index == 13">
+                        Lets you keep moving during a ground attack instead of rooting in place. You lunge in the direction you were last running.
+                        <br/>
+                        <br/>
+                        <b>This is a novelty toggle.</b> The attack animation stays planted while you glide along, so the character appears to slide during the swing. Normal movement resumes the moment the attack ends.
                     </p>
                 </div>
             </div>

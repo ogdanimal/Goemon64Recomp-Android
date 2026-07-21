@@ -270,6 +270,7 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["analog_cam_sensitivity_x"] = goemon64::get_analog_cam_sensitivity_x();
     config_json["analog_cam_sensitivity_y"] = goemon64::get_analog_cam_sensitivity_y();
     config_json["swap_while_moving_mode"] = goemon64::get_swap_while_moving_mode();
+    config_json["attack_while_moving_mode"] = goemon64::get_attack_while_moving_mode();
     config_json["infinite_health_mode"] = goemon64::get_infinite_health_mode();
     config_json["infinite_money_mode"] = goemon64::get_infinite_money_mode();
     config_json["infinite_lives_mode"] = goemon64::get_infinite_lives_mode();
@@ -292,6 +293,7 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     goemon64::set_analog_cam_sensitivity_x(from_or_default(config_json, "analog_cam_sensitivity_x", 50));
     goemon64::set_analog_cam_sensitivity_y(from_or_default(config_json, "analog_cam_sensitivity_y", 50));
     goemon64::set_swap_while_moving_mode(from_or_default(config_json, "swap_while_moving_mode", goemon64::SwapWhileMovingMode::Off));
+    goemon64::set_attack_while_moving_mode(from_or_default(config_json, "attack_while_moving_mode", goemon64::AttackWhileMovingMode::Off));
     goemon64::set_infinite_health_mode(from_or_default(config_json, "infinite_health_mode", goemon64::CheatMode::Off));
     goemon64::set_infinite_money_mode(from_or_default(config_json, "infinite_money_mode", goemon64::CheatMode::Off));
     goemon64::set_infinite_lives_mode(from_or_default(config_json, "infinite_lives_mode", goemon64::CheatMode::Off));

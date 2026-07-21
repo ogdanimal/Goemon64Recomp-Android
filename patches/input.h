@@ -40,5 +40,7 @@ DECLARE_FUNC(s32, recomp_get_infinite_money_enabled);
 DECLARE_FUNC(s32, recomp_get_infinite_lives_enabled);
 // Allow starting a character swap while walking/running.
 DECLARE_FUNC(s32, recomp_get_swap_while_moving_enabled);
+// Allow the player to keep moving during an attack.
+DECLARE_FUNC(s32, recomp_get_attack_while_moving_enabled);
 
 #endif
