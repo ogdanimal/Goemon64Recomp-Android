@@ -268,6 +268,14 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     `gradle/actions/wrapper-validation@ed408507` and `gradle-wrapper.properties`
     pins `distributionSha256Sum` for gradle-8.0; `android-release.yml` rejects a
     `v*` tag whose commit isn't an ancestor of `main`.
+  - **DEVICE-VERIFIED 2026-07-21 (RP5), automated via adb** — besides P1/S4
+    (above): N1 (wrong-typed `general.json` → clean launch + reset to defaults, no
+    crash-loop), N3 (garbage enum strings → Analog Camera / Autosave show **Off**
+    in the Settings UI, not On), N4 (deadzone 500 → 100%, rumble −80 → 0% clamped,
+    no NaN). Original config restored + checksum-verified after. STILL MANUAL: S1
+    (recents swipe-away in-game), N2 (rebind + cancel-scan), S4 rapid app-switch,
+    general gameplay. Config-robustness harness approach: force-stop → adb push a
+    crafted JSON to the SD data dir → relaunch → screenshot the Settings UI.
   - **v1.0.0 AND v1.0.1 both shipped from `main` with NONE of pass-1's or pass-2's
     fixes.** The next release (`v1.0.2`) off `dev` is the first to carry any of
     them — a batch worth cutting (do a `v1.0.2-rc1` dry-run first per the release
