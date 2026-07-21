@@ -499,7 +499,14 @@ RECOMP_PATCH s32 func_801CE3F0_58A300(u8* task, f32 speed) {
                 acam_is_gameplay_camera(real)) {
                 memcpy(&acam_basis_cam, real, sizeof(Camera));
                 acam_rotate_in_place(&acam_basis_cam);
-                *(u32*)(node + 0x2C) = (u32)&acam_basis_cam;
+                // Carry the original word's flag/segment bits (bit 0 + bits 28-30,
+                // i.e. ~0x8FFFFFFE) into the swapped-in pointer so the node word is
+                // bit-faithful DURING the swap window (before the verbatim restore
+                // below), not just after it. func_801CE4D0 runs on the swapped word;
+                // readers that dereference via & 0x8FFFFFFE strip these bits and are
+                // unaffected, but any reader that branches on them now sees the
+                // originals instead of zeros.
+                *(u32*)(node + 0x2C) = (u32)&acam_basis_cam | (old_cam & ~0x8FFFFFFEu);
                 swapped = 1;
             }
         }
@@ -585,7 +592,9 @@ static s32 acam_sky_swap(u32* out_node, u32* out_old) {
 
     memcpy(&acam_sky_cam, real, sizeof(Camera));
     acam_rotate_in_place(&acam_sky_cam);
-    *(u32*)(node + 0x2C) = (u32)&acam_sky_cam;
+    // Preserve the original word's flag/segment bits across the swap window
+    // (see the movement-resolver swap for the rationale).
+    *(u32*)(node + 0x2C) = (u32)&acam_sky_cam | (old_cam & ~0x8FFFFFFEu);
 
     *out_node = node;
     *out_old = old_cam;

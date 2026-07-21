@@ -249,7 +249,16 @@ public class LauncherActivity extends AppCompatActivity {
         // native side against a partial asset tree and crashes opaquely. This
         // populates the same data dir MainActivity resolves, so its own call is a
         // no-op on success.
-        File dataDir = DataPaths.dataDirOrInternal(this);
+        //
+        // Use the nullable dataDir() per DataPaths' convention — the OrInternal
+        // variant is MainActivity's (it can't handle null). If the chosen volume
+        // vanished between the storage choice and this button press, refuse like
+        // the ROM path does rather than silently extracting to a fallback location.
+        File dataDir = DataPaths.dataDir(this);
+        if (dataDir == null) {
+            showStorageUnavailableDialog();
+            return;
+        }
         if (!AssetInstaller.installIfNeeded(this, dataDir)) {
             showAssetExtractionFailedDialog();
             return;
