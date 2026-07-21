@@ -235,8 +235,16 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     swap-chain ctor acquires the construction window; `recreateSurface` adopts the
     new window BEFORE surface teardown so the failure path is deref-safe. Spans
     `src/main/rt64_render_context.cpp` + plume. See [[anativewindow-ownership-model]].
-    **DEVICE-TEST STILL PENDING** — resume/background cycling on the RP5; WSL
-    can't reach USB, so it was build-verified only.
+    **DEVICE-VERIFIED 2026-07-21** on the RP5 via an automated lock/unlock stress
+    harness (30 slow + rapid cycles): 33 surface recreations across 5 distinct
+    ANativeWindow ptrs, pid constant, ZERO SIGSEGV/tombstone, saves byte-identical,
+    game renders fine after (screenshot-confirmed). The `[plume] surface recreated`
+    line is the fix executing. CAVEATS: the `vkCreateAndroidSurfaceKHR`-fails branch
+    was never empirically forced (surface creation succeeded every cycle) —
+    correct-by-construction only; and programmatic rapid lock/unlock RACES the RP5
+    keyguard, yielding transient VK_ERROR_SURFACE_LOST / NATIVE_WINDOW_IN_USE
+    swapchain retries — absorbed safely (NOT crashes, NOT recreateSurface fails; a
+    real human unlock is clean). Harness: `docs/testing/resume-stress.sh`.
   - **S1** — Android `SDL_QUIT` (from `onDestroy`, which then blocks the UI
     thread) now quits immediately instead of opening an un-answerable prompt that
     wedged the app until SIGKILL (`input.cpp`). Prompt kept desktop-only.
