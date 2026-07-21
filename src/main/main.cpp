@@ -64,7 +64,12 @@
 
 #include "../../lib/rt64/src/contrib/stb/stb_image.h"
 
-const std::string version_string = "0.2.0-dev";
+// Defined by the build from the release tag (see CMakeLists.txt / build.gradle).
+// The fallback only applies to local host builds that don't pass it in.
+#ifndef GOEMON_VERSION_STRING
+#define GOEMON_VERSION_STRING "1.0.0-dev"
+#endif
+const std::string version_string = GOEMON_VERSION_STRING;
 
 template<typename... Ts>
 void exit_error(const char* str, Ts ...args) {

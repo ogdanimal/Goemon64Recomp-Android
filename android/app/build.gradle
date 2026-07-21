@@ -39,6 +39,11 @@ android {
         versionCode (project.hasProperty('vCode') ? project.property('vCode').toString().toInteger() : 1)
         versionName (project.hasProperty('vName') ? project.property('vName').toString() : "1.0.0-dev")
 
+        // Native launcher-UI version string: same source as versionName, with any
+        // leading "v" from the git tag stripped (recomp::Version::from_string wants
+        // a bare major.minor.patch and rejects the leading "v").
+        def nativeVersion = (project.hasProperty('vName') ? project.property('vName').toString() : "1.0.0-dev").replaceFirst(/^v/, '')
+
         ndk {
             // arm64-v8a is the sole target for now (Retroid Pocket 5 / AYN Thor).
             // x86_64 for the emulator can be added once the arm64 path is proven.
@@ -51,6 +56,7 @@ android {
                 arguments "-DANDROID_STL=c++_shared",
                           "-DANDROID_PLATFORM=android-28",
                           "-DGOEMON_ANDROID=ON",
+                          "-DGOEMON_VERSION_STRING=${nativeVersion}",
                           "-DGOEMON_FILE_TO_C=${hostFileToC}"
             }
         }

@@ -67,6 +67,13 @@ endif()
 
 add_compile_definitions(HLSL_CPU)
 
+# Version shown in the launcher UI. Passed in from the build (derived from the
+# git tag via gradle -PvName on Android) so it can't drift from the release tag;
+# main.cpp falls back to a dev value when this isn't defined (local host builds).
+if (DEFINED GOEMON_VERSION_STRING)
+    add_compile_definitions(GOEMON_VERSION_STRING="${GOEMON_VERSION_STRING}")
+endif()
+
 if (RECOMP_FLATPAK)
     add_compile_definitions(RECOMP_FLATPAK)
 endif()
