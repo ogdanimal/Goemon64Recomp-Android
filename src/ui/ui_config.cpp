@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "recomp_ui.h"
 #include "recomp_input.h"
 #include "goemon_sound.h"
@@ -350,7 +352,11 @@ int recomp::get_rumble_strength() {
 }
 
 void recomp::set_rumble_strength(int strength) {
-    control_options_context.rumble_strength = strength;
+    // Clamp here: this setter is the single chokepoint for both the UI slider and
+    // config load, so a hand-edited/corrupt controls value (negative, or a huge
+    // number the rumble scaler would overflow into signed-16-bit UB) is bounded
+    // to the 0-100% range before any consumer sees it. Same for the setters below.
+    control_options_context.rumble_strength = std::clamp(strength, 0, 100);
     if (general_model_handle) {
         general_model_handle.DirtyVariable("rumble_strength");
     }
@@ -369,21 +375,24 @@ int recomp::get_joystick_deadzone() {
 }
 
 void recomp::set_gyro_sensitivity(int sensitivity) {
-    control_options_context.gyro_sensitivity = sensitivity;
+    control_options_context.gyro_sensitivity = std::clamp(sensitivity, 0, 100);
     if (general_model_handle) {
         general_model_handle.DirtyVariable("gyro_sensitivity");
     }
 }
 
 void recomp::set_mouse_sensitivity(int sensitivity) {
-    control_options_context.mouse_sensitivity = sensitivity;
+    control_options_context.mouse_sensitivity = std::clamp(sensitivity, 0, 100);
     if (general_model_handle) {
         general_model_handle.DirtyVariable("mouse_sensitivity");
     }
 }
 
 void recomp::set_joystick_deadzone(int deadzone) {
-    control_options_context.joystick_deadzone = deadzone;
+    // >100 makes apply_joystick_deadzone's (1 - deadzone/100) divisor negative
+    // (axis inversion); exactly 100 divides by zero (NaN stick). Clamp to the
+    // 0-100% range; the exact-100 divisor is additionally guarded in the consumer.
+    control_options_context.joystick_deadzone = std::clamp(deadzone, 0, 100);
     if (general_model_handle) {
         general_model_handle.DirtyVariable("joystick_deadzone");
     }
@@ -466,7 +475,7 @@ int goemon64::get_analog_cam_sensitivity_x() {
 }
 
 void goemon64::set_analog_cam_sensitivity_x(int sensitivity) {
-    control_options_context.analog_cam_sensitivity_x = sensitivity;
+    control_options_context.analog_cam_sensitivity_x = std::clamp(sensitivity, 0, 100);
     if (general_model_handle) {
         general_model_handle.DirtyVariable("analog_cam_sensitivity_x");
     }
@@ -477,7 +486,7 @@ int goemon64::get_analog_cam_sensitivity_y() {
 }
 
 void goemon64::set_analog_cam_sensitivity_y(int sensitivity) {
-    control_options_context.analog_cam_sensitivity_y = sensitivity;
+    control_options_context.analog_cam_sensitivity_y = std::clamp(sensitivity, 0, 100);
     if (general_model_handle) {
         general_model_handle.DirtyVariable("analog_cam_sensitivity_y");
     }
@@ -571,7 +580,10 @@ void goemon64::reset_sound_settings() {
 }
 
 void goemon64::set_main_volume(int volume) {
-    sound_options_context.main_volume.store(volume);
+    // Volumes are a 0-100% factor (main.cpp normalizes /100); an unclamped
+    // config value (e.g. 10000 -> 100x amplification / clipping, or negative)
+    // must be bounded here. Same for bgm/se below.
+    sound_options_context.main_volume.store(std::clamp(volume, 0, 100));
     if (sound_options_model_handle) {
         sound_options_model_handle.DirtyVariable("main_volume");
     }
@@ -582,14 +594,14 @@ int goemon64::get_main_volume() {
 }
 
 void goemon64::set_bgm_volume(int volume) {
-    sound_options_context.bgm_volume.store(volume);
+    sound_options_context.bgm_volume.store(std::clamp(volume, 0, 100));
     if (sound_options_model_handle) {
         sound_options_model_handle.DirtyVariable("bgm_volume");
     }
 }
 
 void goemon64::set_se_volume(int volume) {
-    sound_options_context.se_volume.store(volume);
+    sound_options_context.se_volume.store(std::clamp(volume, 0, 100));
     if (sound_options_model_handle) {
         sound_options_model_handle.DirtyVariable("se_volume");
     }

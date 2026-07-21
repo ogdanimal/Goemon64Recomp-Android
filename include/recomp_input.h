@@ -88,6 +88,12 @@ namespace recomp {
     void stop_scanning_input();
     void finish_scanning_input(InputField scanned_field);
     void cancel_scanning_input();
+    // Event-thread-safe cancel request: stops scanning (atomic) and defers the
+    // RmlUi-touching cancel_scanning_input() to the UI thread, which drains it
+    // via poll_scan_cancel_requested() next to the finish poll. Calling
+    // cancel_scanning_input() directly off the UI thread races Context::Update().
+    void request_cancel_scanning_input();
+    bool poll_scan_cancel_requested();
     void config_menu_set_cont_or_kb(bool cont_interacted);
     InputField get_scanned_input();
     int get_scanned_input_index();
@@ -204,6 +210,10 @@ namespace recomp {
 		OptionCount
     };
 
+    // On is deliberately first here (unlike the goemon64 On/Off enums, which put
+    // Off first): the fallback for an unknown/wrong-typed value must equal the
+    // setting's own default, and background input defaults to On
+    // (config.cpp set_general_settings_from_json). Do not reorder to Off-first.
     NLOHMANN_JSON_SERIALIZE_ENUM(recomp::BackgroundInputMode, {
         {recomp::BackgroundInputMode::On, "On"},
         {recomp::BackgroundInputMode::Off, "Off"}

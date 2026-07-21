@@ -306,7 +306,19 @@ bool load_general_config(const std::filesystem::path& path) {
         return false;
     }
 
-    set_general_settings_from_json(config_json);
+    try {
+        set_general_settings_from_json(config_json);
+    }
+    catch (const nlohmann::json::exception&) {
+        // read_json only catches parse_error; a parseable-but-wrong-typed value
+        // (e.g. "rumble_strength": "25", a null binding, a missing input_id)
+        // throws type_error/out_of_range from the get_to()/at() calls during
+        // deserialization. Uncaught, that propagates to main -> std::terminate
+        // pre-window (a crash loop, since .bak is a byte-identical rotation).
+        // Treat it like a corrupt file: return false so load_config() falls
+        // through to its reset-to-defaults + save path.
+        return false;
+    }
     return true;
 }
 
@@ -407,7 +419,14 @@ bool load_graphics_config(const std::filesystem::path& path) {
     }
 
     ultramodern::renderer::GraphicsConfig new_config{};
-    ultramodern::from_json(config_json, new_config);
+    try {
+        ultramodern::from_json(config_json, new_config);
+    }
+    catch (const nlohmann::json::exception&) {
+        // Wrong-typed value -> type_error; recover via load_config's reset path
+        // instead of terminating. See load_general_config for the full rationale.
+        return false;
+    }
     ultramodern::renderer::set_graphics_config(new_config);
     return true;
 }
@@ -484,12 +503,20 @@ bool load_controls_config(const std::filesystem::path& path) {
         return false;
     }
 
-    if (!load_input_device_from_json(config_json, recomp::InputDevice::Keyboard, "keyboard")) {
-        assign_all_mappings(recomp::InputDevice::Keyboard, recomp::default_n64_keyboard_mappings);
-    }
+    try {
+        if (!load_input_device_from_json(config_json, recomp::InputDevice::Keyboard, "keyboard")) {
+            assign_all_mappings(recomp::InputDevice::Keyboard, recomp::default_n64_keyboard_mappings);
+        }
 
-    if (!load_input_device_from_json(config_json, recomp::InputDevice::Controller, "controller")) {
-        assign_all_mappings(recomp::InputDevice::Controller, recomp::default_n64_controller_mappings);
+        if (!load_input_device_from_json(config_json, recomp::InputDevice::Controller, "controller")) {
+            assign_all_mappings(recomp::InputDevice::Controller, recomp::default_n64_controller_mappings);
+        }
+    }
+    catch (const nlohmann::json::exception&) {
+        // A malformed binding (wrong-typed/missing input_type/input_id) throws
+        // from recomp::from_json. Recover via load_config's reset path (resets
+        // all bindings to defaults). See load_general_config for the rationale.
+        return false;
     }
     return true;
 }
@@ -510,10 +537,17 @@ bool load_sound_config(const std::filesystem::path& path) {
         return false;
     }
 
-    goemon64::reset_sound_settings();
-    call_if_key_exists(goemon64::set_main_volume, config_json, "main_volume");
-    call_if_key_exists(goemon64::set_bgm_volume, config_json, "bgm_volume");
-    call_if_key_exists(goemon64::set_se_volume, config_json, "se_volume");
+    try {
+        goemon64::reset_sound_settings();
+        call_if_key_exists(goemon64::set_main_volume, config_json, "main_volume");
+        call_if_key_exists(goemon64::set_bgm_volume, config_json, "bgm_volume");
+        call_if_key_exists(goemon64::set_se_volume, config_json, "se_volume");
+    }
+    catch (const nlohmann::json::exception&) {
+        // Wrong-typed volume -> type_error; recover via load_config's reset path.
+        // See load_general_config for the full rationale.
+        return false;
+    }
     return true;
 }
 

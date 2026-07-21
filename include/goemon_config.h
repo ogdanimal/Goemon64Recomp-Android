@@ -30,9 +30,13 @@ namespace goemon64 {
         OptionCount
     };
 
+    // Off listed FIRST: NLOHMANN_JSON_SERIALIZE_ENUM maps an unknown/wrong-typed
+    // JSON value to the first pair's enum, so the fallback must be the safe
+    // default (autosave stays Off on a corrupt/downgraded config, matching the
+    // settled default). Order does not affect known-value (de)serialization.
     NLOHMANN_JSON_SERIALIZE_ENUM(goemon64::AutosaveMode, {
-        {goemon64::AutosaveMode::On, "On"},
-        {goemon64::AutosaveMode::Off, "Off"}
+        {goemon64::AutosaveMode::Off, "Off"},
+        {goemon64::AutosaveMode::On, "On"}
     });
 
     enum class TargetingMode {
@@ -76,9 +80,10 @@ namespace goemon64 {
 		OptionCount
     };
 
+    // Off first so an unknown/wrong-typed value fails safe (see AutosaveMode).
     NLOHMANN_JSON_SERIALIZE_ENUM(goemon64::AnalogCamMode, {
-        {goemon64::AnalogCamMode::On, "On"},
-        {goemon64::AnalogCamMode::Off, "Off"}
+        {goemon64::AnalogCamMode::Off, "Off"},
+        {goemon64::AnalogCamMode::On, "On"}
     });
 
     AutosaveMode get_autosave_mode();
@@ -103,9 +108,11 @@ namespace goemon64 {
 		OptionCount
     };
 
+    // Off first so an unknown/wrong-typed value fails safe -- a corrupt config
+    // must not silently enable a cheat (see AutosaveMode).
     NLOHMANN_JSON_SERIALIZE_ENUM(goemon64::CheatMode, {
-        {goemon64::CheatMode::On, "On"},
-        {goemon64::CheatMode::Off, "Off"}
+        {goemon64::CheatMode::Off, "Off"},
+        {goemon64::CheatMode::On, "On"}
     });
 
     CheatMode get_infinite_health_mode();
@@ -125,9 +132,10 @@ namespace goemon64 {
 		OptionCount
     };
 
+    // Off first so an unknown/wrong-typed value fails safe (see AutosaveMode).
     NLOHMANN_JSON_SERIALIZE_ENUM(goemon64::SwapWhileMovingMode, {
-        {goemon64::SwapWhileMovingMode::On, "On"},
-        {goemon64::SwapWhileMovingMode::Off, "Off"}
+        {goemon64::SwapWhileMovingMode::Off, "Off"},
+        {goemon64::SwapWhileMovingMode::On, "On"}
     });
 
     SwapWhileMovingMode get_swap_while_moving_mode();
@@ -141,9 +149,10 @@ namespace goemon64 {
 		OptionCount
     };
 
+    // Off first so an unknown/wrong-typed value fails safe (see AutosaveMode).
     NLOHMANN_JSON_SERIALIZE_ENUM(goemon64::AttackWhileMovingMode, {
-        {goemon64::AttackWhileMovingMode::On, "On"},
-        {goemon64::AttackWhileMovingMode::Off, "Off"}
+        {goemon64::AttackWhileMovingMode::Off, "Off"},
+        {goemon64::AttackWhileMovingMode::On, "On"}
     });
 
     AttackWhileMovingMode get_attack_while_moving_mode();

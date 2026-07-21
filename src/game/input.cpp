@@ -83,6 +83,23 @@ void recomp::stop_scanning_input() {
     scanning_device.store(recomp::InputDevice::COUNT);
 }
 
+// Set on the SDL event thread when a scan is cancelled (menu-toggle / Escape
+// pressed mid-rebind); drained on the UI thread. The actual cancel touches RmlUi
+// data models (DirtyVariable), which must not run concurrently with the render
+// thread's Context::Update(), so it is deferred rather than done inline here.
+static std::atomic_bool scan_cancel_pending = false;
+
+void recomp::request_cancel_scanning_input() {
+    // Stop capturing immediately (atomic) so no further input is scanned in the
+    // window before the UI thread processes the cancel.
+    scanning_device.store(recomp::InputDevice::COUNT);
+    scan_cancel_pending.store(true);
+}
+
+bool recomp::poll_scan_cancel_requested() {
+    return scan_cancel_pending.exchange(false);
+}
+
 void queue_if_enabled(SDL_Event* event) {
     if (!recomp::all_input_disabled()) {
         recompui::queue_event(*event);
@@ -125,7 +142,7 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
             }
             if (scanning_device != recomp::InputDevice::COUNT) {
                 if (keyevent->keysym.scancode == SDL_Scancode::SDL_SCANCODE_ESCAPE) {
-                    recomp::cancel_scanning_input();
+                    recomp::request_cancel_scanning_input();
                 } else if (scanning_device == recomp::InputDevice::Keyboard) {
                     set_scanned_input({(uint32_t)InputType::Keyboard, keyevent->keysym.scancode});
                 }
@@ -186,9 +203,22 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
             return true;
         }
 
+#if defined(__ANDROID__)
+        // On Android SDL_QUIT is delivered only by SDLActivity.onDestroy ->
+        // nativeSendQuit(), which then blocks the UI thread in an unbounded
+        // mSDLThread.join(). Opening the confirm prompt here would wedge the app:
+        // no thread is left to answer it, so the system eventually SIGKILLs us
+        // with no orderly save-thread join. The OS has already decided to destroy
+        // the activity, so there is nothing to confirm -- quit immediately (the
+        // same action the prompt's "Quit" button performs) and let game_main
+        // unwind and join the save thread cleanly.
+        ultramodern::quit();
+        return true;
+#else
         goemon64::open_quit_game_prompt();
         recompui::activate_mouse();
         break;
+#endif
     }
     case SDL_EventType::SDL_MOUSEWHEEL:
         {
@@ -204,7 +234,7 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
             // note - magic number: 0 is InputType::None
             if ((menuToggleBinding0.input_type != 0 && event->cbutton.button == menuToggleBinding0.input_id) ||
                 (menuToggleBinding1.input_type != 0 && event->cbutton.button == menuToggleBinding1.input_id)) {
-                recomp::cancel_scanning_input();
+                recomp::request_cancel_scanning_input();
             } else if (scanning_device == recomp::InputDevice::Controller) {
                 SDL_ControllerButtonEvent* button_event = &event->cbutton;
                 auto scanned_input_index = recomp::get_scanned_input_index();
@@ -774,6 +804,15 @@ void recomp::get_mouse_deltas(float* x, float* y) {
 
 void recomp::apply_joystick_deadzone(float x_in, float y_in, float* x_out, float* y_out) {
     float joystick_deadzone = (float)recomp::get_joystick_deadzone() / 100.0f;
+
+    // A 100% deadzone means nothing registers, and the (1 - deadzone) rescale
+    // below would divide by zero for a fully-deflected axis (NaN). The setter
+    // clamps deadzone to [0,100]; guard the degenerate endpoint here too.
+    if (joystick_deadzone >= 1.0f) {
+        *x_out = 0.0f;
+        *y_out = 0.0f;
+        return;
+    }
 
     if(fabsf(x_in) < joystick_deadzone) {
         x_in = 0.0f;

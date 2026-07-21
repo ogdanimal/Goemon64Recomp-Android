@@ -760,6 +760,13 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
         recomp::finish_scanning_input(scanned_field);
     }
 
+    // Cancel is requested from the SDL event thread but touches RmlUi data
+    // models, so it is deferred here (UI thread) to run before Context::Update()
+    // below, mirroring the finish path above.
+    if (recomp::poll_scan_cancel_requested()) {
+        recomp::cancel_scanning_input();
+    }
+
     ui_state->update_primary_input(mouse_moved, non_mouse_interacted);
     ui_state->update_focus(mouse_moved, non_mouse_interacted);
 
