@@ -10,6 +10,12 @@ source. Fix nothing marked `review` without confirming it first.
 
 Severity: **H** fix before next release · **M** soon · **L** long tail.
 
+> **Second pass 2026-07-20:** a follow-up gap hunt (submodule forks, Java↔native
+> seam, adversarial re-sweep, repo hygiene) found further issues — including a
+> HIGH that shipped in v1.0.0/v1.0.1. See
+> [code-review-2026-07-20-pass2.md](code-review-2026-07-20-pass2.md). The M tier
+> below remains the open backlog from this pass.
+
 ---
 
 ## H — fix before next release
