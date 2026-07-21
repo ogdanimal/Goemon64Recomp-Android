@@ -92,11 +92,17 @@ jobs:
           VCODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
           # NOTE: a -rc tag maps to the SAME versionCode as its final release
           # (v1.1.0-rc1 and v1.1.0 both -> 10100). rc builds are manual dry-run
-          # sideloads (adb install -r overwrites regardless of code), so this
-          # collision is intentional and accepted — rc is not encoded into the code.
+          # sideloads, so this collision is intentional — rc is not encoded into
+          # the code. (Sideloading an rc over a debug-signed install needs an
+          # uninstall first — signatures differ — so back up saves beforehand.)
+          # A -suffix tag is a PRERELEASE: it must not be published as the repo's
+          # "Latest release", or users would sideload a release candidate thinking
+          # it is the stable build.
+          if [ "$VNAME" != "$CORE" ]; then PRERELEASE=true; else PRERELEASE=false; fi
           echo "vname=$VNAME" >> "$GITHUB_OUTPUT"
           echo "vcode=$VCODE" >> "$GITHUB_OUTPUT"
-          echo "Release $TAG -> versionName=$VNAME versionCode=$VCODE"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "Release $TAG -> versionName=$VNAME versionCode=$VCODE prerelease=$PRERELEASE"
 
       - name: ccache
         uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
@@ -218,7 +224,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Mark -suffix tags (v1.0.2-rc1, ...) as prereleases so they never become
+          # the public "Latest release".
+          PRERELEASE_FLAG=""
+          if [ "${{ steps.ver.outputs.prerelease }}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
           gh release create "${GITHUB_REF_NAME}" "${APK_PATH}" \
             --title "Goemon64Recomp Android ${GITHUB_REF_NAME}" \
             --generate-notes \
-            --verify-tag
+            --verify-tag \
+            $PRERELEASE_FLAG

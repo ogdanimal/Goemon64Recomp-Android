@@ -11,6 +11,11 @@
 # byte-identical before/after, and `[plume] surface recreated` firing (the fix
 # executing). See docs/code-review-2026-07-20-pass2.md (P1/S4).
 #
+# The save byte-identical check assumes nothing writes saves during the run,
+# which holds with autosave defaulting Off. With autosave ON it would false-fail
+# (a 2-minute-boundary autosave rewrites the file) — disable autosave first if
+# testing that configuration.
+#
 # KNOWN TEST-METHOD ARTIFACTS (not app bugs), observed on the RP5:
 #   * Rapid device-sleep can drop the adb/USB link ("no devices/emulators
 #     found"); an empty pid read is a dropped connection, not a crash -- confirm

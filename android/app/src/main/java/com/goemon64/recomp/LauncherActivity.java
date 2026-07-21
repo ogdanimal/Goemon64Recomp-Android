@@ -217,7 +217,11 @@ public class LauncherActivity extends AppCompatActivity {
      * paths where the ROM has already been accepted.
      */
     private void runPreparePipeline(@Nullable Uri copyFrom, @Nullable File rom, boolean verify) {
-        showProgress(copyFrom != null ? R.string.copying_rom : R.string.verifying_rom);
+        // Initial status reflects the first step actually taken: copy if picking,
+        // else verify if verifying, else straight to extraction ("Start anyway" /
+        // extract-retry skip the hash).
+        showProgress(copyFrom != null ? R.string.copying_rom
+                : verify ? R.string.verifying_rom : R.string.preparing_files);
         ioExecutor.execute(() -> {
             // 1. Copy the picked ROM into private storage.
             if (copyFrom != null) {

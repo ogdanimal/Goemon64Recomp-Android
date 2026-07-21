@@ -61,6 +61,11 @@ namespace goemon64 {
         OptionCount
     };
 
+    // Unknown/wrong-typed values fall back to the first entry, InvertNone. NOTE:
+    // this enum serves two settings with DIFFERENT defaults — analog_camera_invert
+    // defaults InvertNone (matches the fallback), but camera_invert defaults
+    // InvertY (does not). The mismatch cannot be fixed by reordering (one order
+    // can't match both) and is benign: it's camera feel, not a fail-open toggle.
     NLOHMANN_JSON_SERIALIZE_ENUM(goemon64::CameraInvertMode, {
         {goemon64::CameraInvertMode::InvertNone, "InvertNone"},
         {goemon64::CameraInvertMode::InvertX, "InvertX"},
