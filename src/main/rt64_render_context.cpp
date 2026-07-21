@@ -351,19 +351,9 @@ goemon64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::render
     // Scale LODs based on the output resolution.
     app->enhancementConfig.textureLOD.scale = true;
     // Do not copy with GPU as it breaks effects in menus and the quality loss is negligible.
-	// TODO: Fix the underlying issue in RT64 and re-enable GPU copying as it can cause issues in Goemon's Great Adventure's underwater sections (low resolution),
-    // TODO: Separate configs for the two games maybe?
-    // DIAG (menu-framerate): allow forcing GPU copies on via env for the option-(c) A/B on desktop.
-    // G64_COPY_GPU=1 => copies on (checkFramebufferOverlap runs -> true dep count; reveals the menu
-    // breakage the TODO above refers to). Unset/0 keeps the shipping default. Remove before release.
-    {
-        const char* copyEnv = getenv("G64_COPY_GPU");
-        bool forceCopyGpu = (copyEnv != nullptr && copyEnv[0] == '1');
-        app->emulatorConfig.framebuffer.copyWithGPU = forceCopyGpu;
-        if (forceCopyGpu) {
-            fprintf(stderr, "[g64prof] G64_COPY_GPU=1 -> copyWithGPU forced ON (diagnostic A/B)\n");
-        }
-    }
+    // TODO: Fix the underlying issue in RT64 and re-enable GPU copying — it can cause issues in
+    // Goemon's Great Adventure's underwater sections (low resolution). Separate configs per game maybe?
+    app->emulatorConfig.framebuffer.copyWithGPU = false;
     // Pick an API if the user has set an override.
     switch (cur_config.api_option) {
     case ultramodern::renderer::GraphicsApi::D3D12:

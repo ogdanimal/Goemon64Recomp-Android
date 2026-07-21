@@ -710,6 +710,10 @@ float recomp::get_input_analog(const recomp::InputField& field) {
     case InputType::None:
         return false;
     }
+    // input_type is a raw uint32_t from controls.json; an out-of-range value
+    // (hand-edited config) matches no case and would otherwise fall off the end
+    // of this non-void function (UB). Treat anything unknown as unbound.
+    return 0.0f;
 }
 
 float recomp::get_input_analog(const std::span<const recomp::InputField> fields) {
@@ -741,6 +745,9 @@ bool recomp::get_input_digital(const recomp::InputField& field) {
     case InputType::None:
         return false;
     }
+    // Out-of-range input_type from a hand-edited controls.json matches no case;
+    // return unbound rather than falling off the end (UB).
+    return false;
 }
 
 bool recomp::get_input_digital(const std::span<const recomp::InputField> fields) {

@@ -30,7 +30,10 @@
 #include "elements/ui_label.h"
 
 namespace {
-    using clock = std::chrono::system_clock;
+    // steady_clock, not system_clock: this measures an elapsed expiry interval,
+    // and a wall-clock jump (NTP correction, manual time change) must not make the
+    // toast linger or vanish early.
+    using clock = std::chrono::steady_clock;
 
     // How long the toast stays up. Long enough to notice without lingering
     // over gameplay; well under the 2 minute autosave interval either way.

@@ -264,9 +264,17 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
 
     // Prevent audio latency from building up by skipping samples in incoming audio when too many samples are already queued.
     // Skip samples based on how many microseconds of samples are queued already.
+    // Cap the skip factor: `1 << skip_factor` is UB once skip_factor reaches the
+    // shift type's width (a multi-second audio backlog, e.g. a device stall that
+    // keeps the queue but stops draining), and the decimation ratio is already
+    // extreme well before that. A cap of 8 keeps 1 sample in 256 — far more than
+    // enough to drain built-up latency.
     uint32_t skip_factor = cur_queued_microseconds / 100000;
+    if (skip_factor > 8) {
+        skip_factor = 8;
+    }
     if (skip_factor != 0) {
-        uint32_t skip_ratio = 1 << skip_factor;
+        uint32_t skip_ratio = 1u << skip_factor;
         num_bytes_to_queue /= skip_ratio;
         for (size_t i = 0; i < num_bytes_to_queue / (output_channels * sizeof(swap_buffer[0])); i++) {
             samples_to_queue[2 * i + 0] = samples_to_queue[2 * skip_ratio * i + 0];
