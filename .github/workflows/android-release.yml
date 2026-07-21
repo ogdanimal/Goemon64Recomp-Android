@@ -45,6 +45,26 @@ jobs:
           submodules: recursive
           fetch-depth: 0   # full history + tags (versionCode is now tag-derived, not commit count)
 
+      # Validate the committed gradle-wrapper.jar against Gradle's published good
+      # hashes before it runs with the signing keystore + ROM PAT in scope.
+      # SHA-pinned like every other action here (H7).
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Guard — tag commit must be on main
+        run: |
+          # Any `v*` tag on ANY commit would otherwise produce a signed public
+          # release, so a stray/sprayed tag on a WIP commit could ship unreviewed
+          # signed code. Require the tagged commit to be an ancestor of main (i.e.
+          # reviewed + merged). fetch-depth: 0 above gives us full history; fetch
+          # main explicitly since checkout only fetched the tag ref.
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "::error::Tag ${GITHUB_REF_NAME} (${GITHUB_SHA}) is not on main; refusing to publish a signed release from an unreviewed commit."
+            exit 1
+          fi
+          echo "Tag commit is on main — OK."
+
       - name: Derive version from tag
         id: ver
         run: |

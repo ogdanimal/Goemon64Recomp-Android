@@ -26,6 +26,13 @@ on:
       - 'docs/**'
       - '.gitignore'
 
+# Least privilege: this workflow only reads the repo and uploads an artifact
+# (artifacts don't need repo write). Third-party actions + a full Gradle build
+# run here, so deny everything the default token would otherwise grant.
+# (android-release.yml sets its own minimal `contents: write` for the Release.)
+permissions:
+  contents: read
+
 concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
@@ -42,6 +49,12 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           submodules: recursive
+
+      # The gradle-wrapper.jar is committed to the repo and executes with the ROM
+      # PAT in scope; validate it against Gradle's published good hashes so a
+      # tampered wrapper can't run. SHA-pinned like every other action here (H7).
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
       - name: ccache
         uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
