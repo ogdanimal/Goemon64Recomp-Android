@@ -165,6 +165,35 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   likely class) and triage; otherwise back to general bug-fixing. Test via the CI
   debug APK, or cut a new signed release by pushing a `v*` tag (see release setup
   below).
+- **Attack While Moving — DONE, device-verified, COMMITTED on `dev` (`9bae463`),
+  but NOT pushed and deployment HELD (2026-07-20, user's explicit call).** A
+  novelty setting `attack_while_moving_mode` (default **Off**) that lets the
+  player keep moving during a ground attack instead of rooting in place. Wired
+  end-to-end like the "Swap While Moving" toggle (config+JSON, `ui_config.cpp`,
+  `recomp_api` export `recomp_get_attack_while_moving_enabled` @ `0x8F000088`,
+  settings row + D-pad nav in `general.rml`). Feature lives in
+  `patches/attack_move.{c,h}`; inert when Off.
+  - **How it works:** the game zeroes the player's velocity for the WHOLE attack
+    (device-probed across 900+ frames — the attack action handlers never run the
+    movement integrator), so movement is *re-injected* by writing a per-frame
+    displacement onto the authoritative head position node `*(0x801FC60C)+0x8/10`.
+    Direction is **sampled from the game's own world motion during real
+    locomotion and frozen for the swing** — reconstructing it from the camera
+    basis MOONWALKED (the azimuth disagreed with the character's facing, and no
+    sign flip fixed it; it was also a feedback loop when sampled during the
+    attack). An ease envelope ramps it in/out; a short post-attack HOLD cancels
+    the game's recovery re-anchor (the residual "slide back to origin" the user
+    saw). Movement is NOT collision-checked during the swing (inferred, not
+    verified — do not claim wall-clipping as fact; the wall-clip line was cut
+    from the UI copy for exactly that reason).
+  - **Covered action states (device-identified via a temporary action_id
+    logger):** melee/jump family `0x58`–`0x5E`, ryo throw `0x7C`, bombs `0x90`.
+    **Hookshot/extension `0x70`–`0x72` deliberately EXCLUDED** — it anchors the
+    pipe to a world point; sliding during it risks desyncing the grapple (ladder
+    hazard class). This extends the char-swap RE `action_id` map.
+  - **Gotcha reused:** the RML change needs the device's `.assets_version` stamp
+    deleted or the old UI stays extracted. Node-chain writes crash the renderer
+    (a pointer field at `+0x8`) — only the proven vec3f head node is safe to poke.
 - **PARKED — do not start without the user's say-so:**
   - **World→screen projector fix** (`func_8001CB40` / `func_8001CC38_1D838`) —
     parked 2026-07-19. Mechanism is confirmed wrong (screen-space overlays are
