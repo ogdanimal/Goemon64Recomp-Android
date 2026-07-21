@@ -7,6 +7,8 @@
 // Needed to pull the ANativeWindow out of the SDL_Window for RT64's RenderWindow.
 #include "SDL2/SDL.h"
 #include "SDL2/SDL_syswm.h"
+// ANativeWindow_acquire/_release for the resume-window ownership invariant.
+#include <android/native_window.h>
 #endif
 
 #define HLSL_CPU
@@ -41,11 +43,27 @@ static bool high_precision_fb_enabled = false;
 // (SDL ran surfaceCreated/surfaceChanged synchronously on the UI thread prior
 // to DIDENTERFOREGROUND), so release/acquire on the pointer is sufficient to
 // hand a valid window to the gfx thread on ARM's weak memory model.
+//
+// OWNERSHIP (S4 fix): this slot owns exactly one ANativeWindow ref. SDL releases
+// its own ref on the window a bounded ~500ms after surfaceDestroyed regardless
+// of who is still using it, so a raw pointer stashed here could be freed before
+// the gfx thread adopts it (rapid background->foreground->background). Acquire at
+// publish so the window cannot die while in our custody; the ref is handed down
+// to the swap chain's pendingRenderWindow slot on consume (see the ownership
+// invariant in plume_vulkan.cpp VulkanSwapChain's constructor). A publish that
+// supersedes an unconsumed window releases the old one.
 static std::atomic<void*> g_pending_resume_window{nullptr};
 
 namespace goemon64::renderer {
     void android_publish_resume_window(void* native_window) {
-        g_pending_resume_window.store(native_window, std::memory_order_release);
+        if (native_window != nullptr) {
+            ANativeWindow_acquire(static_cast<ANativeWindow*>(native_window));
+        }
+        void* prev = g_pending_resume_window.exchange(native_window, std::memory_order_acq_rel);
+        if (prev != nullptr) {
+            // Superseded before the gfx thread consumed it; release our ref.
+            ANativeWindow_release(static_cast<ANativeWindow*>(prev));
+        }
     }
 }
 #endif
@@ -418,9 +436,15 @@ void goemon64::renderer::RT64Context::update_screen() {
     // on resume, hand it to the swap chain. The present thread rebuilds the
     // Vulkan surface from it inside resize(). Done here (not from the main
     // thread) so only gfx/present threads ever touch RT64/Plume Vulkan state.
-    if (void* nw = g_pending_resume_window.exchange(nullptr)) {
+    if (void* nw = g_pending_resume_window.exchange(nullptr, std::memory_order_acq_rel)) {
         if (app && app->swapChain != nullptr) {
+            // Transfer our owned ref into the swap chain's pendingRenderWindow slot.
             app->swapChain->setRenderWindow(static_cast<ANativeWindow*>(nw));
+        }
+        else {
+            // No swap chain to adopt it (early startup / teardown); don't leak
+            // the ref we acquired at publish.
+            ANativeWindow_release(static_cast<ANativeWindow*>(nw));
         }
     }
 #endif
