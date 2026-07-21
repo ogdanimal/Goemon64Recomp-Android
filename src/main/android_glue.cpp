@@ -115,6 +115,18 @@ Java_com_goemon64_recomp_MainActivity_nativeGetRestartTarget(JNIEnv* /*env*/, jo
 
 // SDL's Android bootstrap calls this after loadLibraries()/nativeInit().
 int SDL_main(int argc, char** argv) {
+    // Safety net for the storage guard (M4). If we reach here with g_data_dir
+    // unset, nativeInit never ran — the process was started for a MainActivity
+    // that bailed on a missing storage volume, and SDLActivity nonetheless started
+    // SDL_main on the finishing activity (the RESUMED-transition race that the
+    // Java-side finish()-in-onCreate usually prevents but cannot guarantee across
+    // OEMs). Booting game_main against an empty data dir would resolve assets/ROM
+    // from "" and crash; abort cleanly instead. The Java guard has already bounced
+    // the user to LauncherActivity's "card missing" dialog.
+    if (g_data_dir.empty()) {
+        LOGE("SDL_main: data dir unset (nativeInit was skipped); aborting boot");
+        return 0;
+    }
     LOGI("SDL_main -> game_main");
     return game_main(argc, argv);
 }

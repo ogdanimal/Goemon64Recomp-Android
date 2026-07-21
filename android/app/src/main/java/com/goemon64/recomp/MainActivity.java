@@ -53,18 +53,33 @@ public class MainActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Storage guard (M4). MainActivity is launchMode=singleTask, so recents can
+        // recreate it DIRECTLY after a process death — a third entry point beyond
+        // LauncherActivity/RestartActivity, which used to be the only ways in (both
+        // guard the "chosen SD volume is missing" case). If the volume is gone,
+        // bounce to LauncherActivity — which owns the "card missing" dialog —
+        // instead of booting the game against a fallback internal path (which would
+        // look, from the user's side, like the app ate their ROM and saves).
+        //
+        // Safe despite SDLActivity: super.onCreate() is mandatory here (skipping it
+        // throws SuperNotCalledException), but SDLActivity starts SDL_main only on
+        // the later RESUMED transition (surface-ready + focus + resumed), which this
+        // immediately-finishing activity never reaches; and nativeInit is skipped,
+        // so no game state initializes and g_data_dir stays empty.
+        if (DataPaths.dataDir(this) == null) {
+            super.onCreate(savedInstanceState);
+            startActivity(new Intent(this, LauncherActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+            finish();
+            return;
+        }
+
         // Extract assets and set up the data dir BEFORE SDLActivity starts the
         // native thread (super.onCreate), since SDL_main reads them immediately.
-        // Resolved via DataPaths so this agrees with LauncherActivity about
-        // where data lives (internal or SD, chosen once at first run).
-        //
-        // Deliberately the never-null variant. We cannot bail out here: this is
-        // SDLActivity, super.onCreate() loads the native libraries and starts
-        // SDL_main, and returning before it throws SuperNotCalledException while
-        // calling it would start the game with no data path. So the
-        // "chosen volume is missing" guard lives in the only two callers that
-        // can reach this activity (it is exported=false): LauncherActivity and
-        // RestartActivity, both of which can refuse cheaply.
+        // Resolved via DataPaths so this agrees with LauncherActivity about where
+        // data lives (internal or SD, chosen once at first run). The never-null
+        // variant is safe now that the guard above has ruled out the missing-volume
+        // case.
         File dataDir = DataPaths.dataDirOrInternal(this);
         if (!dataDir.exists()) {
             //noinspection ResultOfMethodCallIgnored

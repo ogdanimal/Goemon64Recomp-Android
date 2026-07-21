@@ -137,10 +137,15 @@ public final class DataPaths {
      * super.onCreate() (SuperNotCalledException) and cannot call super without
      * a data path (SDL_main reads it immediately).
      *
-     * <p>Do NOT use this anywhere a null could be handled properly — the
-     * availability guard belongs upstream, in LauncherActivity and
-     * RestartActivity, which are the only two entry points to MainActivity
-     * (it is exported=false).
+     * <p>Do NOT use this anywhere a null could be handled properly. The
+     * availability guard lives at every entry point to MainActivity:
+     * LauncherActivity and RestartActivity (which can refuse cheaply), and — since
+     * MainActivity became launchMode=singleTask (see AndroidManifest) so recents
+     * can recreate it DIRECTLY after a process death — MainActivity.onCreate itself,
+     * which bounces to LauncherActivity when {@link #dataDir} is null. By the time
+     * this never-null variant runs, that guard has already ruled out the
+     * missing-volume case. (SDL_main also aborts on an empty data dir as a native
+     * backstop; see android_glue.cpp.)
      */
     public static File dataDirOrInternal(Context ctx) {
         File d = dataDir(ctx);
