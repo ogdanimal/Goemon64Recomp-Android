@@ -48,22 +48,30 @@ Severity: **H** fix before next release · **M** soon · **L** long tail.
 
 ## L — long tail
 
-| # | Verified | Location | Issue |
-|---|----------|----------|-------|
-| L1 | review | linker flags | `--unresolved-symbols=ignore-all`: a typo'd symbol resolves to 0 and links clean; `syms.ld` drift dispatches the wrong host function with no build-time signal. Add a post-link `nm` check for unresolved/zero symbols. |
-| L2 | review | asset extraction | Swallowed `IOException` → game launches against missing assets. Surface it. |
-| L3 | review | ROM hash path | Hash I/O error presented to the user as "wrong ROM". Distinguish I/O failure from mismatch. |
-| L4 | review | `src/audio` | `1 << skip_factor` UB after long stalls. |
-| L5 | review | `controls.cpp` | Missing-return UB reachable from a hand-edited `controls.json`. |
-| L6 | review | toast/indicator | `system_clock` used for toast expiry (wall-clock, not steady). |
-| L7 | review | version stamp | 64-byte `.assets_version` read buffer → perpetual 45 MB re-extraction on long version names. |
-| L8 | review | `build.gradle` | `versionCode` from `rev-list --count` is downgrade-fragile across history rewrites. |
-| L9 | review | `patches/camera.c` | Flag bits stripped during the camera pointer swap window. |
-| L10 | review | `patches/attack_move.c` | Attack-move direction survives area transitions. |
-| L11 | review | `src/main/main.cpp` | `G64_COPY_GPU` env fork whose comment says "Remove before release". |
-| L12 | review | various | `#if 0` blocks referencing possibly-removed functions; three large commented-out patch blocks (one preserving a transcription bug in amber). |
-| L13 | review | `patches/background.c:49` | "Intentional crash" trap is probably a silent rdram write under the recomp memory model, not a trap. |
-| L14 | verified | `src/ui/ui_saved_indicator.cpp` | Comment calls `ui_state_mutex` non-recursive; it's `std::recursive_mutex` (`ui_state.cpp:433`) and `draw_hook` relies on the recursion. Invariant holds; the stated premise is stale — reword to reference ordering, not the mutex type. |
+> **Status 2026-07-20:** L1–L11 verified against source by three read-only passes
+> and fixed where real (build-verified, `assembleDebug` green + the new patches
+> guard exercised). L9 was a **false positive** and struck. L8 is a release-scheme
+> decision deferred to the maintainer. L12–L14 not yet triaged.
+>
+> Actual location corrections found during verification: L1 is in `patches/Makefile`
+> (not CMake); L11 is in `rt64_render_context.cpp` (not `main.cpp`).
+
+| # | Verdict | Location (corrected) | Issue → resolution |
+|---|---------|----------------------|--------------------|
+| L1 | REAL — FIXED | `patches/Makefile:30-33` | `--unresolved-symbols=ignore-all` lets a host export missing from `syms.ld` link as address 0 → wrong host fn at runtime. Added a post-link guard: fail if any **undefined `recomp_*`** symbol exists (all are defined in `syms.ld`, so an undefined one is unambiguously the typo; game/libultra symbols stay undefined by design and aren't flagged). |
+| L2 | REAL — FIXED | `AssetInstaller.java`, `LauncherActivity.java` | Extraction `IOException` was logged-and-swallowed, then the game launched against partial assets. `installIfNeeded` now returns success; `LauncherActivity.startGame()` pre-flights it (the chokepoint that *can* refuse — MainActivity can't) and shows a dialog on failure. |
+| L3 | REAL — FIXED | `LauncherActivity.java:186` | A hash **I/O error** was funneled into the "Unexpected ROM" mismatch dialog whose primary action **deletes the ROM**. Now a compute failure shows a distinct "Couldn't read the ROM" dialog (Retry / Start anyway, never deletes). |
+| L4 | REAL — FIXED | `src/main/main.cpp:267` | `1 << skip_factor` is UB once the backlog reaches ~3.2s (shift ≥32). Clamped `skip_factor` to 8 and used a `1u` literal. |
+| L5 | REAL — FIXED | `src/game/input.cpp:693,723` | `get_input_analog`/`get_input_digital` switch on an untrusted `input_type` from `controls.json` with no `default` → fall off the end (UB) on an out-of-range value. Added `default`/trailing returns (treat unknown as unbound). |
+| L6 | REAL — FIXED | `ui_saved_indicator.cpp:33`, `ui_state.cpp:585` | `system_clock` used to measure elapsed expiry (toast + menu key-repeat) → a wall-clock jump misbehaves. Switched both to `steady_clock`. |
+| L7 | PARTIAL — FIXED | `AssetInstaller.java:86` | Fixed 64-byte single `read()` of `.assets_version` would truncate a >64-byte version and force 45 MB re-extraction every launch. Unreachable with semver tags, but read the whole file now (`Files.readAllBytes`) — also removes the single-`read` assumption. |
+| L8 | PARTIAL — DEFERRED | `build.gradle:39`, `android-release.yml:53` | `versionCode = git rev-list --count` is downgrade-fragile if history is ever rewritten (this repo has done a PII scrub). v1.0.0 shipped code 661; a semver-derived scheme (10000+) is a safe one-time jump up. Left to the maintainer — see the L8 decision note. |
+| L9 | **NOT-REAL — struck** | `patches/camera.c` | Claimed flag bits lost on the camera pointer swap. False: the `& 0x8FFFFFFE` mask is applied only to a *local* used as the memcpy source; the original word is saved and restored **verbatim** (`camera.c:496-512`, `579-596`). No defect. |
+| L10 | REAL — FIXED | `patches/attack_move.c:116` | Frozen lunge direction + `g_have_move` were never reset on area transition → first post-transition attack could lunge the wrong way. Added a map-id guard (`0x800C7AB2`, mirroring `camera.c`) that drops the held direction and the sample anchor on area change. |
+| L11 | REAL — FIXED | `rt64_render_context.cpp:353` | `G64_COPY_GPU` env fork (marked "Remove before release", shipped anyway) let an env var flip a render path in release builds. Removed the fork; hardcoded the shipping default (`copyWithGPU = false`). |
+| L12 | review — TODO | various | `#if 0` blocks referencing possibly-removed functions; three large commented-out patch blocks (one preserving a transcription bug in amber). |
+| L13 | review — TODO | `patches/background.c:49` | "Intentional crash" trap is probably a silent rdram write under the recomp memory model, not a trap. |
+| L14 | verified — TODO | `src/ui/ui_saved_indicator.cpp` | Comment calls `ui_state_mutex` non-recursive; it's `std::recursive_mutex` (`ui_state.cpp:433`) and `draw_hook` relies on the recursion. Invariant holds; reword the premise. |
 
 ## Recurring themes
 
