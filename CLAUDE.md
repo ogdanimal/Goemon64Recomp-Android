@@ -162,12 +162,17 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     `.bak` reloads) then relaunch. Fresh installs get the new defaults for free.
     On device the config lives at
     `/storage/<uuid>/Android/data/com.goemon64.recomp/files/data/`.
-- **v1.0.0 + v1.0.1 are PUBLIC, RELEASED, and DEVICE-VERIFIED on the release
-  build (2026-07-20).** The repo is public, both signed releases are live, and the
-  user smoke-tested the release-signed APK on the RP5 (launches + loads a restored
-  save). NOTE: both shipped WITHOUT any pass-1/pass-2 code-review fixes — those
-  live only on `dev` (tip `9518e2c`) awaiting the next cut. Monitor the GitHub
-  **issue tracker** for
+- **v1.0.2 is PUBLIC, RELEASED (Latest), and DEVICE-VERIFIED on the release
+  build (2026-07-21).** Tag `v1.0.2` off `main` tip `fe6da0e`. It is the FIRST
+  release carrying the pass-1 + pass-2 code-review fixes, the M2/M4 perf work
+  (launcher I/O off the UI thread, recents-cold SD guard), and Attack While
+  Moving incl. level-2 weapon coverage. Cut via a `v1.0.2-rc1` dry-run first
+  (proved versionCode `10002`, monotonic over v1.0.1's `10001`); the rc was
+  smoke-tested release-signed on the RP5 (first-run ROM flow + gameplay), then
+  the rc prerelease + tag were deleted. Release notes were hand-authored and
+  applied with `gh release edit --notes-file` (the workflow's `--generate-notes`
+  would otherwise overwrite them). v1.0.0 and v1.0.1 remain live but shipped
+  WITHOUT any pass-1/pass-2 fixes. Monitor the GitHub **issue tracker** for
   device-specific bug reports (Vulkan/driver issues on non-Adreno GPUs are the
   likely class) and triage; otherwise back to general bug-fixing. Test via the CI
   debug APK, or cut a new signed release by pushing a `v*` tag (see release setup
@@ -283,11 +288,10 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     **So the entire pass-2 fix set is now device-verified.** Verifying a native
     crash's ABSENCE: `adb shell dumpsys dropbox` is authoritative (a SIGSEGV/abort
     leaves a `data_app_native_crash`) — more reliable than a live logcat grep.
-  - **v1.0.0 AND v1.0.1 both shipped from `main` with NONE of pass-1's or pass-2's
-    fixes.** The next release (`v1.0.2`) off `dev` is the first to carry any of
-    them — a batch worth cutting (do a `v1.0.2-rc1` dry-run first per the release
-    section). Pass-2 MED/LOW tail (S2/S3/N5–N16/P2–P7/B1–B4/C4–C6/D1–D5/R1–R2) NOT
-    started.
+  - **v1.0.0 AND v1.0.1 shipped from `main` with NONE of pass-1's or pass-2's
+    fixes; `v1.0.2` (released 2026-07-21) is the first to carry all of them** —
+    see the release-state bullet near the top. Pass-2 MED/LOW tail
+    (S2/S3/N5–N16/P2–P7/B1–B4/C4–C6/D1–D5/R1–R2) NOT started.
 - **Attack While Moving — DONE, device-verified, deployment hold RELEASED
   2026-07-21 (user's call).** Base feature `9bae463`; the level-2 (upgraded)
   weapon coverage is a follow-up commit on `dev`. A
@@ -361,10 +365,15 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   workflow now also REJECTS a tag that isn't `vMAJOR.MINOR.PATCH[-suffix]` or has
   minor/patch ≥ 100; `-rc` tags intentionally share their final release's code.
   v1.0.0 shipped code 661 (old scheme); any release ≥ v1.0.1 → ≥ 10001, so the
-  switch is monotonic. **v1.0.0 AND v1.0.1 are released** (both from `main`, both
-  WITHOUT any pass-1/pass-2 fixes — see the code-review bullets). The next cut is
-  `v1.0.2` off `dev`; do a `v1.0.2-rc1` dry-run tag first to prove the versionCode
-  derivation end-to-end before the real cut.
+  switch is monotonic (v1.0.1 → 10001, v1.0.2 → 10002). **v1.0.0, v1.0.1, and
+  v1.0.2 are released** (all from `main`; v1.0.2 released 2026-07-21 is Latest and
+  the first with the pass-1/pass-2 fixes — see the code-review bullets). The next
+  cut is `v1.0.3` off `dev`; do a `vX.Y.Z-rc1` dry-run tag first to prove the
+  versionCode derivation end-to-end before the real cut. RELEASE-NOTES GOTCHA: the
+  workflow publishes with `gh release create --generate-notes`, which OVERWRITES
+  any body — hand-authored notes must be applied AFTER with
+  `gh release edit <tag> --notes-file <file>` (done for v1.0.2). Keep notes
+  emoji-free (user preference, 2026-07-21).
   Repo secrets: `RELEASE_KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`,
   `RELEASE_KEY_ALIAS` (`goemon-upload`), `RELEASE_KEY_PASSWORD` (+ the existing
   `G64RS_REPO_WITH_PAT` ROM secret).
