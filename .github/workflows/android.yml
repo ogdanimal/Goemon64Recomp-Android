@@ -13,7 +13,8 @@
 #
 # The produced APK is a DEBUG-signed loader: it contains the recompiled game code
 # + the mod's own UI assets, but NO game data. The user supplies their own ROM at
-# runtime. Release (upload-key) signing is a later addition once a keystore exists.
+# runtime. Signed release builds are produced by a separate tag-triggered workflow
+# (android-release.yml), which has existed since v1.0.0.
 
 name: android
 
@@ -134,3 +135,5 @@ jobs:
           name: Goemon64-android-debug-${{ github.sha }}
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          # Debug CI APKs are transient test builds; 14 days is plenty (default 90).
+          retention-days: 14

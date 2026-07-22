@@ -23,7 +23,8 @@ both are implemented and device-verified. The whole feature defaults to **Off**.
 
 **Trigger: `L` + `R` + `Z`** (physically LB + RT + LT), edge-triggered (holding
 it saves once, not every frame), and only while the safety gate passes. See the
-`AUTOSAVE_TEST_COMBO` define in `patches/autosave.c`.
+`AUTOSAVE_LZ_MASK` define (the L+Z part of the combo; R is read from the physical
+trigger) in `patches/autosave.c`.
 
 > Was `L + R + D-Pad Up`. Changed when the controller map was reworked to bind
 > the physical D-pad to the C-buttons, which makes N64 D-Up unproducible. `Z` is
@@ -292,11 +293,15 @@ open, and captures input.
 
 ### Two hazards, both load-bearing
 
-1. **Deadlock.** The public `show_context`/`hide_context` take `ui_state_mutex`
-   internally, and `draw_hook` holds that same **non-recursive** mutex from
-   `ui_state.cpp:566` onward. The tick therefore runs *before* that lock — next
-   to the launcher's own `show_context`, which sits above the lock for exactly
-   this reason. Move the tick below it and the render thread self-deadlocks.
+1. **Visibility ordering (NOT deadlock).** The public `show_context`/`hide_context`
+   take `ui_state_mutex`, which `draw_hook` also holds from `ui_state.cpp:574`
+   onward — but that mutex is a `std::recursive_mutex` that `draw_hook` itself
+   re-enters, so re-locking it is *not* a deadlock (the earlier "non-recursive →
+   self-deadlock" claim here was wrong, corrected 2026-07-20; see CLAUDE.md and
+   the L14 review fix). The tick still runs *before* the launcher's own
+   `is_any_context_shown()` / `show_context` check so an expiring toast updates
+   `is_any_context_shown()` before that check reads it; move the tick below it and
+   a just-expired toast suppresses the launcher for a frame.
 2. **Threading.** `recomp_notify_saved` runs on the guest thread; RmlUi is
    owned by the render thread. The guest side only stores an atomic; every
    document mutation happens in the tick. It uses `exchange`, not load+store,
@@ -838,10 +843,11 @@ building it:
 > last manual save. This applies to the current manual-trigger build, not just
 > to a future timer — see "What it overwrites, exactly".
 >
-> `.manual.bak` now exists to be the deliberate rollback point (see "Decided
-> design"), but it is **implemented and not yet verified on device**. Until that
-> verification lands, **treat the `adb` backup below as the only trustworthy
-> recovery copy.**
+> `.manual.bak` is the deliberate rollback point (see "Decided design") and is
+> **implemented and device-verified 2026-07-19** — it matched the manual save and
+> survived two autosaves 4.6s apart (the original loss scenario); see "RUN AND
+> PASSED on device" below. Backing up via `adb` first is still recommended before
+> any risky operation, but `.manual.bak` is a trustworthy rollback point.
 
 ### 1. Back up the save first
 

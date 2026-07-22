@@ -525,6 +525,8 @@ const recomp::DefaultN64Mappings recomp::default_n64_keyboard_mappings = {
 
 const recomp::DefaultN64Mappings recomp::default_n64_controller_mappings = {
     // Fresh default authored from docs/input/n64-goemon-input-assignment.csv.
+    // Read that CSV via docs/input/README.md — only columns A-C/G are
+    // authoritative; the keyboard/gamepad columns and lower tables are stale draft.
     // Face buttons use Xbox positional layout: A = SOUTH (bottom), B = EAST
     // (right), X = WEST (left), Y = NORTH (top).
     .a = {

@@ -1,0 +1,30 @@
+version: 2
+
+# Dependabot VERSION-update coverage. Security updates are enabled separately at
+# the repository level (Settings -> Code security) and are NOT controlled by this
+# file, so ecosystems omitted here still receive security PRs.
+#
+# Deliberately NOT covered:
+#   - gitsubmodule: lib/rt64, lib/N64ModernRuntime, and the nested plume submodule
+#     track custom `goemon-android` fork branches that carry Android-specific
+#     commits. Auto-bumping them to upstream tips would drop those patches and
+#     produce an unbuildable tree, so submodule bumps are done by hand.
+#   - npm (assets/scss): dev-time SCSS build tooling only, never shipped in the
+#     APK. Version-update PRs there would be pure noise; security PRs still arrive
+#     via the repo-level setting.
+updates:
+  # Keep the SHA-pinned action refs in the workflows from ageing silently.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+
+  # The Android app's Gradle build dependencies.
+  - package-ecosystem: "gradle"
+    directory: "/android"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build"
