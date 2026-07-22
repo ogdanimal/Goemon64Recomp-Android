@@ -101,7 +101,8 @@ if (ANDROID)
 
     # Android has no system FreeType; RmlUi's freetype font engine needs the
     # Freetype::Freetype target. Fetch and build it as part of the NDK build.
-    # (Validated standalone in android-ui-probe before folding in here.)
+    # (Validated standalone in the android-ui-probe project before folding in
+    # here; that throwaway probe dir has since been removed — see git history.)
     FetchContent_Declare(
         freetype
         GIT_REPOSITORY https://github.com/freetype/freetype.git

@@ -41,7 +41,7 @@ tips unchanged.
 |---|------|--------|
 | **M7** | `src/game/config.cpp` | `save_json_with_backups` now `flush()`es and checks `good()` after the `<<` write, still inside the ofstream scope, and returns `false` (skipping `finalize`) on a bad stream. A failed write (disk full) no longer promotes a truncated temp file over the existing good config. |
 | **S3 (host)** | `src/game/config.cpp` | `save_config()` and `load_config()` use the non-throwing `std::error_code` `create_directories` overload (`save_config` early-returns on failure; `load_config` falls back to defaults). A vanished SD data dir no longer SIGABRTs on close-settings. |
-| **M9** | `src/ui/ui_prompt.cpp` | Prompt cancel callbacks no longer run under the non-recursive `prompt_state.mutex`. `show_prompt` is `[[nodiscard]]` and **returns** the previous cancel action instead of calling it under the lock; the four openers (`open_choice_prompt`/`open_three_choice_prompt`/`open_info_prompt`/`open_notification`) wrap their body in a `{}` scope and invoke it after the lock releases; `close_prompt` moves the action into a local and invokes it after the scope. Behavior-preserving; kills the self-deadlock when a cancel action re-enters the prompt API. |
+| **M9** | `src/ui/ui_prompt.cpp` | Prompt cancel callbacks no longer run under the non-recursive `prompt_state.mutex`. `show_prompt` is `[[nodiscard]]` and **returns** the previous cancel action instead of calling it under the lock; the four openers (`open_choice_prompt`/`open_three_choice_prompt`/`open_info_prompt`/`open_notification`) wrap their body in a `{}` scope and invoke it after the lock releases; `close_prompt` moves the action into a local and invokes it after the scope. The four openers are behavior-preserving; `close_prompt` additionally clears the stored `cancel_action` (via `std::move`) and runs it *after* `hide_context` rather than before — both improvements (a stale action can't fire twice), not strictly behavior-identical. Kills the self-deadlock when a cancel action re-enters the prompt API. |
 | **N10** | `patches/autosave.c` | New `autosave_log_slot()` validates `G_SAVE_CTX_PTR` is in RDRAM and returns `-1` otherwise; the three status-log sites use it instead of an unguarded deref, so a failed save's log no longer prints a garbage slot. |
 | **N16** | `src/game/recomp_api.cpp` | `recomp_get_target_framerate` clamps `frame_divisor` to `>= 1` before `60 / divisor` (latent SIGFPE). |
 
@@ -130,6 +130,32 @@ changed blind:
   verify; low ROI to change blind.
 - **R2** — the desktop/VS scaffolding keep-or-kill decision (above).
 - The 5 open Dependabot npm PRs (dev-tooling only) remain for triage.
+
+---
+
+## Follow-up candidates (surfaced in the 2026-07-21 review-of-the-review)
+
+Verified-not-defects that don't warrant reopening any batch, recorded so they
+aren't lost. Candidates for the next review pass:
+
+- **N10 tail-of-RDRAM read.** `autosave_log_slot()` bounds-checks `ctx` against
+  `[0x80000000, 0x80800000)` but then reads `ctx + G_SLOT_OFFSET` — a `ctx`
+  within `G_SLOT_OFFSET` of the top would still read past the end. Log-only path,
+  practically negligible; tighten the upper bound to `0x80800000 - G_SLOT_OFFSET`
+  if revisited.
+- **N16 divisor > 60 → 0 fps.** The clamp kills the SIGFPE, but `frame_divisor >
+  60` still yields `60 / divisor == 0`, passing a 0 fps target to
+  `get_target_framerate`. Benign-or-not depends on ultramodern; an upper clamp to
+  60 would close it fully.
+- **M6 non-atomic RMW in `bind_atomic_option`.** The setter is
+  load → `set_option` → store — correct today (single UI-thread writer) but the
+  comment doesn't record that assumption. Note it, or make it a genuine CAS if a
+  second writer ever appears.
+
+Two doc touch-ups from the same review were applied here (this file + the M9 row
+in `docs/code-review-2026-07-20.md`, and the stale `android-ui-probe` reference at
+`CMakeLists.txt:104`): the M9 "behavior-preserving" claim now scopes strictly to
+the four openers and notes `close_prompt`'s two (improving) behavior changes.
 
 ---
 
