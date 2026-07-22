@@ -36,6 +36,20 @@ public class MainActivity extends SDLActivity {
         return sGameRunning;
     }
 
+    // Set true after the first nativeInit in this process and NEVER reset — it
+    // mirrors the native side's one-way latch (`exited`, `game_status`, the rdram
+    // allocation). A SECOND MainActivity.onCreate in the SAME process (a
+    // system-initiated recreation: a config change not in configChanges,
+    // memory-pressure reclaim, or the "don't keep activities" dev option) cannot
+    // re-init the latched runtime — the second nativeInit dies at the native
+    // duplicate-symbol guard (a misleading "syms.ld" modal) or black-screens
+    // because game_main returns immediately on the latched `exited`. onCreate
+    // detects that and bounces to RestartActivity for a clean cold start instead.
+    // singleTask routes an icon relaunch to onNewIntent (not onCreate), so the
+    // fast-resume path never trips this. volatile: main-thread only, but paired
+    // with sGameRunning for clarity.
+    private static volatile boolean sNativeInitedThisProcess = false;
+
     // Must match goemon64::RestartTarget in include/goemon_support.h.
     private static final int RESTART_NONE = 0;
     private static final int RESTART_APP_MENU = 1;
@@ -53,6 +67,26 @@ public class MainActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Same-process recreation recovery (S2). If this process already ran
+        // nativeInit, the native runtime is latched one-way and a second init
+        // here cannot work (see sNativeInitedThisProcess). Bounce to
+        // RestartActivity — which kills this process from its own process and
+        // cold-starts a clean one (or the launcher, if the SD volume is gone) —
+        // rather than calling nativeInit again into a spent process. Safe despite
+        // SDLActivity for the same reason as the storage guard below: super.
+        // onCreate is mandatory, but this immediately-finishing activity never
+        // reaches the RESUMED transition that starts SDL_main, and nativeInit is
+        // skipped. In-game state is already lost to the recreation, so cold-start
+        // to the app menu (autostart defaults to false in RestartActivity).
+        if (sNativeInitedThisProcess) {
+            super.onCreate(savedInstanceState);
+            startActivity(new Intent(this, RestartActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    .putExtra(RestartActivity.EXTRA_KILL_PID, android.os.Process.myPid()));
+            finish();
+            return;
+        }
+
         // Storage guard (M4). MainActivity is launchMode=singleTask, so recents can
         // recreate it DIRECTLY after a process death — a third entry point beyond
         // LauncherActivity/RestartActivity, which used to be the only ways in (both
@@ -88,6 +122,11 @@ public class MainActivity extends SDLActivity {
         AssetInstaller.installIfNeeded(this, dataDir);
         nativeInit(dataDir.getAbsolutePath(),
                 getIntent().getBooleanExtra(EXTRA_AUTOSTART, false));
+
+        // Latch that this process is now spent for re-init (see the field). Never
+        // reset — a subsequent onCreate in this process means recreation, not a
+        // fresh cold start, and must route through a new process.
+        sNativeInitedThisProcess = true;
 
         // Committed to booting the game in this process now — let LauncherActivity
         // fast-resume us on an icon relaunch instead of re-verifying the ROM.
@@ -155,9 +194,11 @@ public class MainActivity extends SDLActivity {
         // also fires for system-initiated recreation — e.g. a config change not
         // listed in configChanges, or memory-pressure reclaim — and halting there
         // would kill the app out from under a legitimate recreation. isFinishing()
-        // is exactly that distinction. (fontScale|density are now in configChanges
-        // so an accessibility font/display-size change no longer recreates us at
-        // all; this guard covers the remaining recreation cases.)
+        // is exactly that distinction. (The configChanges list now absorbs the
+        // common config-change recreations outright; and when a recreation does
+        // slip through, the recreated onCreate detects the spent process via
+        // sNativeInitedThisProcess and routes to a clean process restart — so this
+        // branch correctly does nothing for the non-finishing case.)
         if (isFinishing()) {
             Runtime.getRuntime().halt(0);
         }
