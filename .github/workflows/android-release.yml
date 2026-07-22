@@ -118,7 +118,11 @@ jobs:
           # Copy only the ROM, not a wildcard — a wildcard would spray any future
           # file added to the secrets repo straight into the build tree.
           cp -v ./Goemon64RecompSecrets/mnsg.z64 ./
-          test -f mnsg.z64 || { echo "::error::mnsg.z64 not found after cloning secrets repo"; exit 1; }
+          # Delete the clone immediately (its .git/config holds the PAT), then
+          # verify the ROM so a wrong/missing file fails clearly here rather than
+          # as a confusing recompiler error downstream.
+          rm -rf Goemon64RecompSecrets
+          echo "6ea0ed71032ce08fc2745f412d84936382197494  mnsg.z64" | sha1sum -c -
 
       - name: Install host toolchain
         run: |
