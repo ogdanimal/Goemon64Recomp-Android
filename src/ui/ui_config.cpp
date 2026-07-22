@@ -836,7 +836,12 @@ public:
             throw std::runtime_error("Failed to make RmlUi data model for the graphics config menu");
         }
 
-        ultramodern::sleep_milliseconds(50);
+        // No sleep here (N13): get_graphics_config() reads the config struct that
+        // load_config() populated at startup, so it is already valid by the time
+        // init_hook builds the menus -- the old 50ms render-thread sleep guarded
+        // nothing. The renderer's async capability data (MSAA support, etc.) and a
+        // fresh new_options are applied later by update_supported_options(), the
+        // gfx_init_callback, which DirtyAllVariables() to refresh the whole menu.
         new_options = ultramodern::renderer::get_graphics_config();
         bind_config_list_events(constructor);
 

@@ -697,7 +697,13 @@ void update_autosave(void) {
     // The timer. Deliberately does NOT consume the interval when it cannot
     // save -- see the header above; it retries next frame instead.
     if ((u32)(now_us - autosave_last_us) >= AUTOSAVE_INTERVAL_US) {
-        if (is_safe && autosave_is_settled() && autosave_state_changed_since_save()) {
+        // Don't let a 2-minute boundary commit while the recomp settings menu is
+        // open: the game ticks with input zeroed underneath the overlay, so a
+        // timed save there is coherent but against the gate's intent (N14). The
+        // manual combo isn't gated here because its L/Z reads already come from
+        // the zeroed game input word while the menu is up.
+        if (is_safe && !recomp_is_config_menu_open() &&
+            autosave_is_settled() && autosave_state_changed_since_save()) {
             s32 status = goemon_save_now();
 
             autosave_note_committed(now_us, status);

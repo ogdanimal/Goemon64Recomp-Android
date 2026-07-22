@@ -400,6 +400,7 @@ void goemon64::reset_single_input_binding(recomp::InputDevice device, recomp::Ga
 
 void reset_graphics_options() {
     ultramodern::renderer::GraphicsConfig new_config{};
+    new_config.api_option = api_default;
     new_config.res_option = res_default;
     new_config.wm_option = wm_default();
     new_config.hr_option = hr_default;

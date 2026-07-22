@@ -421,7 +421,13 @@ public:
     }
 
     void update_contexts() {
-        for (auto& context_details : shown_contexts) {
+        // Iterate a snapshot: process_updates() dispatches arbitrary RmlUi update
+        // handlers, and one that calls show_context/hide_context would mutate
+        // shown_contexts and invalidate this iterator (a dangling-pointer walk).
+        // No in-tree handler does today; ContextDetails is a trivially-copyable
+        // {ContextId, pointer}, so snapshotting is cheap insurance.
+        auto contexts_snapshot = shown_contexts;
+        for (auto& context_details : contexts_snapshot) {
             context_details.context.open();
             context_details.context.process_updates();
             context_details.context.close();
@@ -540,10 +546,21 @@ bool recompui::get_cont_active() {
 }
 
 void recompui::set_cont_active(bool active) {
+    std::lock_guard lock{ ui_state_mutex };
+    if (!ui_state) {
+        return;
+    }
     ui_state->cont_is_active = active;
 }
 
 void recompui::activate_mouse() {
+    // Reachable from the SDL event thread (SDL_QUIT -> open_quit_game_prompt ->
+    // activate_mouse) which can race deinit_hook resetting ui_state. Guard like
+    // the is_context_* helpers below.
+    std::lock_guard lock{ ui_state_mutex };
+    if (!ui_state) {
+        return;
+    }
     ui_state->update_primary_input(true, false);
     ui_state->update_focus(true, false);
 }
@@ -737,6 +754,11 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
 
             if (open_config) {
                 recompui::show_context(recompui::get_config_context_id(), "");
+                // config_was_open is a pre-loop snapshot (line ~584). Without
+                // this, a SECOND menu-toggle event in the same frame would re-enter
+                // here and call show_context on the already-shown config, tripping
+                // its duplicate guard -> a release-build error dialog. Mark it open.
+                config_was_open = true;
             }
         }
     } // end dequeue event loop
@@ -820,6 +842,9 @@ void recompui::show_context(ContextId context, std::string_view param) {
     {
         std::lock_guard lock{ ui_state_mutex };
 
+        if (!ui_state) {
+            return;
+        }
         // TODO call the context's on_show callback with the param.
         ui_state->show_context(context);
     }
@@ -833,6 +858,9 @@ void recompui::hide_context(ContextId context) {
     {
         std::lock_guard lock{ ui_state_mutex };
 
+        if (!ui_state) {
+            return;
+        }
         ui_state->hide_context(context);
     }
     if (prev_context != ContextId::null()) {
@@ -891,20 +919,37 @@ bool recompui::is_any_context_shown() {
 Rml::ElementDocument* recompui::load_document(const std::filesystem::path& path) {
     std::lock_guard lock{ui_state_mutex};
 
+    if (!ui_state) {
+        return nullptr;
+    }
     return ui_state->context->LoadDocument(path.string());
 }
 
 Rml::ElementDocument* recompui::create_empty_document() {
     std::lock_guard lock{ui_state_mutex};
 
+    if (!ui_state) {
+        return nullptr;
+    }
     return ui_state->context->CreateDocument();
 }
 
 void recompui::queue_image_from_bytes_file(const std::string &src, const std::vector<char> &bytes) {
+    // Callable from the guest thread (ui_api_images.cpp) during render-thread
+    // teardown; lock + null-check like the helpers below so a queued image after
+    // deinit_hook doesn't deref a freed ui_state.
+    std::lock_guard lock{ ui_state_mutex };
+    if (!ui_state) {
+        return;
+    }
     ui_state->render_interface.queue_image_from_bytes_file(src, bytes);
 }
 
 void recompui::queue_image_from_bytes_rgba32(const std::string &src, const std::vector<char> &bytes, uint32_t width, uint32_t height) {
+    std::lock_guard lock{ ui_state_mutex };
+    if (!ui_state) {
+        return;
+    }
     ui_state->render_interface.queue_image_from_bytes_rgba32(src, bytes, width, height);
 }
 

@@ -112,6 +112,16 @@ extern "C" void recomp_get_autosave_enabled(uint8_t* rdram, recomp_context* ctx)
     _return(ctx, static_cast<s32>(goemon64::get_autosave_mode() == goemon64::AutosaveMode::On));
 }
 
+// True while the in-app recomp config/settings menu (or its sub-menu) is open.
+// The timed autosave consults this so a 2-minute boundary can't commit while the
+// player is in settings -- the game keeps ticking with input zeroed underneath
+// the overlay, so such a save is coherent but against the gate's intent. N14.
+extern "C" void recomp_is_config_menu_open(uint8_t* rdram, recomp_context* ctx) {
+    bool open = recompui::is_context_shown(recompui::get_config_context_id()) ||
+                recompui::is_context_shown(recompui::get_config_sub_menu_context_id());
+    _return(ctx, static_cast<s32>(open));
+}
+
 // Bracket around the autosave's own pak traffic, so the save-rollback observer
 // can tell it apart from a deliberate, player-initiated save. See
 // src/game/save_rollback.cpp.

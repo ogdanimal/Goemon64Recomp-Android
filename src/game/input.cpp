@@ -163,7 +163,18 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
                 {
                     // Same lock the guest thread holds to iterate controller_states in poll_inputs.
                     std::lock_guard lock{ InputState.cur_controllers_mutex };
-                    InputState.controller_states[SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))].controller = controller;
+                    ControllerState& state = InputState.controller_states[SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))];
+                    // If an entry for this instance id already holds a different
+                    // open handle, close it before overwriting -- otherwise the old
+                    // handle leaks (the H2 leak class). Purge it from the cached
+                    // vector first, as REMOVED does, so no reader iterates a freed
+                    // handle in the meantime.
+                    if (state.controller != nullptr && state.controller != controller) {
+                        auto& cc = InputState.cur_controllers;
+                        cc.erase(std::remove(cc.begin(), cc.end(), state.controller), cc.end());
+                        SDL_GameControllerClose(state.controller);
+                    }
+                    state.controller = controller;
                 }
 
                 if (SDL_GameControllerHasSensor(controller, SDL_SensorType::SDL_SENSOR_GYRO) && SDL_GameControllerHasSensor(controller, SDL_SensorType::SDL_SENSOR_ACCEL)) {
@@ -296,10 +307,16 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
             float y = event->csensor.data[1] / SDL_STANDARD_GRAVITY;
             float z = event->csensor.data[2] / SDL_STANDARD_GRAVITY;
             std::lock_guard lock{ InputState.cur_controllers_mutex };
-            ControllerState& state = InputState.controller_states[event->csensor.which];
-            state.latest_accelerometer[0] = x;
-            state.latest_accelerometer[1] = y;
-            state.latest_accelerometer[2] = z;
+            // find(), not operator[]: a sensor event that arrives after the
+            // controller's REMOVED would otherwise re-create a zombie entry
+            // (default handle null) that lingers in the map forever.
+            auto it = InputState.controller_states.find(event->csensor.which);
+            if (it != InputState.controller_states.end()) {
+                ControllerState& state = it->second;
+                state.latest_accelerometer[0] = x;
+                state.latest_accelerometer[1] = y;
+                state.latest_accelerometer[2] = z;
+            }
         }
         else if (event->csensor.sensor == SDL_SensorType::SDL_SENSOR_GYRO) {
             // constexpr float gyro_threshold = 0.05f;
@@ -311,19 +328,26 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
 
             float rot_x = 0.0f;
             float rot_y = 0.0f;
+            bool have_state = false;
             {
                 // Held only around the controller_states access; released before
                 // taking pending_input_mutex below so the two never nest.
                 std::lock_guard lock{ InputState.cur_controllers_mutex };
-                ControllerState& state = InputState.controller_states[event->csensor.which];
-                uint64_t cur_timestamp = event->csensor.timestamp;
-                uint32_t delta_ms = cur_timestamp - state.prev_gyro_timestamp;
-                state.motion.ProcessMotion(x, y, z, state.latest_accelerometer[0], state.latest_accelerometer[1], state.latest_accelerometer[2], delta_ms * 0.001f);
-                state.prev_gyro_timestamp = cur_timestamp;
-                state.motion.GetPlayerSpaceGyro(rot_x, rot_y);
+                // find(), not operator[]: see the accel branch -- a post-REMOVED
+                // sensor event must not resurrect a zombie entry.
+                auto it = InputState.controller_states.find(event->csensor.which);
+                if (it != InputState.controller_states.end()) {
+                    ControllerState& state = it->second;
+                    uint64_t cur_timestamp = event->csensor.timestamp;
+                    uint32_t delta_ms = cur_timestamp - state.prev_gyro_timestamp;
+                    state.motion.ProcessMotion(x, y, z, state.latest_accelerometer[0], state.latest_accelerometer[1], state.latest_accelerometer[2], delta_ms * 0.001f);
+                    state.prev_gyro_timestamp = cur_timestamp;
+                    state.motion.GetPlayerSpaceGyro(rot_x, rot_y);
+                    have_state = true;
+                }
             }
 
-            {
+            if (have_state) {
                 std::lock_guard lock{ InputState.pending_input_mutex };
                 InputState.pending_rotation_delta[0] += rot_x;
                 InputState.pending_rotation_delta[1] += rot_y;
@@ -693,8 +717,12 @@ static std::atomic_bool right_analog_suppressed = false;
 static std::atomic<int16_t> analog_cam_yaw = 0;
 
 float controller_axis_state(int32_t input_id, bool allow_suppression) {
-    if (abs(input_id) - 1 < SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_MAX) {
-        SDL_GameControllerAxis axis = (SDL_GameControllerAxis)(abs(input_id) - 1);
+    // 64-bit abs: input_id comes from controls.json, so a hand-edited INT32_MIN
+    // would make abs(int) UB. The lower bound also rejects input_id 0 (-> axis
+    // -1 into SDL) which a corrupt file could otherwise produce.
+    int64_t axis_index = std::abs(static_cast<int64_t>(input_id)) - 1;
+    if (axis_index >= 0 && axis_index < SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_MAX) {
+        SDL_GameControllerAxis axis = (SDL_GameControllerAxis)axis_index;
         bool negative_range = input_id < 0;
         float ret = 0.0f;
 
@@ -1082,7 +1110,8 @@ std::string keyboard_input_to_string(SDL_Scancode key) {
 
 std::string controller_axis_to_string(int axis) {
     bool positive = axis > 0;
-    SDL_GameControllerAxis actual_axis = SDL_GameControllerAxis(abs(axis) - 1);
+    // 64-bit abs to avoid abs(INT_MIN) UB on a hand-edited controls.json id.
+    SDL_GameControllerAxis actual_axis = SDL_GameControllerAxis(std::abs(static_cast<int64_t>(axis)) - 1);
     switch (actual_axis) {
     case SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_LEFTX:
         return positive ? "\u21C0" : "\u21BC";

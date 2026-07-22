@@ -299,7 +299,14 @@ void update_analog_camera(void) {
 // the eye−look_at distance invariant by construction (no radius drift), and
 // leaving look_at untouched keeps the aim on the character while we own the
 // orbit angle — which is also the basis the movement resolver reads.
-static void acam_rotate_in_place(Camera* cam) {
+// allow_capture: 1 for authoritative live-camera paths (render/basis/skybox,
+// which read the true render camera via the player->node chain), 0 for secondary
+// consumers (audio pan) whose argument camera may NOT be the live render camera.
+// A secondary consumer must never SEED the one-shot azimuth capture -- doing so
+// on the first engaged frame from a transient/non-live camera poisons the held
+// azimuth for the whole engagement (N9). It waits for an authoritative path to
+// capture and passes through unrotated until then.
+static void acam_rotate_in_place(Camera* cam, int allow_capture) {
     // Live eye offset. At entry `cam` is an unrotated copy of the live game
     // camera, so this is the game's current framing: `r` is its intended
     // distance and `ly` its intended height, both of which stay the game's to
@@ -312,6 +319,11 @@ static void acam_rotate_in_place(Camera* cam) {
     // Snapshot only the azimuth, on the first frame of an engagement. Yaw is ~0
     // at that instant, so the engage transition is seamless.
     if (!g_acam_captured) {
+        // Secondary consumer: never seed the capture (see the allow_capture note
+        // above). Pass through unrotated until an authoritative path captures.
+        if (!allow_capture) {
+            return;
+        }
         // Degenerate: camera directly overhead, so there is no horizontal
         // direction to capture. Defer to the next frame rather than snapshot a
         // meaningless one — passing the camera through untouched meanwhile.
@@ -421,7 +433,7 @@ Camera* apply_analog_camera(Camera* cam) {
     static Camera rotated;
     memcpy(&rotated, cam, sizeof(Camera));
 
-    acam_rotate_in_place(&rotated);
+    acam_rotate_in_place(&rotated, 1);
 
     return &rotated;
 }
@@ -498,7 +510,7 @@ RECOMP_PATCH s32 func_801CE3F0_58A300(u8* task, f32 speed) {
             if ((u32)real >= 0x80000000u && (u32)real < 0x80800000u &&
                 acam_is_gameplay_camera(real)) {
                 memcpy(&acam_basis_cam, real, sizeof(Camera));
-                acam_rotate_in_place(&acam_basis_cam);
+                acam_rotate_in_place(&acam_basis_cam, 1);
                 // Carry the original word's flag/segment bits (bit 0 + bits 28-30,
                 // i.e. ~0x8FFFFFFE) into the swapped-in pointer so the node word is
                 // bit-faithful DURING the swap window (before the verbatim restore
@@ -591,7 +603,7 @@ static s32 acam_sky_swap(u32* out_node, u32* out_old) {
     }
 
     memcpy(&acam_sky_cam, real, sizeof(Camera));
-    acam_rotate_in_place(&acam_sky_cam);
+    acam_rotate_in_place(&acam_sky_cam, 1);
     // Preserve the original word's flag/segment bits across the swap window
     // (see the movement-resolver swap for the rationale).
     *(u32*)(node + 0x2C) = (u32)&acam_sky_cam | (old_cam & ~0x8FFFFFFEu);
@@ -720,7 +732,9 @@ RECOMP_PATCH void func_8000F6E8_102E8(u32 sound_id, void* cam, u32 x, u32 z,
         if ((u32)real >= 0x80000000u && (u32)real < 0x80800000u &&
             acam_is_gameplay_camera(real)) {
             memcpy(&acam_audio_cam, real, sizeof(Camera));
-            acam_rotate_in_place(&acam_audio_cam);
+            // allow_capture = 0: the audio panner's camera may not be the live
+            // render camera, so it must not seed the engagement's azimuth (N9).
+            acam_rotate_in_place(&acam_audio_cam, 0);
             use_cam = &acam_audio_cam;
         }
     }
