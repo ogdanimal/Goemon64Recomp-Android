@@ -96,6 +96,27 @@ void bind_atomic(Rml::DataModelConstructor& constructor, Rml::DataModelHandle ha
     );
 }
 
+// Atomic counterpart of bind_option, for enum options whose backing store is
+// read every frame from the game/render thread (control + cheat options). The
+// load/store removes the data race; the DirtyVariable calls mirror bind_option
+// exactly so behavior is unchanged.
+template <typename T>
+void bind_atomic_option(Rml::DataModelConstructor& constructor, const std::string& name, std::atomic<T>* option) {
+    constructor.BindFunc(name,
+        [option](Rml::Variant& out) {
+            T value = option->load();
+            get_option(value, out);
+        },
+        [option](const Rml::Variant& in) {
+            T value = option->load();
+            set_option(value, in);
+            option->store(value);
+            graphics_model_handle.DirtyVariable("options_changed");
+            graphics_model_handle.DirtyVariable("ds_info");
+        }
+    );
+}
+
 static int scanned_binding_index = -1;
 static int scanned_input_index = -1;
 static int focused_input_index = -1;
@@ -328,21 +349,25 @@ void goemon64::open_restart_game_prompt() {
 }
 
 // These defaults values don't matter, as the config file handling overrides them.
+// All fields are atomic: the game/render/input threads read these every frame
+// (e.g. controls.cpp reads analog_cam_mode with the menu open) while the UI
+// thread writes them. Mirrors SoundOptionsContext. Zero-initialized as a global;
+// config load overwrites every field via the setters below.
 struct ControlOptionsContext {
-    int rumble_strength; // 0 to 100
-    int gyro_sensitivity; // 0 to 100
-    int mouse_sensitivity; // 0 to 100
-    int joystick_deadzone; // 0 to 100
-    goemon64::TargetingMode targeting_mode;
-    recomp::BackgroundInputMode background_input_mode;
-    goemon64::AutosaveMode autosave_mode;
-    goemon64::CameraInvertMode camera_invert_mode;
-    goemon64::AnalogCamMode analog_cam_mode;
-    goemon64::CameraInvertMode analog_camera_invert_mode;
-    int analog_cam_sensitivity_x; // 0 to 100, 50 = default rate
-    int analog_cam_sensitivity_y; // 0 to 100, 50 = default rate
-    goemon64::SwapWhileMovingMode swap_while_moving_mode;
-    goemon64::AttackWhileMovingMode attack_while_moving_mode;
+    std::atomic<int> rumble_strength; // 0 to 100
+    std::atomic<int> gyro_sensitivity; // 0 to 100
+    std::atomic<int> mouse_sensitivity; // 0 to 100
+    std::atomic<int> joystick_deadzone; // 0 to 100
+    std::atomic<goemon64::TargetingMode> targeting_mode;
+    std::atomic<recomp::BackgroundInputMode> background_input_mode;
+    std::atomic<goemon64::AutosaveMode> autosave_mode;
+    std::atomic<goemon64::CameraInvertMode> camera_invert_mode;
+    std::atomic<goemon64::AnalogCamMode> analog_cam_mode;
+    std::atomic<goemon64::CameraInvertMode> analog_camera_invert_mode;
+    std::atomic<int> analog_cam_sensitivity_x; // 0 to 100, 50 = default rate
+    std::atomic<int> analog_cam_sensitivity_y; // 0 to 100, 50 = default rate
+    std::atomic<goemon64::SwapWhileMovingMode> swap_while_moving_mode;
+    std::atomic<goemon64::AttackWhileMovingMode> attack_while_moving_mode;
 };
 
 ControlOptionsContext control_options_context;
@@ -515,10 +540,12 @@ void goemon64::set_attack_while_moving_mode(goemon64::AttackWhileMovingMode mode
 }
 
 // These default values don't matter, as the config file handling overrides them.
+// Atomic: the cheat patches read these every frame on the game thread while the
+// UI thread writes them. See ControlOptionsContext.
 struct CheatsContext {
-    goemon64::CheatMode infinite_health_mode;
-    goemon64::CheatMode infinite_money_mode;
-    goemon64::CheatMode infinite_lives_mode;
+    std::atomic<goemon64::CheatMode> infinite_health_mode;
+    std::atomic<goemon64::CheatMode> infinite_money_mode;
+    std::atomic<goemon64::CheatMode> infinite_lives_mode;
 };
 
 CheatsContext cheats_context;
@@ -1138,23 +1165,25 @@ public:
         }
 
         bind_config_list_events(constructor);
-        
-        constructor.Bind("rumble_strength", &control_options_context.rumble_strength);
-        constructor.Bind("gyro_sensitivity", &control_options_context.gyro_sensitivity);
-        constructor.Bind("mouse_sensitivity", &control_options_context.mouse_sensitivity);
-        constructor.Bind("joystick_deadzone", &control_options_context.joystick_deadzone);
-        bind_option(constructor, "targeting_mode", &control_options_context.targeting_mode);
-        bind_option(constructor, "background_input_mode", &control_options_context.background_input_mode);
-        bind_option(constructor, "autosave_mode", &control_options_context.autosave_mode);
-        bind_option(constructor, "camera_invert_mode", &control_options_context.camera_invert_mode);
-        bind_option(constructor, "analog_cam_mode", &control_options_context.analog_cam_mode);
-        bind_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
-        constructor.Bind("analog_cam_sensitivity_x", &control_options_context.analog_cam_sensitivity_x);
-        constructor.Bind("analog_cam_sensitivity_y", &control_options_context.analog_cam_sensitivity_y);
-        bind_option(constructor, "swap_while_moving_mode", &control_options_context.swap_while_moving_mode);
-        bind_option(constructor, "attack_while_moving_mode", &control_options_context.attack_while_moving_mode);
 
+        // Get the handle before binding: bind_atomic captures it by value for its
+        // DirtyVariable-on-write (mirrors make_sound_options_bindings).
         general_model_handle = constructor.GetModelHandle();
+
+        bind_atomic(constructor, general_model_handle, "rumble_strength", &control_options_context.rumble_strength);
+        bind_atomic(constructor, general_model_handle, "gyro_sensitivity", &control_options_context.gyro_sensitivity);
+        bind_atomic(constructor, general_model_handle, "mouse_sensitivity", &control_options_context.mouse_sensitivity);
+        bind_atomic(constructor, general_model_handle, "joystick_deadzone", &control_options_context.joystick_deadzone);
+        bind_atomic_option(constructor, "targeting_mode", &control_options_context.targeting_mode);
+        bind_atomic_option(constructor, "background_input_mode", &control_options_context.background_input_mode);
+        bind_atomic_option(constructor, "autosave_mode", &control_options_context.autosave_mode);
+        bind_atomic_option(constructor, "camera_invert_mode", &control_options_context.camera_invert_mode);
+        bind_atomic_option(constructor, "analog_cam_mode", &control_options_context.analog_cam_mode);
+        bind_atomic_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
+        bind_atomic(constructor, general_model_handle, "analog_cam_sensitivity_x", &control_options_context.analog_cam_sensitivity_x);
+        bind_atomic(constructor, general_model_handle, "analog_cam_sensitivity_y", &control_options_context.analog_cam_sensitivity_y);
+        bind_atomic_option(constructor, "swap_while_moving_mode", &control_options_context.swap_while_moving_mode);
+        bind_atomic_option(constructor, "attack_while_moving_mode", &control_options_context.attack_while_moving_mode);
     }
     
     void make_cheats_bindings(Rml::Context* context) {
@@ -1165,9 +1194,9 @@ public:
 
         bind_config_list_events(constructor);
 
-        bind_option(constructor, "infinite_health_mode", &cheats_context.infinite_health_mode);
-        bind_option(constructor, "infinite_money_mode", &cheats_context.infinite_money_mode);
-        bind_option(constructor, "infinite_lives_mode", &cheats_context.infinite_lives_mode);
+        bind_atomic_option(constructor, "infinite_health_mode", &cheats_context.infinite_health_mode);
+        bind_atomic_option(constructor, "infinite_money_mode", &cheats_context.infinite_money_mode);
+        bind_atomic_option(constructor, "infinite_lives_mode", &cheats_context.infinite_lives_mode);
 
         cheats_model_handle = constructor.GetModelHandle();
     }

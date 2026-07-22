@@ -137,11 +137,15 @@ RECOMP_PATCH void func_80213AC8_672A78(RipplingKarakusaTask *task, Object *objec
     f64 phase_2;
     f32 wave_y;
     
-    if ((current_aspect_ratio != g_rippling_hikimaku_previous_aspect_ratio || task->initialized == FALSE) && current_aspect_ratio != 0.0f) {
+    // Use the karakusa's OWN previous-aspect static, not the hikimaku's. Sharing
+    // the hikimaku static meant that after both were initialized, a runtime
+    // aspect change already recorded by the hikimaku handler would make this one
+    // skip its rescale and keep a stale scale.
+    if ((current_aspect_ratio != g_rippling_karakusa_previous_aspect_ratio || task->initialized == FALSE) && current_aspect_ratio != 0.0f) {
         object->scale.x = 0.2f * (current_aspect_ratio / g_original_aspect_ratio);
         object->scale.z = 0.2f * (current_aspect_ratio / g_original_aspect_ratio);
 
-        g_rippling_hikimaku_previous_aspect_ratio = current_aspect_ratio;
+        g_rippling_karakusa_previous_aspect_ratio = current_aspect_ratio;
         task->initialized = TRUE;
     }
 
