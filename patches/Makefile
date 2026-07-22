@@ -4,7 +4,11 @@ BUILD_DIR   := build
 TARGET      := $(BUILD_DIR)/$(TARGET_NAME)
 
 # Tools
-CC      ?= clang
+# CC must be ':=' not '?=': make predefines CC=cc, so '?=' would never fire and a
+# bare `make -C patches` would use host cc (mips flags -> cryptic errors). A
+# command-line `CC=...` still overrides this. LD/NM are not predefined by make,
+# so '?=' is fine for them.
+CC      := clang
 LD      ?= ld.lld
 NM      ?= llvm-nm
 CMAKE   ?= cmake

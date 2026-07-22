@@ -54,9 +54,11 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++20"
+                // Note: the NDK toolchain sets CMake's ANDROID variable itself,
+                // which is what CMakeLists.txt gates on — there is no
+                // GOEMON_ANDROID define to pass.
                 arguments "-DANDROID_STL=c++_shared",
                           "-DANDROID_PLATFORM=android-28",
-                          "-DGOEMON_ANDROID=ON",
                           "-DGOEMON_VERSION_STRING=${nativeVersion}",
                           "-DGOEMON_FILE_TO_C=${hostFileToC}"
             }

@@ -556,9 +556,13 @@ target_sources(Goemon64Recompiled PRIVATE ${SOURCES})
 
 set_property(TARGET Goemon64Recompiled PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
-if(CMAKE_EXPORT_COMPILE_COMMANDS)
+# Convenience symlink of compile_commands.json into the source tree for
+# clangd/IDEs. Skipped on Windows (create_symlink needs Developer Mode there) and
+# made non-fatal via RESULT_VARIABLE so a failure never breaks configure.
+if(CMAKE_EXPORT_COMPILE_COMMANDS AND NOT WIN32)
     execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
         "${CMAKE_BINARY_DIR}/compile_commands.json"
         "${CMAKE_SOURCE_DIR}/compile_commands.json"
+        RESULT_VARIABLE _compile_commands_symlink_result
     )
 endif()

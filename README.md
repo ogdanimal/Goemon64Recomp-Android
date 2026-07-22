@@ -130,9 +130,16 @@ The app is not an emulator and does not include copyrighted game assets. On firs
 The Android app is a Gradle module under `android/` that drives the native CMake build:
 
 - Android Studio (or the Gradle wrapper) with **NDK 27.1.12297006** and **CMake 3.22.1**
-- Native code builds with `-DGOEMON_ANDROID=ON` for `arm64-v8a`
+- Native code builds for `arm64-v8a` (the NDK toolchain sets CMake's `ANDROID` flag)
 - Initialize submodules first: `git submodule update --init --recursive`
+- **A supported ROM is required at build time.** `RecompiledFuncs/` and
+  `RecompiledPatches/` are generated (not committed) by running the host
+  recompiler + patches codegen against the ROM; the ROM's data never ships in
+  the APK. A clean clone cannot build without this step.
 - A release keystore can be supplied via `keystore.properties` (repo root or `android/`)
+
+See **[BUILDING.md](BUILDING.md)** for the full step-by-step build (host tooling,
+ROM codegen, and the APK build).
 
 ## Credits
 

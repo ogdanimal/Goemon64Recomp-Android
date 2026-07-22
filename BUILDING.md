@@ -91,7 +91,7 @@ make -C patches CC=clang LD=ld.lld
 ## 5. Build the APK
 
 The Android app is a Gradle module under `android/` that drives the native CMake
-build (`-DGOEMON_ANDROID=ON`, `arm64-v8a`).
+build for `arm64-v8a` (the NDK toolchain sets CMake's `ANDROID` flag).
 
 ```bash
 cd android
