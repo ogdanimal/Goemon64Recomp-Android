@@ -46,6 +46,20 @@ runners on every push to `dev`/`main`. It pulls the ROM from the PRIVATE compani
 `ogdanimal/Goemon64RecompSecrets` via the secret `G64RS_REPO_WITH_PAT` (an authenticated
 clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
 `gradle assembleDebug`. NDK 27.1.12297006, CMake 3.22.1. Actions pinned to node24 runtimes.
+- **ROM-fetch step HARDENED 2026-07-22** (`64269bd`, on `dev` AND `main`; mirrors
+  sibling Quest64-Recomp `7bd6068`): the secrets clone is `rm -rf`'d the instant the
+  ROM is copied out (its `.git/config` holds the PAT — a raw clone has no post-job
+  credential scrub the way actions/checkout does), and the ROM is verified with
+  `sha1sum -c` against the pinned US-ROM sha1
+  `6ea0ed71032ce08fc2745f412d84936382197494`. The hash is pinned in BOTH
+  `android.yml` and `android-release.yml` — if the ROM input ever changes, update
+  both. To (re)derive it against the copy CI actually clones (not just the local
+  file): `gh api -H "Accept: application/vnd.github.raw"
+  repos/ogdanimal/Goemon64RecompSecrets/contents/mnsg.z64 | sha1sum` (raw media
+  type serves blobs ≤100MB). Local `mnsg.z64` and the secrets-repo copy were
+  byte-identical at pin time. Verified LIVE: the first `dev` run's fetch step
+  passed with the checksum in place (positive confirmation — a mismatch fails the
+  step).
 - Grab the latest test APK: `gh run download <run-id> --repo ogdanimal/Goemon64Recomp-Android`
   (or the run's Artifacts). Debug-signed → sideloadable; asks for the user's ROM on first launch.
 
@@ -176,7 +190,11 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   device-specific bug reports (Vulkan/driver issues on non-Adreno GPUs are the
   likely class) and triage; otherwise back to general bug-fixing. Test via the CI
   debug APK, or cut a new signed release by pushing a `v*` tag (see release setup
-  below).
+  below). **2026-07-22: `main` fast-forwarded to the `dev` tip `64269bd`**
+  (`fe6da0e..64269bd`) — main now carries the whole 2026-07-21 remediation tail
+  plus the CI ROM-fetch hardening, so the next cut (`v1.0.3`) ships all of it.
+  Note the tail work is build-green but NOT yet device-tested (see the tail
+  bullet below).
 - **Code-review remediation — DONE, build+CI-verified, PUSHED on `dev`
   (2026-07-20; tip `a27223a`).** A full-codebase critique (Java launcher, host
   `src/`, `patches/`, CI) fixed the high tier (H1–H7) and the long tail (L1–L14).
@@ -214,21 +232,21 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     reason, not deadlock.
   - Device-verified: latest debug build `install -r`'d onto the RP5 (2026-07-20),
     saves intact (backed up + checksummed first — see [[device-install-method]]).
-  - **BACKLOG (M-tier, NOT started):** launcher main-thread I/O (32 MB ROM copy +
-    45 MB asset extract on the UI thread — M2, biggest), recents-relaunch
-    storage-guard bypass (M4), non-atomic cross-thread settings ints (M6),
-    config-save reported success on disk-full (M7), `ui_prompt` callback-under-lock
-    (M9), widescreen stale-static (M10), autosave engine-guard off-by-one probe
-    (M8). All in the doc. L12 (annotated commented-out reference blocks) is
-    intentional/not-actionable; L8 (versionCode) is done — see release section.
+  - **M-tier backlog CLEARED (updated 2026-07-22):** M2/M4 shipped in v1.0.2;
+    M6, M7, M9, M10 fixed in the 2026-07-21 tail session (see the tail bullet
+    below); **M8 remains deferred** (device-gated, do together with pass-2 N5).
+    L12 (annotated commented-out reference blocks) is intentional/not-actionable;
+    L8 (versionCode) is done — see release section.
 - **Code-review SECOND PASS remediation — DONE, build+CI-verified, PUSHED on
   `dev` (2026-07-21; parent tip `9518e2c`).** The pass-2 gap hunt
   (`docs/code-review-2026-07-20-pass2.md`) found HIGH crash bugs that shipped in
   BOTH v1.0.0 and v1.0.1. Fixed all five HIGH + two integrity + three CI items;
   each fixed row in that doc ends with a verified `→ FIXED` note (cite it, don't
-  re-derive). **Current submodule fork tips after this: plume `c69ce04`, rt64
-  `3b49b22`** (both pushed to their `goemon-android` forks; N64MR unchanged at
-  `b6f6253`). `git ls-remote`-verified the whole gitlink chain is CI-buildable.
+  re-derive). Submodule fork tips after this pass: plume `c69ce04`, rt64
+  `3b49b22` (both pushed to their `goemon-android` forks). `git ls-remote`-verified
+  the whole gitlink chain is CI-buildable. (**N64MR was `b6f6253` here but was
+  bumped to `920d493` by the 2026-07-21 tail session** — see that bullet; plume/rt64
+  unchanged since.)
   What changed how the codebase works:
   - **P1/S4 — resume-window use-after-free (the fix that most matters).** The
     Android background→resume path could deref a freed `ANativeWindow` (host
@@ -290,8 +308,22 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     leaves a `data_app_native_crash`) — more reliable than a live logcat grep.
   - **v1.0.0 AND v1.0.1 shipped from `main` with NONE of pass-1's or pass-2's
     fixes; `v1.0.2` (released 2026-07-21) is the first to carry all of them** —
-    see the release-state bullet near the top. Pass-2 MED/LOW tail
-    (S2/S3/N5–N16/P2–P7/B1–B4/C4–C6/D1–D5/R1–R2) NOT started.
+    see the release-state bullet near the top.
+- **Pass-2 MED/LOW tail + pass-1 M-tier backlog — DONE 2026-07-21 (with
+  deferrals), build-green, PUSHED on `dev`; promoted to `main` 2026-07-22.**
+  Seven batches: `7330bd3` (S3-host/M7/M9/N10/N16), `ca21489` (M6/M10),
+  `1fbbb30` (B1–B4), `c487b13` (S3 submodule bump), `1db4d63` (S2), `dab5be7`
+  (N6–N9/N11–N15), `5f04fec` (C4–C6/D1–D5/R1/R2-status). Full per-finding
+  record: **`docs/code-review-2026-07-21-remediation.md`** (cite it, don't
+  re-derive). **N64ModernRuntime gitlink bumped `b6f6253` → `920d493`**
+  (fork-pushed, ls-remote-verified; plume/rt64 tips unchanged at
+  `c69ce04`/`3b49b22`). NOT yet device-tested — held at the maintainer's
+  request; a checksum-verified save backup was taken first
+  (`goemon-backups/2026-07-21-preinstall-debug/`). Still open from both passes:
+  **M8 + N5** (device-gated engine-detection / R-mask-scope checks, coupled —
+  do together), S2 + N13 device checks, **P-tier perf (P2–P7) not started**,
+  R2 (maintainer keep-or-kill on desktop scaffolding), and the Dependabot npm
+  PRs (build-tooling only).
 - **Attack While Moving — DONE, device-verified, deployment hold RELEASED
   2026-07-21 (user's call).** Base feature `9bae463`; the level-2 (upgraded)
   weapon coverage is a follow-up commit on `dev`. A
@@ -343,8 +375,12 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     silently. UNPARK TRIGGER: a 2D effect seen sitting beside rather than on
     whatever produced it, after orbiting. Full detail + the `+0x1A` fov-vs-roll
     resolution in `docs/re-notes/README.md`.
-  - Quest64-Recomp Android port (separately scoped; different rt64 lineage makes the
-    graphics work non-trivial).
+- **Sibling repo: Quest64-Recomp** (`~/projects/Quest64-Recomp`) — UNPARKED, now
+  an ACTIVE sibling project with its own working context (see its CLAUDE.md; don't
+  duplicate its state here). Its CI was modeled on Goemon's, so **CI/security
+  fixes found in either repo should be checked against the other** — 2026-07-22:
+  Quest's ROM-fetch hardening (`7bd6068`, post-audit) was ported here as
+  `64269bd`.
 
 ## Public repo + release process (DONE 2026-07-20)
 - **Repo is PUBLIC.** The `validate-external` fork-PR gate turned out UNNEEDED —

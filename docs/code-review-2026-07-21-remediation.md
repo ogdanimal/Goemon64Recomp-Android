@@ -4,8 +4,10 @@ Complete record of the changes made this session, working the
 `docs/code-review-2026-07-20.md` (pass 1, M-tier) and
 `docs/code-review-2026-07-20-pass2.md` (pass 2 tail) backlogs by priority.
 
-**Branch:** all work committed and pushed to `dev`. `main` is untouched at the
-`v1.0.2` release tag; these ship in the next cut (`v1.0.3`).
+**Branch:** all work committed and pushed to `dev`. ~~`main` is untouched at the
+`v1.0.2` release tag~~ *(update 2026-07-22: `main` was fast-forwarded to the `dev`
+tip `64269bd`, so this work is now on `main` too)*; these ship in the next cut
+(`v1.0.3`).
 
 **Verification:** every batch was built green via `~/goemon-build-all.sh` (patches
 codegen → `N64Recomp patches.toml` → `file_to_c` → `gradle assembleDebug`) and
