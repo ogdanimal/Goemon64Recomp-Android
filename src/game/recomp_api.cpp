@@ -56,6 +56,11 @@ extern "C" void recomp_powf(uint8_t* rdram, recomp_context* ctx) {
 extern "C" void recomp_get_target_framerate(uint8_t* rdram, recomp_context* ctx) {
     int frame_divisor = _arg<0, u32>(rdram, ctx);
 
+    // Guard against a zero divisor (SIGFPE); a guest caller could pass 0.
+    if (frame_divisor < 1) {
+        frame_divisor = 1;
+    }
+
     _return(ctx, ultramodern::get_target_framerate(60 / frame_divisor));
 }
 

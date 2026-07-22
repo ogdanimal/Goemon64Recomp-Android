@@ -250,6 +250,13 @@ bool save_json_with_backups(const std::filesystem::path& path, const nlohmann::j
         }
 
         output_file << std::setw(4) << json_data;
+
+        // If the write failed (e.g. disk full), do NOT promote the temp file
+        // over the real config — leave the existing good file in place.
+        output_file.flush();
+        if (!output_file.good()) {
+            return false;
+        }
     }
     return recomp::finalize_output_file_with_backup(path);
 }
@@ -561,7 +568,10 @@ void goemon64::load_config() {
     std::filesystem::path sound_path = recomp_dir / sound_filename;
 
     if (!recomp_dir.empty()) {
-        std::filesystem::create_directories(recomp_dir);
+        // Non-throwing: if the dir can't be created (e.g. SD card vanished),
+        // the load_* calls below fall back to defaults rather than aborting.
+        std::error_code ec;
+        std::filesystem::create_directories(recomp_dir, ec);
     }
 
     // TODO error handling for failing to save config files after resetting them.
@@ -595,7 +605,13 @@ void goemon64::save_config() {
         return;
     }
 
-    std::filesystem::create_directories(recomp_dir);
+    // Non-throwing: closing the settings menu triggers this; a vanished SD
+    // data dir must not SIGABRT. Bail if the dir can't be created.
+    std::error_code ec;
+    std::filesystem::create_directories(recomp_dir, ec);
+    if (ec) {
+        return;
+    }
 
     // TODO error handling for failing to save config files.
 

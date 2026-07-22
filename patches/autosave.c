@@ -360,6 +360,19 @@ static s32 autosave_is_settled(void) {
 // The save itself.
 // ---------------------------------------------------------------------------
 
+// Slot cursor for logging ONLY. Returns -1 when the save context pointer is
+// null or points outside RDRAM, so a status line during a failed save reports
+// a sentinel instead of dereferencing a masked/garbage pointer and printing a
+// bogus slot (the save path itself guards this at goemon_save_now_inner; the
+// log sites must not lie when it bails).
+static s32 autosave_log_slot(void) {
+    u32 ctx = G_SAVE_CTX_PTR;
+    if (ctx < 0x80000000u || ctx >= 0x80800000u) {
+        return -1;
+    }
+    return (s32)*(volatile u32*)(ctx + G_SLOT_OFFSET);
+}
+
 // The body. Do NOT call this directly -- goemon_save_now() below wraps it with
 // the save-rollback bracket, and every pak write this makes must happen inside
 // that bracket.
@@ -650,12 +663,12 @@ void update_autosave(void) {
             if (status == AUTOSAVE_ERR_BAD_SLOT) {
                 recomp_printf("[autosave] refused: no valid save slot selected "
                               "(cursor %d, need < %d)\n",
-                              (s32)*(volatile u32*)(G_SAVE_CTX_PTR + G_SLOT_OFFSET),
+                              autosave_log_slot(),
                               SAVE_SLOT_COUNT);
             } else {
                 recomp_printf("[autosave] manual save -> status %d (slot %d)\n",
                               status,
-                              (s32)*(volatile u32*)(G_SAVE_CTX_PTR + G_SLOT_OFFSET));
+                              autosave_log_slot());
             }
         } else {
             // Every guard is printed, not just the ones failing at the time of
@@ -690,7 +703,7 @@ void update_autosave(void) {
             autosave_note_committed(now_us, status);
             recomp_printf("[autosave] timed save -> status %d (slot %d)\n",
                           status,
-                          (s32)*(volatile u32*)(G_SAVE_CTX_PTR + G_SLOT_OFFSET));
+                          autosave_log_slot());
         }
     }
 }

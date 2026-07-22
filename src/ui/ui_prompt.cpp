@@ -248,8 +248,12 @@ void style_button(recompui::Button* button, recompui::ButtonVariant variant) {
     disabled_style->set_color(disabled_color);
 }
 
-// Must be called while prompt_state.mutex is locked.
-void show_prompt(std::function<void()>& prev_cancel_action, bool focus_on_cancel) {
+// Must be called while prompt_state.mutex is locked. Returns the previous
+// cancel action (or an empty function) WITHOUT calling it — the caller must
+// invoke the returned action AFTER releasing prompt_state.mutex, because a
+// cancel action may re-enter the prompt API and re-lock the (non-recursive)
+// mutex, which would self-deadlock.
+[[nodiscard]] std::function<void()> show_prompt(std::function<void()>& prev_cancel_action, bool focus_on_cancel) {
     if (focus_on_cancel) {
         prompt_state.ui_context.set_autofocus_element(prompt_state.cancel_button);
     }
@@ -259,12 +263,12 @@ void show_prompt(std::function<void()>& prev_cancel_action, bool focus_on_cancel
 
     if (!recompui::is_context_shown(prompt_state.ui_context)) {
         recompui::show_context(prompt_state.ui_context, "");
+        return {};
     }
     else {
-        // Call the previous cancel action to effectively close the previous prompt.
-        if (prev_cancel_action) {
-            prev_cancel_action();
-        }
+        // Hand the previous cancel action back so the caller can close the
+        // previous prompt once the lock is released.
+        return std::move(prev_cancel_action);
     }
 }
 
@@ -280,37 +284,46 @@ void recompui::open_choice_prompt(
     bool focus_on_cancel,
     const std::string& return_element_id
 ) {
-    std::lock_guard lock{ prompt_state.mutex };
+    std::function<void()> deferred_cancel_action;
+    {
+        std::lock_guard lock{ prompt_state.mutex };
 
-    std::function<void()> prev_cancel_action = std::move(prompt_state.cancel_action);
+        std::function<void()> prev_cancel_action = std::move(prompt_state.cancel_action);
 
-    ContextId prev_context = try_close_current_context();
+        ContextId prev_context = try_close_current_context();
 
-    prompt_state.ui_context.open();
+        prompt_state.ui_context.open();
 
-    prompt_state.prompt_header->set_text(header_text);
-    prompt_state.prompt_label->set_text(content_text);
-    prompt_state.prompt_controls->set_display(Display::Flex);
-    prompt_state.confirm_button->set_display(Display::Block);
-    prompt_state.extra_button->set_display(Display::None);
-    prompt_state.cancel_button->set_display(Display::Block);
-    prompt_state.confirm_button->set_text(confirm_label_text);
-    prompt_state.cancel_button->set_text(cancel_label_text);
-    prompt_state.confirm_action = confirm_action;
-    prompt_state.extra_action = {};
-    prompt_state.cancel_action = cancel_action;
-    prompt_state.return_element_id = return_element_id;
+        prompt_state.prompt_header->set_text(header_text);
+        prompt_state.prompt_label->set_text(content_text);
+        prompt_state.prompt_controls->set_display(Display::Flex);
+        prompt_state.confirm_button->set_display(Display::Block);
+        prompt_state.extra_button->set_display(Display::None);
+        prompt_state.cancel_button->set_display(Display::Block);
+        prompt_state.confirm_button->set_text(confirm_label_text);
+        prompt_state.cancel_button->set_text(cancel_label_text);
+        prompt_state.confirm_action = confirm_action;
+        prompt_state.extra_action = {};
+        prompt_state.cancel_action = cancel_action;
+        prompt_state.return_element_id = return_element_id;
 
-    style_button(prompt_state.confirm_button, confirm_variant);
-    style_button(prompt_state.cancel_button, cancel_variant);
+        style_button(prompt_state.confirm_button, confirm_variant);
+        style_button(prompt_state.cancel_button, cancel_variant);
 
-    prompt_state.ui_context.close();
+        prompt_state.ui_context.close();
 
-    if (prev_context != ContextId::null()) {
-        prev_context.open();
+        if (prev_context != ContextId::null()) {
+            prev_context.open();
+        }
+
+        deferred_cancel_action = show_prompt(prev_cancel_action, focus_on_cancel);
     }
 
-    show_prompt(prev_cancel_action, focus_on_cancel);
+    // Close the previous prompt outside the lock (its cancel action may
+    // re-enter the prompt API). See show_prompt.
+    if (deferred_cancel_action) {
+        deferred_cancel_action();
+    }
 }
 
 void recompui::open_three_choice_prompt(
@@ -328,39 +341,48 @@ void recompui::open_three_choice_prompt(
     bool focus_on_cancel,
     const std::string& return_element_id
 ) {
-    std::lock_guard lock{ prompt_state.mutex };
+    std::function<void()> deferred_cancel_action;
+    {
+        std::lock_guard lock{ prompt_state.mutex };
 
-    std::function<void()> prev_cancel_action = std::move(prompt_state.cancel_action);
+        std::function<void()> prev_cancel_action = std::move(prompt_state.cancel_action);
 
-    ContextId prev_context = try_close_current_context();
+        ContextId prev_context = try_close_current_context();
 
-    prompt_state.ui_context.open();
+        prompt_state.ui_context.open();
 
-    prompt_state.prompt_header->set_text(header_text);
-    prompt_state.prompt_label->set_text(content_text);
-    prompt_state.prompt_controls->set_display(Display::Flex);
-    prompt_state.confirm_button->set_display(Display::Block);
-    prompt_state.extra_button->set_display(Display::Block);
-    prompt_state.cancel_button->set_display(Display::Block);
-    prompt_state.confirm_button->set_text(confirm_label_text);
-    prompt_state.extra_button->set_text(extra_label_text);
-    prompt_state.cancel_button->set_text(cancel_label_text);
-    prompt_state.confirm_action = confirm_action;
-    prompt_state.extra_action = extra_action;
-    prompt_state.cancel_action = cancel_action;
-    prompt_state.return_element_id = return_element_id;
+        prompt_state.prompt_header->set_text(header_text);
+        prompt_state.prompt_label->set_text(content_text);
+        prompt_state.prompt_controls->set_display(Display::Flex);
+        prompt_state.confirm_button->set_display(Display::Block);
+        prompt_state.extra_button->set_display(Display::Block);
+        prompt_state.cancel_button->set_display(Display::Block);
+        prompt_state.confirm_button->set_text(confirm_label_text);
+        prompt_state.extra_button->set_text(extra_label_text);
+        prompt_state.cancel_button->set_text(cancel_label_text);
+        prompt_state.confirm_action = confirm_action;
+        prompt_state.extra_action = extra_action;
+        prompt_state.cancel_action = cancel_action;
+        prompt_state.return_element_id = return_element_id;
 
-    style_button(prompt_state.confirm_button, confirm_variant);
-    style_button(prompt_state.extra_button, extra_variant);
-    style_button(prompt_state.cancel_button, cancel_variant);
+        style_button(prompt_state.confirm_button, confirm_variant);
+        style_button(prompt_state.extra_button, extra_variant);
+        style_button(prompt_state.cancel_button, cancel_variant);
 
-    prompt_state.ui_context.close();
+        prompt_state.ui_context.close();
 
-    if (prev_context != ContextId::null()) {
-        prev_context.open();
+        if (prev_context != ContextId::null()) {
+            prev_context.open();
+        }
+
+        deferred_cancel_action = show_prompt(prev_cancel_action, focus_on_cancel);
     }
 
-    show_prompt(prev_cancel_action, focus_on_cancel);
+    // Close the previous prompt outside the lock (its cancel action may
+    // re-enter the prompt API). See show_prompt.
+    if (deferred_cancel_action) {
+        deferred_cancel_action();
+    }
 }
 
 void recompui::open_info_prompt(
@@ -371,35 +393,44 @@ void recompui::open_info_prompt(
     ButtonVariant okay_variant,
     const std::string& return_element_id
 ) {
-    std::lock_guard lock{ prompt_state.mutex };
+    std::function<void()> deferred_cancel_action;
+    {
+        std::lock_guard lock{ prompt_state.mutex };
 
-    std::function<void()> prev_cancel_action = std::move(prompt_state.cancel_action);
+        std::function<void()> prev_cancel_action = std::move(prompt_state.cancel_action);
 
-    ContextId prev_context = try_close_current_context();
+        ContextId prev_context = try_close_current_context();
 
-    prompt_state.ui_context.open();
+        prompt_state.ui_context.open();
 
-    prompt_state.prompt_header->set_text(header_text);
-    prompt_state.prompt_label->set_text(content_text);
-    prompt_state.prompt_controls->set_display(Display::Flex);
-    prompt_state.confirm_button->set_display(Display::None);
-    prompt_state.extra_button->set_display(Display::None);
-    prompt_state.cancel_button->set_display(Display::Block);
-    prompt_state.cancel_button->set_text(okay_label_text);
-    prompt_state.confirm_action = {};
-    prompt_state.extra_action = {};
-    prompt_state.cancel_action = okay_action;
-    prompt_state.return_element_id = return_element_id;
+        prompt_state.prompt_header->set_text(header_text);
+        prompt_state.prompt_label->set_text(content_text);
+        prompt_state.prompt_controls->set_display(Display::Flex);
+        prompt_state.confirm_button->set_display(Display::None);
+        prompt_state.extra_button->set_display(Display::None);
+        prompt_state.cancel_button->set_display(Display::Block);
+        prompt_state.cancel_button->set_text(okay_label_text);
+        prompt_state.confirm_action = {};
+        prompt_state.extra_action = {};
+        prompt_state.cancel_action = okay_action;
+        prompt_state.return_element_id = return_element_id;
 
-    style_button(prompt_state.cancel_button, okay_variant);
+        style_button(prompt_state.cancel_button, okay_variant);
 
-    prompt_state.ui_context.close();
+        prompt_state.ui_context.close();
 
-    if (prev_context != ContextId::null()) {
-        prev_context.open();
+        if (prev_context != ContextId::null()) {
+            prev_context.open();
+        }
+
+        deferred_cancel_action = show_prompt(prev_cancel_action, true);
     }
 
-    show_prompt(prev_cancel_action, true);
+    // Close the previous prompt outside the lock (its cancel action may
+    // re-enter the prompt API). See show_prompt.
+    if (deferred_cancel_action) {
+        deferred_cancel_action();
+    }
 }
 
 void recompui::open_notification(
@@ -407,43 +438,58 @@ void recompui::open_notification(
     const std::string& content_text,
     const std::string& return_element_id
 ) {
-    std::lock_guard lock{ prompt_state.mutex };
+    std::function<void()> deferred_cancel_action;
+    {
+        std::lock_guard lock{ prompt_state.mutex };
 
-    std::function<void()> prev_cancel_action = std::move(prompt_state.cancel_action);
+        std::function<void()> prev_cancel_action = std::move(prompt_state.cancel_action);
 
-    ContextId prev_context = try_close_current_context();
+        ContextId prev_context = try_close_current_context();
 
-    prompt_state.ui_context.open();
+        prompt_state.ui_context.open();
 
-    prompt_state.prompt_header->set_text(header_text);
-    prompt_state.prompt_label->set_text(content_text);
-    prompt_state.prompt_controls->set_display(Display::None);
-    prompt_state.confirm_button->set_display(Display::None);
-    prompt_state.extra_button->set_display(Display::None);
-    prompt_state.cancel_button->set_display(Display::None);
-    prompt_state.confirm_action = {};
-    prompt_state.extra_action = {};
-    prompt_state.cancel_action = {};
-    prompt_state.return_element_id = return_element_id;
+        prompt_state.prompt_header->set_text(header_text);
+        prompt_state.prompt_label->set_text(content_text);
+        prompt_state.prompt_controls->set_display(Display::None);
+        prompt_state.confirm_button->set_display(Display::None);
+        prompt_state.extra_button->set_display(Display::None);
+        prompt_state.cancel_button->set_display(Display::None);
+        prompt_state.confirm_action = {};
+        prompt_state.extra_action = {};
+        prompt_state.cancel_action = {};
+        prompt_state.return_element_id = return_element_id;
 
-    prompt_state.ui_context.close();
+        prompt_state.ui_context.close();
 
-    if (prev_context != ContextId::null()) {
-        prev_context.open();
+        if (prev_context != ContextId::null()) {
+            prev_context.open();
+        }
+
+        deferred_cancel_action = show_prompt(prev_cancel_action, false);
     }
 
-    show_prompt(prev_cancel_action, false);
+    // Close the previous prompt outside the lock (its cancel action may
+    // re-enter the prompt API). See show_prompt.
+    if (deferred_cancel_action) {
+        deferred_cancel_action();
+    }
 }
 
 void recompui::close_prompt() {
-    std::lock_guard lock{ prompt_state.mutex };
+    std::function<void()> cancel_action;
+    {
+        std::lock_guard lock{ prompt_state.mutex };
 
-    if (recompui::is_context_shown(prompt_state.ui_context)) {
-        if (prompt_state.cancel_action) {
-            prompt_state.cancel_action();
+        if (recompui::is_context_shown(prompt_state.ui_context)) {
+            cancel_action = std::move(prompt_state.cancel_action);
+            recompui::hide_context(prompt_state.ui_context);
         }
+    }
 
-        recompui::hide_context(prompt_state.ui_context);
+    // Invoke the cancel action outside the lock — it may re-enter the prompt
+    // API and re-lock the (non-recursive) prompt_state.mutex. See show_prompt.
+    if (cancel_action) {
+        cancel_action();
     }
 }
 
