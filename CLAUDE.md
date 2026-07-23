@@ -64,6 +64,56 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   (or the run's Artifacts). Debug-signed → sideloadable; asks for the user's ROM on first launch.
 
 ## Current focus & parked work
+- **ISSUE #15 — white screen on Mali GPUs. ACTIVE, REPRODUCED LOCALLY
+  2026-07-23, root cause NOT yet found.** Reporter `tonysantosl` on a **Retroid
+  Pocket 4 Pro** (Dimensity 1100, Mali-G77 MC9): game boots, audio fine,
+  graphics all white with most textures missing. First non-Adreno report — all
+  our test hardware to date is Adreno (RP5 = Adreno 650, AYN Thor).
+  **Resume prompt for a fresh session: `docs/re-notes/RESUME-mali-issue15.md`.**
+  - **Repro device: Galaxy A15 5G** (`SM-A156U1`, MT6835 / Dimensity 6100+,
+    **Mali-G57 MC2, driver r38p1**, Android 15, Vulkan 1.3). Reachable **only
+    over wireless debugging** — its USB ADB path is broken at the Windows driver
+    level and is a dead end, do not retry it. `adb mdns services` discovers both
+    the pairing and connect ports; **the port rotates on every reconnect**, so
+    always re-derive it. Details in memory `mali-repro-device-a15`.
+  - Repro is clean: correct 16 MiB ROM (`df8083a5…`) checksum-verified in app
+    storage, local debug build of the 2026-07-21 tail.
+  - **REFUTED — the descriptor-set theory.** The predicted failure of the
+    Android-only full-`UpperRange` (8192) `UPDATE_AFTER_BIND` texture-set
+    allocation in `rt64_framebuffer_renderer.cpp` does NOT occur: a clean log
+    has **no** `vkAllocateDescriptorSets failed`. Do not re-raise without new
+    evidence.
+  - **CONFIRMED CAUSAL (A→B→A, byte-identical frames):** `graphics.json`
+    `hpfb_option` — `Auto` → flat white; `Off` → the RmlUi launcher menu renders
+    correctly; back to `Auto` → white again with a screenshot **sha1 identical**
+    to the first white run.
+  - **BUT `hpfb=Off` does NOT fix the game** — Start Game still lands on flat
+    white (black silhouette during the intro). So high-precision framebuffer is
+    a contributing factor, not the root cause, or there are two faults. **It is
+    NOT a user-facing workaround — do not offer it as one.**
+  - Unestablished significance: `shaderInt64=0` and
+    `vertexPipelineStoresAndAtomics=0` on this Mali (plume only *logs* these and
+    never requires them, and no RT64 shader uses 64-bit ints — `shaderInt64` is
+    probably a red herring); `mali_gralloc: Unrecognized and/or unsupported
+    format 0x38 / 0x3b` at swapchain enumeration, not yet re-checked under
+    `hpfb=Off`. Startup is otherwise clean — swapchain created, no Vulkan error,
+    no crash, no tombstone.
+  - **DECIDED 2026-07-23: hold the issue reply until there is a fix.** No
+    interim "we reproduced it" comment.
+  - NEXT, in order: (1) find what `hpfb: Auto` actually selects on this device
+    and why it poisons output — a proven behavioral hook, and it is in OUR code;
+    (2) enable Vulkan validation layers against the live repro; (3) test
+    `res_option: Original` (Android pins `Original4x`); (4) re-check the gralloc
+    format errors under `hpfb=Off`.
+- **DOC BUG FOUND 2026-07-23, not yet fixed: `BUILDING.md:49`** labels
+  `df8083a54296b8c151917c5333e1c85f014a2a66` as the "decompressed ROM sha1" and
+  says to copy that file to the repo root as `mnsg.z64`. That hash is the
+  **original 16 MiB US cart** (what the *app* validates at runtime,
+  `LauncherActivity.java:36`). The repo-root build input is the **32 MiB
+  decompressed** ROM, sha1 `6ea0ed71…`, which is what CI pins. Following
+  BUILDING.md literally puts the wrong ROM at the repo root and fails the CI
+  checksum. See memory `device-install-method`, which already warned about this
+  trap.
 - **Autosave is FUNCTIONALLY COMPLETE (2026-07-19).** All five steps done and
   device-verified: manual trigger, sharpened differential test, `.manual.bak`
   rollback point, save-data-settled check, and the 2-minute timer. Pushed on
