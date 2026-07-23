@@ -64,47 +64,72 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   (or the run's Artifacts). Debug-signed → sideloadable; asks for the user's ROM on first launch.
 
 ## Current focus & parked work
-- **ISSUE #15 — white screen on Mali GPUs. ACTIVE, REPRODUCED LOCALLY
-  2026-07-23, root cause NOT yet found.** Reporter `tonysantosl` on a **Retroid
-  Pocket 4 Pro** (Dimensity 1100, Mali-G77 MC9): game boots, audio fine,
-  graphics all white with most textures missing. First non-Adreno report — all
-  our test hardware to date is Adreno (RP5 = Adreno 650, AYN Thor).
+- **ISSUE #15 — white screen on Mali GPUs. ROOT CAUSE FOUND AND FIXED
+  2026-07-23, device-verified on Mali. NOT yet released; issue not yet
+  answered.** Reporter `tonysantosl` on a **Retroid Pocket 4 Pro** (Dimensity
+  1100, Mali-G77 MC9): game boots, audio fine, graphics all white with most
+  textures missing. First non-Adreno report — all our test hardware to date is
+  Adreno (RP5 = Adreno 650, AYN Thor).
   **Resume prompt for a fresh session: `docs/re-notes/RESUME-mali-issue15.md`.**
-  - **Repro device: Galaxy A15 5G** (`SM-A156U1`, MT6835 / Dimensity 6100+,
-    **Mali-G57 MC2, driver r38p1**, Android 15, Vulkan 1.3). Reachable **only
-    over wireless debugging** — its USB ADB path is broken at the Windows driver
-    level and is a dead end, do not retry it. `adb mdns services` discovers both
-    the pairing and connect ports; **the port rotates on every reconnect**, so
-    always re-derive it. Details in memory `mali-repro-device-a15`.
-  - Repro is clean: correct 16 MiB ROM (`df8083a5…`) checksum-verified in app
-    storage, local debug build of the 2026-07-21 tail.
+  - **ROOT CAUSE: RT64 implements N64 alpha blending entirely with dual-source
+    blending, and no Mali GPU supports the `dualSrcBlend` feature.**
+    `rt64_raster_shader.cpp` asked for `SRC1_ALPHA`/`INV_SRC1_ALPHA`
+    unconditionally so `SV_TARGET0.a` could carry coverage while the blend
+    factor rode in `SV_TARGET1`. plume passes the device's own queried feature
+    set to `vkCreateDevice`, so `dualSrcBlend` is enabled iff supported —
+    unsupported on Mali, and **the Mali driver still returns `VK_SUCCESS` from
+    `vkCreateGraphicsPipelines`** and then blends undefined. Hence "every API
+    call succeeds, the output is wrong", with zero errors in any log.
+  - **THE FIX (gated, inert on Adreno):** new `RenderDeviceCapabilities::dualSrcBlend`
+    (plume `4e77e67`); a `NO_DUAL_SRC_BLEND` variant of `RasterPS.hlsl` that drops
+    the secondary output and carries the blend factor in the primary output's
+    alpha; runtime selection of that variant plus `SRC_ALPHA`/`INV_SRC_ALPHA`
+    (rt64 `099f852`). Devices reporting `dualSrcBlend=1` take the byte-identical
+    old path. **TRADEOFF, by design: on the fallback path the coverage value the
+    primary output would carry is lost for alpha-blended draws, so coverage-based
+    effects (N64 AA edges) are approximate.**
+  - **Verified on device** (Galaxy A15, Mali-G57): logs `dualSrcBlend=0`, intro
+    and title screen render in full colour, and Vulkan validation reports **0**
+    dual-source errors where it previously reported **72** — in a run that still
+    reports the other two VUID classes, so the zero is a real result and not a
+    dead layer. **NOT yet smoke-tested on Adreno** (RP5 was not connected);
+    unchanged-by-construction only, so smoke-test before cutting a release.
+  - **REFUTED — `hpfb_option` is NOT causal.** An earlier session recorded a
+    "confirmed causal A→B→A byte-identical" `hpfb` result. It does **not**
+    reproduce: `Off`/`On`/`Auto` all render the launcher correctly, and in-game
+    all four combinations of `hpfb` × `res_option` give byte-identical white
+    (12,499 B). The old result appears to have compared the RmlUi launcher
+    against the RT64 game as if they were one surface. `res_option` is likewise
+    eliminated, and the `mali_gralloc` format errors are noise — they appear
+    identically in launcher runs that render correctly. Do not re-raise any of
+    these without new evidence.
   - **REFUTED — the descriptor-set theory.** The predicted failure of the
     Android-only full-`UpperRange` (8192) `UPDATE_AFTER_BIND` texture-set
     allocation in `rt64_framebuffer_renderer.cpp` does NOT occur: a clean log
     has **no** `vkAllocateDescriptorSets failed`. Do not re-raise without new
     evidence.
-  - **CONFIRMED CAUSAL (A→B→A, byte-identical frames):** `graphics.json`
-    `hpfb_option` — `Auto` → flat white; `Off` → the RmlUi launcher menu renders
-    correctly; back to `Auto` → white again with a screenshot **sha1 identical**
-    to the first white run.
-  - **BUT `hpfb=Off` does NOT fix the game** — Start Game still lands on flat
-    white (black silhouette during the intro). So high-precision framebuffer is
-    a contributing factor, not the root cause, or there are two faults. **It is
-    NOT a user-facing workaround — do not offer it as one.**
-  - Unestablished significance: `shaderInt64=0` and
-    `vertexPipelineStoresAndAtomics=0` on this Mali (plume only *logs* these and
-    never requires them, and no RT64 shader uses 64-bit ints — `shaderInt64` is
-    probably a red herring); `mali_gralloc: Unrecognized and/or unsupported
-    format 0x38 / 0x3b` at swapchain enumeration, not yet re-checked under
-    `hpfb=Off`. Startup is otherwise clean — swapchain created, no Vulkan error,
-    no crash, no tombstone.
-  - **DECIDED 2026-07-23: hold the issue reply until there is a fix.** No
-    interim "we reproduced it" comment.
-  - NEXT, in order: (1) find what `hpfb: Auto` actually selects on this device
-    and why it poisons output — a proven behavioral hook, and it is in OUR code;
-    (2) enable Vulkan validation layers against the live repro; (3) test
-    `res_option: Original` (Android pins `Original4x`); (4) re-check the gralloc
-    format errors under `hpfb=Off`.
+  - **Repro device: Galaxy A15 5G** (`SM-A156U1`, MT6835 / Dimensity 6100+,
+    **Mali-G57 MC2, driver r38p1**, Android 15, Vulkan 1.3). Reachable **only
+    over wireless debugging** — its USB ADB path is broken at the Windows driver
+    level and is a dead end, do not retry it. `adb mdns services` discovers both
+    the pairing and connect ports; **the port rotates on every reconnect**, so
+    always re-derive it. It also enumerates **twice** (IP and mDNS name) as one
+    physical device, so pin `adb -s`. Details in memory `mali-repro-device-a15`.
+  - **Vulkan validation layers are installed on that device and can be toggled
+    with no rebuild** — the layer `.so` sits in the app's data dir and
+    `settings put global enable_gpu_debug_layers 0|1` switches it. This is how
+    the root cause was found in one step; reach for it early next time.
+  - **DECIDED 2026-07-23: hold the issue reply until the fix ships.** No interim
+    comment. Still open before replying: cut a release carrying the fix.
+  - **STILL OPEN (validation found these, neither causes the white screen):**
+    40× `VUID-vkCmdDraw-renderPass-02684`, renderpass/pipeline format mismatch
+    `R8G8B8A8_UNORM` vs `B8G8R8A8_UNORM` — our Android swapchain-format change
+    (`rt64_application.cpp:323`) left two hardcodes behind at
+    `src/ui/ui_renderer.cpp:106` and `rt64_shader_library.cpp:602` (the latter
+    carries an upstream `TODO: Use whatever format the swap chain was created
+    with`). The drift-proof fix is a `getFormat()` on plume's `RenderSwapChain`
+    rather than a third copy of the `#ifdef`. Plus 4× `renderPass-06041`,
+    `blendEnable` on an `R32G32B32A32_SFLOAT` attachment Mali cannot blend.
 - **DOC BUG FOUND 2026-07-23, not yet fixed: `BUILDING.md:49`** labels
   `df8083a54296b8c151917c5333e1c85f014a2a66` as the "decompressed ROM sha1" and
   says to copy that file to the repo root as `mnsg.z64`. That hash is the
