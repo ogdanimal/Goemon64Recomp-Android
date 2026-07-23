@@ -132,7 +132,10 @@ Output lands in logcat under tag `VALIDATION` (and mirrored into
 because the debug build is debuggable.
 
 **Leave a note if you turn it on:** it is a global device setting and it slows
-the app noticeably. It is currently **enabled**.
+the app noticeably, so check its state before trusting a timing observation. It
+was left **disabled** (`enable_gpu_debug_layers 0`) at the end of the
+2026-07-23 session; the layer `.so` is still in place, so flipping it to `1` is
+all that is needed.
 
 ## STILL OPEN — found by validation, neither causes the white screen
 
