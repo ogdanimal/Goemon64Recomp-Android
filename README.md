@@ -86,6 +86,12 @@ While enabled, the right stick's C-button mapping is silenced so it can drive th
 
 Note this does not make swapping faster. Changing character reloads the new character's model from the game data, which costs about a second of locked input either way; this only removes the need to stop first. Swapping stays blocked in states where it would corrupt the game — notably on ladders, and while a swap is already in progress.
 
+### Attack While Moving
+
+- **Attack While Moving** (General) — lets you keep moving during a ground attack instead of rooting in place. You lunge in the direction you were last running. Covers each character's melee combos, throws, bombs, and specials, including the upgraded weapons.
+
+This is a novelty toggle: the attack animation stays planted while you glide along, so the character appears to slide during the swing. Normal movement resumes the moment the attack ends. Goemon's chain pipe is deliberately unaffected, since it anchors to a fixed point in the world.
+
 ### Autosave
 
 - **Autosave** (General) — saves your progress using the game's own save system, so an autosave is an ordinary save: loading one starts you where a save made at that point normally would. It writes to the save slot you loaded.
