@@ -81,11 +81,23 @@ VERIFIED on the Galaxy A15 (Mali-G57 MC2, r38p1):
   `dstColorBlendFactor-00609`). That zero is trustworthy because the **same run
   still reports the other two VUID classes** — the layer was demonstrably live.
 
+- Also verified at the app's **default** graphics settings (`hpfb: Auto`,
+  `Original4x`), not only the settings used during debugging.
+
+VERIFIED on the RP5 (Adreno 650) — the regression check:
+
+- Startup logs **`dualSrcBlend=1`**, so Adreno provably takes the byte-identical
+  old code path. This was the one real risk in the design, and it is closed.
+- Real gameplay from the user's own save renders correctly: textures, the
+  alpha-blended HUD, shadows and particles.
+- Getting there required uninstalling the release-signed build. **The uninstall
+  emptied `saves/`** — restored from a checksum-verified backup afterwards, and
+  all 92 files now match pre-uninstall state except `.assets_version`, which the
+  new build correctly rewrote. See the RP5 bullet in CLAUDE.md § Environment
+  before ever doing this again.
+
 NOT verified:
 
-- **No Adreno smoke test.** The RP5 was not connected. The gate is
-  unchanged-by-construction when `dualSrcBlend` is true, but **smoke-test on
-  Adreno before cutting a release.**
 - The reporter's Mali-G77 specifically. Symptom and vendor match; not proven.
 
 ## Repro device and how to connect

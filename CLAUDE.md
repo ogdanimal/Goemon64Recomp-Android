@@ -29,6 +29,21 @@ Zelda64Recomp/N64Recomp ecosystem). GitHub: `ogdanimal/Goemon64Recomp-Android`
   `<dataDir>/saves/mnsg.us.bin` plus `.bak` and `.manual.bak`.
   NOTE: `mnsg.us.z64` in the data dir is written by the native runtime when it
   registers the ROM — it is NOT a stale duplicate of `mnsg.z64`, do not "clean it up".
+  Latest verified full backup: `%USERPROFILE%\goemon-backups\2026-07-23-rp5-preuninstall\data`
+  (92 files, 43 MB, every file checksum-matched to the device before uninstalling).
+- **THE RP5 RUNS A RELEASE-SIGNED BUILD, so a local debug APK cannot replace
+  it.** `install -r` gives `INSTALL_FAILED_VERSION_DOWNGRADE` (debug is
+  versionCode 1); `install -r -d` then gives `INSTALL_FAILED_UPDATE_INCOMPATIBLE`
+  (different signing key). The only local route is uninstall + install, and
+  **uninstall EMPTIES `saves/`**. Observed 2026-07-23: after uninstall +
+  reinstall, `assets/`, `mnsg.z64` and `mnsg.us.z64` were all present again with
+  correct checksums but `saves/` was **empty** — the mechanism is NOT
+  established, so do not rely on any of it surviving. Back up and restore saves
+  by hand and re-verify by checksum. To avoid the wipe entirely, use a
+  release-signed APK instead (a `vX.Y.Z-rc*` tag builds one in CI — note the
+  release workflow rejects tags not descended from `main`). The RP5 now carries
+  the **debug** build of the dualSrcBlend fix, so reinstalling any signed
+  release will need another uninstall + restore.
 
 ## Build reality (important)
 - A clean `--recurse-submodules` clone canNOT build without the ROM: `RecompiledFuncs/`
@@ -92,8 +107,13 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     and title screen render in full colour, and Vulkan validation reports **0**
     dual-source errors where it previously reported **72** — in a run that still
     reports the other two VUID classes, so the zero is a real result and not a
-    dead layer. **NOT yet smoke-tested on Adreno** (RP5 was not connected);
-    unchanged-by-construction only, so smoke-test before cutting a release.
+    dead layer. Also verified at the app's **default** graphics settings
+    (`hpfb: Auto`, `Original4x`), not just the settings used while debugging.
+  - **ADRENO REGRESSION CHECK PASSED 2026-07-23 (RP5, Adreno 650):** logs
+    **`dualSrcBlend=1`**, so Adreno provably takes the byte-identical old code
+    path. Real gameplay off the user's own save renders correctly (textures,
+    alpha-blended HUD, shadows, particles). The fix is confirmed inert on
+    Adreno, not merely inert by construction.
   - **REFUTED — `hpfb_option` is NOT causal.** An earlier session recorded a
     "confirmed causal A→B→A byte-identical" `hpfb` result. It does **not**
     reproduce: `Off`/`On`/`Auto` all render the launcher correctly, and in-game
