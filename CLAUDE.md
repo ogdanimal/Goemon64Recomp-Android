@@ -80,24 +80,40 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
 
 ## Current focus & parked work
 
-**NEXT ACTIONS, in order (as of 2026-07-23):**
-1. **Fast-forward `main` to the `dev` tip** — check the gap with
+**STATUS 2026-07-24: BLOCKED ON MAINTAINER REVIEW — do not proceed without it.**
+The issue #15 Mali fix is complete, device-verified on both vendors, CI-green on
+`dev` (tip `b2c053b`), and **handed to the maintainer for review**. An in-depth
+technical rundown was delivered in-session; the durable copy of everything it
+covered is the issue #15 bullet below plus
+`docs/re-notes/RESUME-mali-review.md`, which is **the resume prompt for this
+waiting state — read it first**.
+
+**DO NOT, until the maintainer returns a verdict:** fast-forward `main`, tag any
+`v*`, reply to issue #15, or start the two open validation findings. Everything
+downstream is deliberately gated on the review, not on anything technical.
+
+**NEXT ACTIONS once the review comes back:**
+1. **Apply whatever the review asks for**, on `dev`, through the submodule chain
+   (plume → rt64 → root), re-verifying the gitlink chain with `git ls-remote`.
+   Re-run the Mali device check for any shader/blend change — and use the
+   `ubershadersOnly = true` positive control if the change touches the
+   `alphaBlend` agreement (see the follow-up-bug bullet below).
+2. **Fast-forward `main` to the `dev` tip** — check the gap with
    `git log --oneline origin/main..origin/dev` rather than trusting a count
-   written here, which drifts with every commit; as of 2026-07-23 it was a clean
-   fast-forward. Required before any release: the
+   written here, which drifts with every commit. Required before any release: the
    release workflow **rejects a `v*` tag whose commit is not an ancestor of
    `main`**. Also a `promote-public-fixes-to-main` case — the Mali fix is for a
    public bug report and `main` is the public default branch.
-2. **Cut `v1.0.3`**, doing a `v1.0.3-rc1` dry-run tag first (proves the
+3. **Cut `v1.0.3`**, doing a `v1.0.3-rc1` dry-run tag first (proves the
    versionCode derivation → `10003`, monotonic over v1.0.2's `10002`). Release
    notes must be applied AFTER with `gh release edit --notes-file`, emoji-free.
    **Smoke-testing that rc on the RP5 needs an uninstall + save restore**, because
    the RP5 currently holds the *debug* build of the Mali fix and a release-signed
    APK cannot install over it — back up and checksum-verify first, and expect
    `saves/` to be emptied. See the RP5 bullet in § Environment.
-3. **Reply to issue #15** — the standing decision is to hold until the fix
-   ships, so this is gated on step 2, not on anything technical.
-4. Then: the two open Vulkan-validation findings (see the issue #15 bullet), and
+4. **Reply to issue #15** — the standing decision is to hold until the fix
+   ships, so this is gated on step 3, not on anything technical.
+5. Then: the two open Vulkan-validation findings (see the issue #15 bullet), and
    the still-deferred M8 + N5 device-gated checks.
 
 - **ISSUE #15 — white screen on Mali GPUs. ROOT CAUSE FOUND AND FIXED
