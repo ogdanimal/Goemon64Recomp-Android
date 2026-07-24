@@ -189,6 +189,10 @@ all that is needed.
   the **original 16 MiB cart** (`df8083a5…`, `LauncherActivity.java:36`). Correct
   copies live in `%USERPROFILE%\goemon-backups\*\data\mnsg.us.z64`. Already
   documented in memory `device-install-method` and walked into anyway.
+  A leftover of that mistake sat on the A15 as `/sdcard/Download/mnsg.z64` — a
+  file whose *contents* were the correct 16 MiB cart but whose *name* was the
+  32 MiB build input's. Renamed to `mnsg.us.z64` on 2026-07-23 so the name
+  matches the hash; if you ever put a ROM on a device, name it for what it is.
 - **`BUILDING.md:49` is wrong** — it labels `df8083a5…` as the "decompressed ROM
   sha1" and says to copy it to the repo root. That is the runtime cart hash, not
   the build input. Known, unfixed.

@@ -81,8 +81,10 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
 ## Current focus & parked work
 
 **NEXT ACTIONS, in order (as of 2026-07-23):**
-1. **Fast-forward `main` to the `dev` tip `7ad48d1`** — it is 4 commits behind
-   and the merge is a clean fast-forward. Required before any release: the
+1. **Fast-forward `main` to the `dev` tip** — check the gap with
+   `git log --oneline origin/main..origin/dev` rather than trusting a count
+   written here, which drifts with every commit; as of 2026-07-23 it was a clean
+   fast-forward. Required before any release: the
    release workflow **rejects a `v*` tag whose commit is not an ancestor of
    `main`**. Also a `promote-public-fixes-to-main` case — the Mali fix is for a
    public bug report and `main` is the public default branch.
@@ -121,7 +123,15 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     (rt64 `099f852`). Devices reporting `dualSrcBlend=1` take the byte-identical
     old path. **TRADEOFF, by design: on the fallback path the coverage value the
     primary output would carry is lost for alpha-blended draws, so coverage-based
-    effects (N64 AA edges) are approximate.**
+    effects (N64 AA edges) are approximate.** Sharpened 2026-07-23: `Copy()` sets
+    `srcBlendAlpha=ONE`/`dstBlendAlpha=ZERO`, so the framebuffer alpha receives
+    whatever `SV_TARGET0.a` holds — coverage normally, the blend factor on the
+    fallback. The worst case is therefore **`cvgAdd && alphaBlend`**, where
+    `dstBlendAlpha=ONE` accumulates that alpha: coverage-wrap emulation ends up
+    accumulating the blend factor instead of coverage, so it is **broken there,
+    not merely approximate**. `cvgAdd` WITHOUT `alphaBlend` is unaffected — the
+    shader only overrides `resultColor.a` when `alphaBlend` is set. If a Mali
+    user reports edge/transparency artifacts, this is the first suspect.
   - **Verified on device** (Galaxy A15, Mali-G57): logs `dualSrcBlend=0`, intro
     and title screen render in full colour, and Vulkan validation reports **0**
     dual-source errors where it previously reported **72** — in a run that still
@@ -310,7 +320,7 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   below). **2026-07-22: `main` fast-forwarded to the `dev` tip `64269bd`**
   (`fe6da0e..64269bd`) — main carries the whole 2026-07-21 remediation tail
   plus the CI ROM-fetch hardening. **2026-07-23: `main` is now 4 commits BEHIND
-  `dev` again** (`64269bd..7ad48d1`, a clean fast-forward) and does NOT yet carry
+  `dev` again** (from `64269bd`, a clean fast-forward) and does NOT yet carry
   the issue #15 Mali fix — see NEXT ACTIONS at the top of "Current focus".
   `v1.0.3` should ship the tail + the CI hardening + the Mali fix together.
 - **Code-review remediation — DONE, build+CI-verified, PUSHED on `dev`
