@@ -168,9 +168,20 @@ downstream is deliberately gated on the review, not on anything technical.
     (`lib/rt64/src/shaders/Formats.hlsli:95`) derives the RGBA5551 alpha bit from
     `round(a * 255) % 8`, and `FbWriteColorCS` packs that back into emulated
     RDRAM — so on the fallback the *game* can read a blend factor where coverage
-    should be. Whether mnsg reads those bits is UNKNOWN and untested. All of this
-    is derived from the code; none of it has been measured on device. If a Mali
-    user reports edge/transparency artifacts, this is the first suspect.
+    should be. Whether mnsg reads those bits is UNKNOWN and untested.
+    **MEASURED ON DEVICE 2026-07-23** (was previously code-derived only), via the
+    `RT64_DIAG_CVG_ADD` counter, intro attract sequence, both vendors: **the worst
+    case is REACHABLE** — thousands of `cvgDst=WRAP` draws plus ~100 `CVG_DST_SAVE`
+    ones in the intro alone — and **every single one of them also alpha-blends**
+    (the non-blending count was zero on both devices), so `cvgAdd && alphaBlend`
+    is not a corner case, it is the only case. Non-zero on Adreno too, which
+    confirms the counts come from the game's display lists, not the GPU. A
+    `ubershadersOnly = true` positive control on Mali — coverage lost on EVERY
+    draw — still rendered the intro correctly, so the loss is not grossly
+    visible; subtle AA-edge differences remain unmeasured and no same-frame
+    comparison was made. Full numbers and caveats:
+    `docs/re-notes/RESUME-mali-review.md` § "The cvgAdd measurement". If a Mali
+    user reports edge/transparency artifacts, this is still the first suspect.
   - **Verified on device** (Galaxy A15, Mali-G57): logs `dualSrcBlend=0`, intro
     and title screen render in full colour, and Vulkan validation reports **0**
     dual-source errors where it previously reported **72** — in a run that still

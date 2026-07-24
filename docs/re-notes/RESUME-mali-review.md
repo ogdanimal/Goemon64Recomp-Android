@@ -89,8 +89,10 @@ Also closed in this round: the CI guard (see the weak point below).
 
 Still open:
 
-- The `cvgAdd` breakage is still reasoned, never observed. **The counter to
-  answer it is written and committed** (rt64 `6a7d0be`), disabled. Procedure:
+- ~~The `cvgAdd` breakage is still reasoned, never observed.~~ **MEASURED
+  2026-07-23 — see "The cvgAdd measurement" below.** The worst case IS reachable;
+  the counter that proved it is committed (rt64 `6a7d0be`), disabled. Procedure
+  to re-run it:
 
   1. Set `RT64_DIAG_CVG_ADD` to `1` in
      `lib/rt64/src/render/rt64_framebuffer_renderer.cpp` (near the top) and build
@@ -110,6 +112,47 @@ Still open:
   Note the counter is device-independent but the *consequence* is not: only the
   Mali fallback path suffers it, so a non-zero count is a reason to look at Mali
   output, not evidence that anything is wrong on Adreno.
+
+## The cvgAdd measurement (2026-07-23)
+
+Ran `RT64_DIAG_CVG_ADD` on both GPU vendors through the intro attract sequence,
+at default graphics settings, validation layers off.
+
+| device | capability | at N draws | `cvgDst=WRAP` | `cvgDst=SAVE` |
+|---|---|---|---|---|
+| A15, Mali-G57 | `dualSrcBlend=0` (fallback) | 550k | 6366, **all alpha-blending** | 99, **all alpha-blending** |
+| RP5, Adreno 650 | `dualSrcBlend=1` (dual source) | 500k | 7170, **all alpha-blending** | 160, **all alpha-blending** |
+
+What this establishes:
+
+- **The worst case is reachable.** `cvgAdd` draws happen in the thousands in the
+  intro alone, so "cvgAdd && alphaBlend is broken on the fallback" is a real
+  code path in this game, not a theoretical corner.
+- **`cvgAdd && alphaBlend` is not a corner of a corner — it is the ONLY case.**
+  The `plain` (non-alpha-blending) count was **zero everywhere on both devices**.
+  Every single coverage-wrap draw this game issues also alpha-blends, so the
+  benign half of the tradeoff never actually occurs.
+- **Device independence is now observed, not just argued.** Both vendors produce
+  non-zero counts of the same kind. The totals differ only because the two runs
+  are not frame-synced (different resolution, framerate and time per scene), not
+  because the GPU changes what the game draws.
+
+What it does NOT establish, and why the question is not fully closed:
+
+- **No same-frame comparison was made.** The two captures are different moments
+  of the cutscene, so nothing here rules out a subtle difference.
+- A **positive control was run**: `ubershadersOnly = true` on the Mali device,
+  which loses coverage on EVERY draw rather than only the transient ones. The
+  intro still rendered correctly (sky gradient, character, roof, text all
+  correctly composited) with `wrap` draws confirmed occurring in that same run.
+  That is real evidence the loss is not grossly visible — but it is visual
+  inspection at screenshot scale, which is exactly what missed the ubershader
+  bug earlier. Subtle AA-edge differences would not show up this way.
+- **Only the intro was exercised.** No gameplay, no effect-heavy scenes.
+
+Standing conclusion: the tradeoff is real and reachable, has no gross visual
+impact on the scenes tested, and remains the first suspect if a Mali user reports
+edge or transparency artifacts.
 
 ## Known weak points the review may land on
 
