@@ -79,6 +79,25 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   (or the run's Artifacts). Debug-signed → sideloadable; asks for the user's ROM on first launch.
 
 ## Current focus & parked work
+
+**NEXT ACTIONS, in order (as of 2026-07-23):**
+1. **Fast-forward `main` to the `dev` tip `7ad48d1`** — it is 4 commits behind
+   and the merge is a clean fast-forward. Required before any release: the
+   release workflow **rejects a `v*` tag whose commit is not an ancestor of
+   `main`**. Also a `promote-public-fixes-to-main` case — the Mali fix is for a
+   public bug report and `main` is the public default branch.
+2. **Cut `v1.0.3`**, doing a `v1.0.3-rc1` dry-run tag first (proves the
+   versionCode derivation → `10003`, monotonic over v1.0.2's `10002`). Release
+   notes must be applied AFTER with `gh release edit --notes-file`, emoji-free.
+   **Smoke-testing that rc on the RP5 needs an uninstall + save restore**, because
+   the RP5 currently holds the *debug* build of the Mali fix and a release-signed
+   APK cannot install over it — back up and checksum-verify first, and expect
+   `saves/` to be emptied. See the RP5 bullet in § Environment.
+3. **Reply to issue #15** — the standing decision is to hold until the fix
+   ships, so this is gated on step 2, not on anything technical.
+4. Then: the two open Vulkan-validation findings (see the issue #15 bullet), and
+   the still-deferred M8 + N5 device-gated checks.
+
 - **ISSUE #15 — white screen on Mali GPUs. ROOT CAUSE FOUND AND FIXED
   2026-07-23, device-verified on Mali. NOT yet released; issue not yet
   answered.** Reporter `tonysantosl` on a **Retroid Pocket 4 Pro** (Dimensity
@@ -224,12 +243,15 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   - No migration exists by design; the first-run choice is final short of a
     reinstall. Adding migration later means copy-verify-then-delete, never move.
 - **Vulkan diagnostics — DEPLOYED 2026-07-19** (`4a6552f`, via plume `65783a0`
-  and rt64 `8c73b3f` — those were the fork tips THEN; **current tips are plume
-  `c69ce04` / rt64 `3b49b22`** after the pass-2 P1/S4 fix, see the code-review
-  bullet below). Startup now logs the selected physical device (vendor,
-  device API, driver version) and the loader's Vulkan version vs what we
-  request. Aimed at making bug reports from other people's hardware diagnosable
-  without a round trip. **All three submodule levels are pushed to their forks**
+  and rt64 `8c73b3f` — those were the fork tips THEN; **CURRENT TIPS ARE plume
+  `4e77e67` / rt64 `099f852`** after the 2026-07-23 issue #15 Mali fix. They were
+  `c69ce04`/`3b49b22` between the pass-2 P1/S4 fix and that). Startup now logs
+  the selected physical device (vendor, device API, driver version), the loader's
+  Vulkan version vs what we request, and a feature line that now includes
+  **`dualSrcBlend`** — added 2026-07-23 precisely because its absence was the
+  issue #15 root cause and nothing in the log revealed it. Aimed at making bug
+  reports from other people's hardware diagnosable without a round trip; issue
+  #15 is the case study in why that matters. **All three submodule levels are pushed to their forks**
   — verify with `git ls-remote` before trusting a pointer bump, since a bump
   committed while the submodule commit stays local is unbuildable by CI.
 - **Controller input rework + analog-camera zoom — DONE, DEVICE-VERIFIED, and
@@ -286,10 +308,11 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   likely class) and triage; otherwise back to general bug-fixing. Test via the CI
   debug APK, or cut a new signed release by pushing a `v*` tag (see release setup
   below). **2026-07-22: `main` fast-forwarded to the `dev` tip `64269bd`**
-  (`fe6da0e..64269bd`) — main now carries the whole 2026-07-21 remediation tail
-  plus the CI ROM-fetch hardening, so the next cut (`v1.0.3`) ships all of it.
-  Note the tail work is build-green but NOT yet device-tested (see the tail
-  bullet below).
+  (`fe6da0e..64269bd`) — main carries the whole 2026-07-21 remediation tail
+  plus the CI ROM-fetch hardening. **2026-07-23: `main` is now 4 commits BEHIND
+  `dev` again** (`64269bd..7ad48d1`, a clean fast-forward) and does NOT yet carry
+  the issue #15 Mali fix — see NEXT ACTIONS at the top of "Current focus".
+  `v1.0.3` should ship the tail + the CI hardening + the Mali fix together.
 - **Code-review remediation — DONE, build+CI-verified, PUSHED on `dev`
   (2026-07-20; tip `a27223a`).** A full-codebase critique (Java launcher, host
   `src/`, `patches/`, CI) fixed the high tier (H1–H7) and the long tail (L1–L14).
@@ -337,9 +360,10 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   (`docs/code-review-2026-07-20-pass2.md`) found HIGH crash bugs that shipped in
   BOTH v1.0.0 and v1.0.1. Fixed all five HIGH + two integrity + three CI items;
   each fixed row in that doc ends with a verified `→ FIXED` note (cite it, don't
-  re-derive). Submodule fork tips after this pass: plume `c69ce04`, rt64
-  `3b49b22` (both pushed to their `goemon-android` forks). `git ls-remote`-verified
-  the whole gitlink chain is CI-buildable. (**N64MR was `b6f6253` here but was
+  re-derive). Submodule fork tips **as of this pass** (historical — both were
+  superseded on 2026-07-23 by plume `4e77e67` / rt64 `099f852` for the Mali fix):
+  plume `c69ce04`, rt64 `3b49b22`, both pushed to their `goemon-android` forks.
+  `git ls-remote`-verified the whole gitlink chain is CI-buildable. (**N64MR was `b6f6253` here but was
   bumped to `920d493` by the 2026-07-21 tail session** — see that bullet; plume/rt64
   unchanged since.)
   What changed how the codebase works:
@@ -412,9 +436,16 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   record: **`docs/code-review-2026-07-21-remediation.md`** (cite it, don't
   re-derive). **N64ModernRuntime gitlink bumped `b6f6253` → `920d493`**
   (fork-pushed, ls-remote-verified; plume/rt64 tips unchanged at
-  `c69ce04`/`3b49b22`). NOT yet device-tested — held at the maintainer's
-  request; a checksum-verified save backup was taken first
-  (`goemon-backups/2026-07-21-preinstall-debug/`). Still open from both passes:
+  `c69ce04`/`3b49b22`; **plume/rt64 have since moved to `4e77e67`/`099f852` for
+  the Mali fix**). Was held from device testing at the maintainer's request; a
+  checksum-verified save backup was taken first
+  (`goemon-backups/2026-07-21-preinstall-debug/`).
+  **PARTIALLY discharged 2026-07-23:** the RP5 now runs a debug build of the
+  `dev` tip, which contains this whole tail, and a short gameplay session off
+  the maintainer's own save rendered and played correctly. That is a **smoke
+  test only** — it exercised boot, save load, movement and rendering, NOT the
+  specific per-finding behaviours the tail changed. Treat the tail as
+  smoke-tested, not verified. Still open from both passes:
   **M8 + N5** (device-gated engine-detection / R-mask-scope checks, coupled —
   do together), S2 + N13 device checks, **P-tier perf (P2–P7) not started**,
   R2 (maintainer keep-or-kill on desktop scaffolding), and the Dependabot npm
