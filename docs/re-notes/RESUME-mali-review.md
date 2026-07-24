@@ -89,14 +89,27 @@ Also closed in this round: the CI guard (see the weak point below).
 
 Still open:
 
-- The `cvgAdd` breakage is still reasoned, never observed. **Do this before the
-  visual A/B**: instrument rt64 to count draws where `cvgAdd` is set and find out
-  whether mnsg issues any at all. That is a property of the game's display
-  lists, not of the GPU, so it can be measured on ANY device — if the count is
-  zero the worst case is unreachable in this game and the question is closed
-  without a Mali session. If it is non-zero, then do the A/B on the A15 with
-  `ubershadersOnly = true`, which forces the worst case permanently rather than
-  transiently.
+- The `cvgAdd` breakage is still reasoned, never observed. **The counter to
+  answer it is written and committed** (rt64 `6a7d0be`), disabled. Procedure:
+
+  1. Set `RT64_DIAG_CVG_ADD` to `1` in
+     `lib/rt64/src/render/rt64_framebuffer_renderer.cpp` (near the top) and build
+     a debug APK. Never commit it enabled.
+  2. Install, play through the intro, title screen and some real gameplay, and
+     watch `adb logcat | grep cvgdiag`. It prints every 50000 draws:
+     `draws=N wrap=N(blend/plain) save=N(blend/plain)`.
+  3. **`wrap` and `save` both zero across a real session ⇒ the worst case is
+     unreachable in this game** and the tradeoff is confined to ordinary
+     alpha-blended coverage, which already renders correctly on device. That
+     closes it without a Mali session — the counts come from the game's display
+     lists, so ANY device or backend gives the same answer.
+  4. **Non-zero `blend` counts ⇒ do the visual A/B on the A15** with
+     `ubershadersOnly = true`, which forces the worst case permanently instead of
+     transiently, and compare against Adreno.
+
+  Note the counter is device-independent but the *consequence* is not: only the
+  Mali fallback path suffers it, so a non-zero count is a reason to look at Mali
+  output, not evidence that anything is wrong on Adreno.
 
 ## Known weak points the review may land on
 
