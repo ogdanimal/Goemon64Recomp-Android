@@ -120,7 +120,7 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     (plume `4e77e67`); a `NO_DUAL_SRC_BLEND` variant of `RasterPS.hlsl` that drops
     the secondary output and carries the blend factor in the primary output's
     alpha; runtime selection of that variant plus `SRC_ALPHA`/`INV_SRC_ALPHA`
-    (rt64 `099f852`). Devices reporting `dualSrcBlend=1` take the byte-identical
+    (rt64 `3606f0b`). Devices reporting `dualSrcBlend=1` take the byte-identical
     old path. **TRADEOFF, by design: on the fallback path the coverage value the
     primary output would carry is lost for alpha-blended draws, so coverage-based
     effects (N64 AA edges) are approximate.** Sharpened 2026-07-23: `Copy()` sets
@@ -142,6 +142,23 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     new SPIR-V variants and the three MS ones would otherwise never have been
     executed by any test (default `msaa_option` is `None`). MSAA4X renders
     correctly with no pipeline failures.
+  - **FOLLOW-UP BUG IN THE FIX, found and fixed 2026-07-23 while reviewing it
+    (rt64 `3606f0b`):** `RasterShaderUber` hardcodes `PipelineCreation::alphaBlend
+    = true` (`rt64_raster_shader.cpp:510`), so ubershader pipelines ALWAYS blend
+    while the shader decides per draw. Dual-source tolerates that because
+    `resultAlpha` initialises to `1.0f`, making the factor a neutral copy. The
+    first cut of the fallback only moved the factor into `resultColor.a` when
+    `alphaBlend` was true, so ubershader draws that did NOT alpha-blend were
+    composited against **coverage** (~8/255, or 0 under `CVG_DST_SAVE`) — i.e.
+    at ~3% opacity or invisible. Fixed by keying on `DYNAMIC_RENDER_PARAMS`
+    (exactly the ubershader variant) and always writing the factor there; the
+    specialized path keeps the `if (alphaBlend)` guard because it derives
+    `alphaBlend` from the same predicate the shader uses. **Proven with a
+    provoked positive control:** forcing `ubershadersOnly = true` in a local
+    build, the old shader loses the entire opaque title-screen background and
+    the fixed shader restores it. **RULE: `PipelineCreation::alphaBlend` and the
+    shader's own `alphaBlend` must agree, and they only do on the specialized
+    path — changing either side requires changing the other.**
   - **ADRENO REGRESSION CHECK PASSED 2026-07-23 (RP5, Adreno 650):** logs
     **`dualSrcBlend=1`**, so Adreno provably takes the byte-identical old code
     path. Real gameplay off the user's own save renders correctly (textures,
@@ -258,7 +275,7 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     reinstall. Adding migration later means copy-verify-then-delete, never move.
 - **Vulkan diagnostics — DEPLOYED 2026-07-19** (`4a6552f`, via plume `65783a0`
   and rt64 `8c73b3f` — those were the fork tips THEN; **CURRENT TIPS ARE plume
-  `4e77e67` / rt64 `099f852`** after the 2026-07-23 issue #15 Mali fix. They were
+  `4e77e67` / rt64 `3606f0b`** after the 2026-07-23 issue #15 Mali fix. They were
   `c69ce04`/`3b49b22` between the pass-2 P1/S4 fix and that). Startup now logs
   the selected physical device (vendor, device API, driver version), the loader's
   Vulkan version vs what we request, and a feature line that now includes
@@ -375,7 +392,7 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   BOTH v1.0.0 and v1.0.1. Fixed all five HIGH + two integrity + three CI items;
   each fixed row in that doc ends with a verified `→ FIXED` note (cite it, don't
   re-derive). Submodule fork tips **as of this pass** (historical — both were
-  superseded on 2026-07-23 by plume `4e77e67` / rt64 `099f852` for the Mali fix):
+  superseded on 2026-07-23 by plume `4e77e67` / rt64 `3606f0b` for the Mali fix):
   plume `c69ce04`, rt64 `3b49b22`, both pushed to their `goemon-android` forks.
   `git ls-remote`-verified the whole gitlink chain is CI-buildable. (**N64MR was `b6f6253` here but was
   bumped to `920d493` by the 2026-07-21 tail session** — see that bullet; plume/rt64
@@ -450,7 +467,7 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   record: **`docs/code-review-2026-07-21-remediation.md`** (cite it, don't
   re-derive). **N64ModernRuntime gitlink bumped `b6f6253` → `920d493`**
   (fork-pushed, ls-remote-verified; plume/rt64 tips unchanged at
-  `c69ce04`/`3b49b22`; **plume/rt64 have since moved to `4e77e67`/`099f852` for
+  `c69ce04`/`3b49b22`; **plume/rt64 have since moved to `4e77e67`/`3606f0b` for
   the Mali fix**). Was held from device testing at the maintainer's request; a
   checksum-verified save backup was taken first
   (`goemon-backups/2026-07-21-preinstall-debug/`).

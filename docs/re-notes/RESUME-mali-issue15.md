@@ -57,7 +57,7 @@ byte-identical old path. Inert on Adreno, desktop Vulkan, D3D12 and Metal.
 - plume `4e77e67` — `RenderDeviceCapabilities::dualSrcBlend`, set from the
   queried Vulkan feature, hardcoded true on D3D12/Metal, and added to the
   Android startup diagnostic line.
-- rt64 `099f852` — a `NO_DUAL_SRC_BLEND` variant of `RasterPS.hlsl` that drops
+- rt64 `3606f0b` — a `NO_DUAL_SRC_BLEND` variant of `RasterPS.hlsl` that drops
   the `SV_TARGET1` output and writes the blend factor into the primary output's
   alpha; six new SPIR-V variants in `CMakeLists.txt`; runtime selection in
   `RasterShader` / `RasterShaderUber`; and `SRC_ALPHA`/`INV_SRC_ALPHA` at the
@@ -67,6 +67,28 @@ byte-identical old path. Inert on Adreno, desktop Vulkan, D3D12 and Metal.
 output would normally carry is lost for alpha-blended draws, so coverage-based
 effects (N64 anti-aliased edges) are approximate. This is an approximation, not
 an equivalent. It is a large improvement over a white screen.
+
+### A bug the fix itself introduced (found in review, fixed)
+
+`RasterShaderUber` hardcodes `PipelineCreation::alphaBlend = true`, so ubershader
+pipelines always blend while the shader decides per draw. Dual-source survives
+that because `resultAlpha` initialises to `1.0f` (a neutral factor). The first
+cut of the fallback only wrote the factor when `alphaBlend` was true, leaving
+**coverage** in the alpha the pipeline blended against — so every ubershader draw
+that did not alpha-blend was composited at ~3% opacity, or invisible under
+`CVG_DST_SAVE`. Ubershaders draw every material until its specialized shader
+compiles, so this showed up as transient missing geometry that still screenshots
+would not reliably catch.
+
+Fixed in rt64 `3606f0b` by keying on `DYNAMIC_RENDER_PARAMS` (exactly the
+ubershader variant) and always writing the factor there. **Proven with a provoked
+positive control:** with `ubershadersOnly = true` forced in a local build, the old
+shader loses the entire opaque title-screen background while only the alpha-blended
+logo survives; the fixed shader restores it, same build settings.
+
+**Standing rule:** `PipelineCreation::alphaBlend` and the shader's own `alphaBlend`
+must agree. They do on the specialized path (same predicate) and deliberately do
+not on the ubershader path. Change one side, change the other.
 
 ### What was verified, and what was not
 
