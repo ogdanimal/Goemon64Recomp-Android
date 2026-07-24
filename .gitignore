@@ -87,5 +87,11 @@ keystore.properties
 *.jks
 *.keystore
 
-# Local Claude Code session config — never commit (per-clone, not project state)
+# Local editor/agent session config — never commit (per-clone, not project state)
 .claude/
+
+# Internal working notes / session context — kept locally, not published.
+CLAUDE.md
+docs/re-notes/RESUME.md
+docs/re-notes/RESUME-*.md
+docs/code-review-*.md

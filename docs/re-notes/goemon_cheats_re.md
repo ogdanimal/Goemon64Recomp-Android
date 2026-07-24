@@ -460,7 +460,7 @@ initialiser and could leave the save in an odd state on a fresh file.
 
 ## 9. Corrections to earlier notes
 
-- **`CLAUDE.md` is CORRECT** on `0x801FC604`: `func_801CB5D0_5874E0` does
+- **The earlier note is CORRECT** on `0x801FC604`: `func_801CB5D0_5874E0` does
   `lui $s0, 0x8020` / `addiu $s0, $s0, -0x39FC` = `0x80200000 - 0x39FC =
   **0x801FC604**` (verified at `0x801CB670`–`0x801CB680`). An intermediate
   analysis in this sweep reported `0x8020C604`; that was an arithmetic slip and
@@ -469,7 +469,7 @@ initialiser and could leave the save in an odd state on a fresh file.
   (not a generic "control object") and `0x801FC608` as `g_player_2_task`;
   `PlayerTask+0x90` is `player_id`, not a "movement-mode byte"; `+0xC0/C4/C8`
   are unnamed floats. Prefer `patches/types.h` / `patches/variables.h` over the
-  older prose in `CLAUDE.md` where they disagree.
+  older prose in the earlier notes where they disagree.
 - `func_801CDD10_5F90F0` (file_13) is **both** things: it opens as a state
   machine dispatching on `+0x2E` through a jump table at `0x8020D000`-ish, and
   one of its branches (`0x801CE690`–`0x801CE8F8`, read directly) renders three

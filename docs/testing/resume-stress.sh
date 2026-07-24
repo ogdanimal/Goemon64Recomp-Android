@@ -9,7 +9,7 @@
 #
 # PASS criteria: pid constant every cycle, zero SIGSEGV/tombstone/abort, saves
 # byte-identical before/after, and `[plume] surface recreated` firing (the fix
-# executing). See docs/code-review-2026-07-20-pass2.md (P1/S4).
+# executing). See the P1/S4 resume-window ownership fix.
 #
 # The save byte-identical check assumes nothing writes saves during the run,
 # which holds with autosave defaulting Off. With autosave ON it would false-fail

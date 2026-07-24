@@ -1,8 +1,8 @@
 # Autosave — implementation rundown
 
 **STATUS: FUNCTIONALLY COMPLETE — all five steps device-verified (2026-07-19).**
-Ported from Zelda64Recomp's `patches/autosaving.c`. See CLAUDE.md § "Autosave"
-for the authoritative rollup.
+Ported from Zelda64Recomp's `patches/autosaving.c`. This document is the
+authoritative rollup for the feature.
 
 **Verified on device.** The manual trigger commits a real save that the game
 loads normally, and the differential test against the game's own save routine
@@ -297,8 +297,8 @@ open, and captures input.
    take `ui_state_mutex`, which `draw_hook` also holds from `ui_state.cpp:574`
    onward — but that mutex is a `std::recursive_mutex` that `draw_hook` itself
    re-enters, so re-locking it is *not* a deadlock (the earlier "non-recursive →
-   self-deadlock" claim here was wrong, corrected 2026-07-20; see CLAUDE.md and
-   the L14 review fix). The tick still runs *before* the launcher's own
+   self-deadlock" claim here was wrong, corrected 2026-07-20 by the L14 review
+   fix). The tick still runs *before* the launcher's own
    `is_any_context_shown()` / `show_context` check so an expiring toast updates
    `is_any_context_shown()` before that check reads it; move the tick below it and
    a just-expired toast suppresses the launcher for a frame.

@@ -103,7 +103,7 @@ array at `0x801671A0`) and derives the processed record:
 ```
 
 `s0 = 0x800C7D38 + 24*i` (raw-stage record), copied wholesale to
-`s1 = 0x800C7DB0 + 24*i` (the record CLAUDE.md already documents: `+0xC`
+`s1 = 0x800C7DB0 + 24*i` (the processed-stick record: `+0xC`
 magnitude, `+0x10`/`+0x14` planar stick) at `0x80004F34`–`0x80004F64`, **unless**
 `*(u8*)0x800C7A23` or `*(u8*)0x800C7A24` is set, in which case the record decays
 toward neutral instead (scripted input lock).
@@ -395,7 +395,7 @@ func_801E0944_59C854            swap state machine (action 0xBA)  0x801E0944
   `0x801DC9E4`; *(c)* already named in `patches/variables.h`.
 - Swap input is **C-Down held**, mask `0x4` of `*(u16*)(0x800C7DB0 + 24*id + 0x2)`.
   *(a)* `func_80004AF8_56F8` copies `OSContPad.button` verbatim into `+0x2` and
-  computes `+0x4` as the rising edge; *(b)* the record base matches CLAUDE.md's
+  computes `+0x4` as the rising edge; *(b)* the record base matches the
   already-proven `0x800C7DB0 + 24*idx` stick record.
 - `func_801DD3C4_5992D4` is the swap gate. *(a)* it is the sole predicate guarding
   the `func_801DD50C` call in case 4; *(b)* it has exactly one caller.
