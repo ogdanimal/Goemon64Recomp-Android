@@ -129,12 +129,24 @@ covered is the issue #15 bullet below plus
 `docs/re-notes/RESUME-mali-review.md`, which is **the resume prompt for this
 waiting state — read it first**.
 
-**DO NOT, until the maintainer gives the release go-ahead:** fast-forward `main`,
-tag any `v*`, or reply to issue #15. The technical gate is cleared; what remains
-is the maintainer's own call on shipping, which the reviewer deliberately did not
-make for them.
+**RELEASE DECISION 2026-07-24: HELD for the render-equivalence session.** The
+maintainer declined the reviewer's ship-now recommendation and chose to measure
+render equivalence BEFORE cutting `v1.0.3`. So the same-frame capture is now a
+**pre-release gate, not post-release validation** — it moved from step 5 to step
+0. Everything else about the reviewer's verdict stands, including the
+limitation sentence, which the release notes and issue reply still need.
 
-**NEXT ACTIONS, in order, once the maintainer says ship:**
+**DO NOT, until that session is done and its result assessed:** fast-forward
+`main`, tag any `v*`, or reply to issue #15.
+
+**NEXT ACTIONS, in order:**
+0. **The render-equivalence session — the current gate.** Plan and rationale in
+   `RESUME-mali-review.md` § "The render-equivalence session". Headline: the
+   strongest experiment is **same-device A/B on the RP5** (force the fallback on
+   Adreno, which reports `dualSrcBlend=1`, so the shader path is the only
+   variable), NOT a cross-device Mali-vs-Adreno comparison, which cannot produce
+   identical frames even when the fix is perfect. Plus effect-heavy gameplay with
+   `RT64_DIAG_CVG_ADD` to test the "in everything measured so far" scoping.
 1. ~~Apply whatever the review asks for~~ **DONE — all three rounds applied.** If
    a fourth arrives, apply it on `dev` through the submodule chain
    (plume → rt64 → root), re-verifying the gitlink chain with `git ls-remote`.
@@ -161,10 +173,7 @@ make for them.
 4. **Reply to issue #15** — the standing decision is to hold until the fix
    ships, so this is gated on step 3, not on anything technical. **Carry the same
    one-sentence limitation** into the reply.
-5. **Post-release validation (the reviewer's other condition):** the same-frame
-   Mali/Adreno capture plus effect-heavy gameplay with `RT64_DIAG_CVG_ADD`. It is
-   wanted for any upstream PR regardless, and it is the triage path if a Mali
-   user reports edge/transparency artifacts.
+5. ~~Post-release validation~~ **moved to step 0 by the 2026-07-24 release hold.**
 6. Then: the two open Vulkan-validation findings (see the issue #15 bullet), and
    the still-deferred M8 + N5 device-gated checks.
 

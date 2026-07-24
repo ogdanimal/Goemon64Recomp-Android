@@ -306,8 +306,55 @@ it if the extra CI surface is not wanted; the regexes stand alone.
   upstream PR regardless, and the `RT64_DIAG_CVG_ADD` counter makes triage cheap
   if a Mali user reports artifacts.
 
-**The maintainer's own go/no-go on cutting `v1.0.3` is still required** — the
-reviewer explicitly deferred the release decision rather than giving it.
+**RELEASE DECISION 2026-07-24: HELD.** The maintainer declined the ship-now
+recommendation and chose to measure render equivalence first. The reviewer's
+conditions still apply to the eventual release; what changed is that the capture
+is now a **pre-release gate**.
+
+## The render-equivalence session (the current gate)
+
+**The question:** does the `NO_DUAL_SRC_BLEND` fallback render equivalently to
+the dual-source path, on content where the lost coverage value would show?
+
+**Design note that matters more than the rest of this plan: do NOT make the
+primary experiment a cross-device Mali-vs-Adreno comparison.** Two different
+GPUs, drivers and rasterizers cannot produce identical frames even when the fix
+is perfect, so every difference found would be unattributable and the test could
+not fail cleanly. It confounds the variable of interest with the hardware.
+
+**Do this instead — same-device A/B on the RP5 (Adreno 650):**
+
+1. Add a debug-only override that forces `capabilities.dualSrcBlend = false` on a
+   device that supports it (a `#define` next to `RT64_DIAG_CVG_ADD`, same
+   never-commit-enabled rule). Adreno reports `dualSrcBlend=1`, so this yields
+   dual-source vs fallback on identical hardware, identical driver, identical
+   frame pacing — **the shader path becomes the only variable**, which is exactly
+   what "renders equivalently" means and what the cross-device version cannot
+   isolate.
+2. Capture the **intro attract sequence**, which is deterministic from boot, so
+   the same frame really is comparable between runs. Anchor captures to a
+   repeatable marker (a logcat line, or a fixed draw count from the diag counter)
+   rather than wall-clock guessing.
+3. Compare pixel-wise and **quantify** — max/mean channel delta and a difference
+   image, not "looks the same". Screenshot-scale eyeballing is what missed the
+   ubershader bug; see the positive-control note above.
+4. Expect *some* difference wherever coverage genuinely differs. The question is
+   whether it is confined to AA edges at low amplitude, or structural.
+
+**Then the scoping question, separately:** run `RT64_DIAG_CVG_ADD` through
+**effect-heavy gameplay** (explosions, water, shadows) rather than the intro, and
+watch for a non-zero `plain` (non-alpha-blending) count. That is the measurement
+that would either confirm or break the "in everything measured so far it is the
+only case" claim. It is device-independent, so the RP5 alone answers it.
+
+**The A15 keeps one job:** re-confirm the fallback still renders correctly on
+real Mali after any change made for this session. The equivalence question itself
+does not need it.
+
+**Prerequisites:** the RP5 (uninstall + checksum-verified save restore first if a
+release-signed build is on it — see § Environment), and for step 4 the A15 over
+wireless debugging with its rotating port re-derived. Both devices' gotchas are
+in `RESUME-mali-issue15.md` and memory `mali-repro-device-a15`.
 
 ## Known weak points the review may land on
 
