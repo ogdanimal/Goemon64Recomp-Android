@@ -129,24 +129,31 @@ covered is the issue #15 bullet below plus
 `docs/re-notes/RESUME-mali-review.md`, which is **the resume prompt for this
 waiting state — read it first**.
 
-**RELEASE DECISION 2026-07-24: HELD for the render-equivalence session.** The
-maintainer declined the reviewer's ship-now recommendation and chose to measure
-render equivalence BEFORE cutting `v1.0.3`. So the same-frame capture is now a
-**pre-release gate, not post-release validation** — it moved from step 5 to step
-0. Everything else about the reviewer's verdict stands, including the
-limitation sentence, which the release notes and issue reply still need.
+**RELEASE GATE 2026-07-24: MET. The render-equivalence session PASSED.** The
+maintainer held the release to measure equivalence first; that session ran on the
+RP5 and the fallback proved **byte-identical to dual-source on the same device**,
+including during coverage-wrap draws (four exact frame pairs, three independent
+rounds), with the path proof logged (`used=1 forced=0` vs `used=0 forced=1`).
+Gameplay driven by the maintainer on the forced-fallback build: **5.25M draws,
+371,568 coverage-wrap draws, `plain 0` in all 189 readings**, and nothing looked
+wrong. Full record + the three method corrections it depended on:
+`RESUME-mali-review.md` § "The render-equivalence session — DONE". **Nothing was
+committed** — the forcing override was local-only and reverted; rt64 gitlink
+unchanged at `6a7d0be`.
+**Still unmeasured (state it, do not let "byte-identical" paper over it):**
+`screencap` captures the DISPLAYED image, so the alpha written back to emulated
+RDRAM via `Float4ToRGBA16` → `FbWriteColorCS` is still unverified.
+**The reviewer's conditions on shipping stand:** the one-sentence limitation must
+appear in BOTH the release notes and the issue #15 reply.
 
-**DO NOT, until that session is done and its result assessed:** fast-forward
-`main`, tag any `v*`, or reply to issue #15.
+**DO NOT, until the maintainer gives the release go-ahead:** fast-forward `main`,
+tag any `v*`, or reply to issue #15. The technical gate is now clear; what
+remains is the maintainer's own call.
 
 **NEXT ACTIONS, in order:**
-0. **The render-equivalence session — the current gate.** Plan and rationale in
-   `RESUME-mali-review.md` § "The render-equivalence session". Headline: the
-   strongest experiment is **same-device A/B on the RP5** (force the fallback on
-   Adreno, which reports `dualSrcBlend=1`, so the shader path is the only
-   variable), NOT a cross-device Mali-vs-Adreno comparison, which cannot produce
-   identical frames even when the fix is perfect. Plus effect-heavy gameplay with
-   `RT64_DIAG_CVG_ADD` to test the "in everything measured so far" scoping.
+0. ~~The render-equivalence session~~ **DONE 2026-07-24, passed.** No A15
+   re-verification is needed: no shader, blend or capability change was made for
+   it.
 1. ~~Apply whatever the review asks for~~ **DONE — all three rounds applied.** If
    a fourth arrives, apply it on `dev` through the submodule chain
    (plume → rt64 → root), re-verifying the gitlink chain with `git ls-remote`.
@@ -226,12 +233,15 @@ limitation sentence, which the release notes and issue reply still need.
     case is REACHABLE** — thousands of `cvgDst=WRAP` draws plus ~100 `CVG_DST_SAVE`
     ones in the intro alone — and **every single one of them also alpha-blends**
     (the non-blending count was zero on both devices), so `cvgAdd && alphaBlend`
-    is not a corner case: **in everything measured so far it is the only case.**
-    That is one intro attract sequence, not the game — effect-heavy gameplay is
-    where a non-blending `cvgAdd` draw would first plausibly show up. Non-zero on
-    Adreno too, which confirms the counts come from the game's display lists
-    rather than the GPU — that is agreement on the *draw mix*, which was never in
-    doubt; whether the fallback *renders* equivalently is still untested. A
+    is not a corner case: **in everything measured so far it is the only case —
+    now including 5.25M draws of real gameplay** (2026-07-24 session: 371,568
+    coverage-wrap draws, `plain 0` in all 189 readings), which is the
+    effect-heavy regime the review predicted a non-blending `cvgAdd` draw would
+    appear in. It did not. **And the fallback is now MEASURED byte-identical to
+    dual-source** on the same device during wrap draws — see the release-gate
+    note at the top of this section. The residual unknown is narrower than it
+    was: `screencap` shows the displayed image, so the RDRAM alpha writeback
+    through `Float4ToRGBA16` remains unverified. A
     `ubershadersOnly = true` positive control on Mali — coverage lost on EVERY
     draw — still rendered the intro correctly, so the loss is not grossly
     visible; subtle AA-edge differences remain unmeasured and no same-frame

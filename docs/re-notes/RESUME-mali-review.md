@@ -311,7 +311,68 @@ recommendation and chose to measure render equivalence first. The reviewer's
 conditions still apply to the eventual release; what changed is that the capture
 is now a **pre-release gate**.
 
-## The render-equivalence session (the current gate)
+## The render-equivalence session — DONE 2026-07-24, PASSED
+
+Executed on the RP5 as designed below. **Result: the fallback shader path
+produces BYTE-IDENTICAL framebuffers to the dual-source path on the same device,
+including on frames rendered while coverage-wrap draws are being issued.**
+
+**Path proof first, because without it a broken force is indistinguishable from a
+correct fallback.** The override logs which path each build actually took:
+baseline `[dualsrcdiag] capability=1 used=1 forced=0`, fallback
+`capability=1 used=0 forced=1`. So this is a real A/B of the two shader paths on
+one Adreno device, driver and rasterizer and frame pacing held constant.
+
+**Instrument:** a local-only `RT64_FORCE_NO_DUAL_SRC_BLEND` in
+`rt64_raster_shader.cpp` routing all six `getCapabilities().dualSrcBlend` reads
+through one `#if`-guarded `useDualSrcBlend()` helper, plus the committed
+`RT64_DIAG_CVG_ADD` counter. **Never committed** — reverted after the session,
+gitlink unchanged at rt64 `6a7d0be`, tree clean, CI guard still passes. (The
+guard constrains that refactor, incidentally: the ternary must keep naming
+`dualSrcBlend`.)
+
+**Three method corrections that the result depends on:**
+
+1. **Wall-clock capture of a moving cutscene measures frame skew, not rendering.**
+   The first comparison showed 60-98% of pixels differing and looked alarming. It
+   was meaningless.
+2. **The within-run burst is the noise floor.** Capturing twice inside the SAME
+   run shows consecutive frames already differ by 30-99%, which is what makes a
+   cross-run number interpretable. Cross-run difference was below that floor at
+   every anchor.
+3. **Anchoring the burst START on the draw counter** — not a sleep — is what let
+   two independent runs land on the same game frame at all. Wall-clock bursts
+   never did.
+
+**The result:** four byte-identical cross-run frame pairs across three
+independent rounds. All are full-content frames (99.9% non-black, mean luminance
+90-126), all captured from a burst anchored at `draws=300000`, which is exactly
+where coverage-wrap draws begin accumulating (0 → ~150 at the anchor, ~6200 by
+`draws=400000`). Round 3 matched *different* frame indices (A `f13` = B `f11`),
+ruling out an artifact of fixed indexing. An earlier round also produced a
+byte-identical pair on a static pre-wrap frame.
+
+**The gameplay scoping question, answered by the maintainer driving real play on
+the forced-fallback build:** **5,250,000 draws, 371,568 coverage-wrap draws, and
+`plain 0` in all 189 counter readings** — 52x the intro's wrap volume, in exactly
+the effect-heavy regime the review predicted a non-blending `cvgAdd` draw would
+appear in. It did not appear. The "it is the only case" claim now rests on
+millions of gameplay draws rather than one attract sequence. **Subjective visual
+check over that same session: nothing looked wrong** — which matters because the
+whole session ran the fallback path on hardware that does not need it, so any
+artifact would have been attributable to it.
+
+**What this does NOT establish, and it is a real limit:** `screencap` captures
+the **displayed image**. The coverage value the fallback overwrites lives in
+framebuffer alpha, so byte-identical output proves no visible divergence —
+including through `cvgAdd`'s `dstBlendAlpha=ONE` accumulation, which *would* have
+surfaced in RGB. It does **not** prove the alpha written back to emulated RDRAM
+via `Float4ToRGBA16` → `FbWriteColorCS` is identical. If the game reads those
+coverage bits, that path is still unmeasured. Also: no Mali device was involved
+in the equivalence test, by design — see the note below on why cross-device
+cannot answer this.
+
+## The render-equivalence session — original plan (kept for the reasoning)
 
 **The question:** does the `NO_DUAL_SRC_BLEND` fallback render equivalently to
 the dual-source path, on content where the lost coverage value would show?
