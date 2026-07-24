@@ -4,10 +4,16 @@ This fork packages [Goemon 64: Recompiled](https://github.com/klorfmorf/Goemon64
 
 ## Notes
 
-- This is the **first public release** (`1.0.0`); it may still have device-specific Vulkan or driver issues.
-- Primarily developed and tested on **Retroid Pocket 5** and **AYN Thor** class handhelds (Snapdragon / Adreno, Android 13).
+- Primarily developed and tested on **Retroid Pocket 5** and **AYN Thor** class handhelds (Snapdragon / Adreno). Device-specific Vulkan or driver issues are still possible on untested hardware.
+- **Mali GPUs are supported as of `1.0.3`.** Earlier versions rendered a white screen with missing textures on Mali devices; see the Mali note below.
 - Requires a working **Vulkan** driver. On devices with incomplete drivers, a custom Turnip driver (e.g. [Mr Purple](https://github.com/MrPurple666/purple-turnip/releases)) may help.
 - `arm64-v8a` only for now. Other ABIs (including x86_64 for emulators) are not built yet.
+
+### Mali GPUs
+
+Versions before `1.0.3` showed a white screen with most textures missing on devices with Mali GPUs, because the renderer required a Vulkan feature (dual-source blending) that no Mali GPU supports. `1.0.3` adds a fallback that is selected automatically on any GPU without that feature, so no configuration is needed.
+
+The fix was verified on a Mali-G57 device and is expected to work across Mali hardware, since it is chosen from the GPU's reported capabilities rather than from a device list. On GPUs without dual-source blending, N64 coverage-based effects such as anti-aliased edges are approximated rather than exact; no visible difference was found in testing. If you see edge or transparency artifacts on a Mali device, please open an issue.
 
 This fork is based on Goemon 64: Recompiled:
 
@@ -30,7 +36,7 @@ The release APK does not contain the game ROM. You must provide your own legally
 - Vulkan-capable GPU and a working Vulkan driver (tested on Snapdragon / Adreno handhelds)
 - Enough free storage for the app data folder, the imported ROM, and saves
 
-This port has been tested primarily on Snapdragon / Adreno handhelds. If graphics are incorrect, crashes happen at game start, or Vulkan device creation fails, your device may need a newer or different Vulkan driver.
+This port has been tested primarily on Snapdragon / Adreno handhelds, and on a Mali-G57 device (see the Mali note above). If graphics are incorrect, crashes happen at game start, or Vulkan device creation fails, your device may need a newer or different Vulkan driver.
 
 ## What This Android Fork Adds
 
