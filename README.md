@@ -7,7 +7,6 @@ This fork packages [Goemon 64: Recompiled](https://github.com/klorfmorf/Goemon64
 - Primarily developed and tested on **Retroid Pocket 5** and **AYN Thor** class handhelds (Snapdragon / Adreno). Device-specific Vulkan or driver issues are still possible on untested hardware.
 - **Mali GPUs are supported as of `1.0.3`.** Earlier versions rendered a white screen with missing textures on Mali devices; see the Mali note below.
 - Requires a working **Vulkan** driver. On devices with incomplete drivers, a custom Turnip driver (e.g. [Mr Purple](https://github.com/MrPurple666/purple-turnip/releases)) may help.
-- `arm64-v8a` only for now. Other ABIs (including x86_64 for emulators) are not built yet.
 
 ### Mali GPUs
 
