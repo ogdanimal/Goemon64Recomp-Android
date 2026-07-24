@@ -137,7 +137,11 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
     dual-source errors where it previously reported **72** — in a run that still
     reports the other two VUID classes, so the zero is a real result and not a
     dead layer. Also verified at the app's **default** graphics settings
-    (`hpfb: Auto`, `Original4x`), not just the settings used while debugging.
+    (`hpfb: Auto`, `Original4x`), not just the settings used while debugging,
+    and at **`MSAA4X`** — that last one matters because the fallback ships six
+    new SPIR-V variants and the three MS ones would otherwise never have been
+    executed by any test (default `msaa_option` is `None`). MSAA4X renders
+    correctly with no pipeline failures.
   - **ADRENO REGRESSION CHECK PASSED 2026-07-23 (RP5, Adreno 650):** logs
     **`dualSrcBlend=1`**, so Adreno provably takes the byte-identical old code
     path. Real gameplay off the user's own save renders correctly (textures,
