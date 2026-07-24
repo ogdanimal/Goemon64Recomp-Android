@@ -63,13 +63,21 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
 `gradle assembleDebug`. NDK 27.1.12297006, CMake 3.22.1. Actions pinned to node24 runtimes.
 - **DUAL-SOURCE-BLEND GUARD added 2026-07-23** (`.github/scripts/check-dual-src-blend.sh`,
   run early in BOTH workflows): the issue #15 regression tripwire. Requires every
-  `SRC1_` blend factor in rt64's own C++ to be selected on a line naming
-  `dualSrcBlend`, and every `SV_TARGET1` / `vk::index(1)` in `RasterPS.hlsl` to
+  `SRC1_` blend factor in rt64's own C++ to be selected within a **statement**
+  naming `dualSrcBlend`, and every `SV_TARGET1` / `vk::index(1)` in **any** rt64
+  shader source (`*.hlsl`/`*.hlsli`, contrib pruned) to
   sit inside `#if !defined(NO_DUAL_SRC_BLEND)`. Unlike the `patches/Makefile`
   guard it **cannot pass vacuously** — it fails if it finds no dual-source sites
-  at all, or if the submodule/shader is missing. All five failure modes were
+  at all, or if the submodule/anchor shader is missing. Every failure mode was
   provoked, not assumed. If a legitimate rt64 upstream merge moves these sites,
   update the script rather than deleting the step.
+  **WIDENED 2026-07-24** (review round 2, three confirmed edge cases): the C++
+  match is statement-scoped so a ternary reformatted across lines no longer fails
+  closed; the shader scan is no longer hardcoded to `RasterPS.hlsl`, so a new
+  shader declaring a secondary output cannot escape; and the preprocessor walker
+  has an `#elif` rule. The `SV_TARGET1` inside `generateShaderText`'s C++ string
+  is deliberately out of scope — DXIL/Metal only, covered instead by rt64's
+  `shaderFormat == SPIRV || capabilities.dualSrcBlend` assert.
 - **ROM-fetch step HARDENED 2026-07-22** (`64269bd`, on `dev` AND `main`; mirrors
   sibling Quest64-Recomp `7bd6068`): the secrets clone is `rm -rf`'d the instant the
   ROM is copied out (its `.git/config` holds the PAT — a raw clone has no post-job
@@ -91,9 +99,10 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
 
 **STATUS 2026-07-24: BLOCKED ON MAINTAINER REVIEW — do not proceed without it.**
 The issue #15 Mali fix is complete, device-verified on both vendors, CI-green on
-`dev`, and **handed to the maintainer for review**. Review round 1 came back and
-was applied (see `RESUME-mali-review.md` § "Review round 1"); the fix itself is
-unchanged. **Do not trust any `dev` hash written in these docs — read the tip.
+`dev`, and **handed to the maintainer for review**. Review rounds 1 and 2 have
+come back and are both applied (see `RESUME-mali-review.md`); **the fix itself is
+unchanged** — round 2 was doc wording plus three CI-guard edge cases, nothing in
+the shader or blend path. **Do not trust any `dev` hash written in these docs — read the tip.
 `dev` history was REWRITTEN on 2026-07-23 (PII scrub, see the public-repo
 section), so every pre-rewrite hash in older notes is a dead commit.** An in-depth
 technical rundown was delivered in-session; the durable copy of everything it
@@ -178,8 +187,12 @@ downstream is deliberately gated on the review, not on anything technical.
     case is REACHABLE** — thousands of `cvgDst=WRAP` draws plus ~100 `CVG_DST_SAVE`
     ones in the intro alone — and **every single one of them also alpha-blends**
     (the non-blending count was zero on both devices), so `cvgAdd && alphaBlend`
-    is not a corner case, it is the only case. Non-zero on Adreno too, which
-    confirms the counts come from the game's display lists, not the GPU. A
+    is not a corner case: **in everything measured so far it is the only case.**
+    That is one intro attract sequence, not the game — effect-heavy gameplay is
+    where a non-blending `cvgAdd` draw would first plausibly show up. Non-zero on
+    Adreno too, which confirms the counts come from the game's display lists
+    rather than the GPU — that is agreement on the *draw mix*, which was never in
+    doubt; whether the fallback *renders* equivalently is still untested. A
     `ubershadersOnly = true` positive control on Mali — coverage lost on EVERY
     draw — still rendered the intro correctly, so the loss is not grossly
     visible; subtle AA-edge differences remain unmeasured and no same-frame

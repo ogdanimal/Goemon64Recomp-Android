@@ -132,14 +132,20 @@ What this establishes:
 - **The worst case is reachable.** `cvgAdd` draws happen in the thousands in the
   intro alone, so "cvgAdd && alphaBlend is broken on the fallback" is a real
   code path in this game, not a theoretical corner.
-- **`cvgAdd && alphaBlend` is not a corner of a corner — it is the ONLY case.**
-  The `plain` (non-alpha-blending) count was **zero everywhere on both devices**.
-  Every single coverage-wrap draw this game issues also alpha-blends, so the
-  benign half of the tradeoff never actually occurs.
-- **Device independence is now observed, not just argued.** Both vendors produce
-  non-zero counts of the same kind. The totals differ only because the two runs
-  are not frame-synced (different resolution, framerate and time per scene), not
-  because the GPU changes what the game draws.
+- **`cvgAdd && alphaBlend` is not a corner of a corner — in everything measured
+  so far it is the ONLY case.** The `plain` (non-alpha-blending) count was **zero
+  everywhere on both devices**, so across the scenes captured the benign half of
+  the tradeoff never actually occurs. Scope that honestly: the measurement is one
+  intro attract sequence on each device. Effect-heavy gameplay (explosions,
+  water, shadows) is where a non-blending `cvgAdd` draw would first plausibly
+  appear, and none of it was exercised.
+- **The two devices agree on the draw mix.** Both vendors produce non-zero counts
+  of the same kind, and the totals differ only because the runs are not
+  frame-synced (different resolution, framerate and time per scene). This is
+  worth stating only as a sanity check on the counter — that the draws come from
+  the emulated game rather than the GPU was never in doubt. It says nothing about
+  the cross-device question that matters, which is whether the fallback *renders*
+  equivalently; that remains untested.
 
 What it does NOT establish, and why the question is not fully closed:
 
@@ -158,7 +164,7 @@ Standing conclusion: the tradeoff is real and reachable, has no gross visual
 impact on the scenes tested, and remains the first suspect if a Mali user reports
 edge or transparency artifacts.
 
-## Review round 2 (2026-07-23) — RECEIVED, NOT YET APPLIED
+## Review round 2 (2026-07-23) — APPLIED 2026-07-24
 
 Feedback on the round-1 report. Four substantive points; all four were checked
 against the code and **all four are correct**. None blocks anything gated.
@@ -198,6 +204,44 @@ hash from the tip.
      branch following a guarded `#if !defined(NO_DUAL_SRC_BLEND)` counts as
      gated.
 
+### What was applied
+
+Points 1–3 were doc edits (this file, CLAUDE.md, and the issue-15 memory): the
+"only case" claim now reads "in everything measured so far" with the intro-only
+scope stated in the same breath, and the device-independence bullet is requalified
+to what it actually shows — the draw mix agrees, the rendering comparison is still
+untested. Point 1 needed no change beyond the answer already written above.
+
+Point 4 rewrote `.github/scripts/check-dual-src-blend.sh`:
+
+- **Check 1 is statement-scoped, not line-scoped.** An awk walker accumulates
+  text since the last `;`/`{`/`}` and requires `dualSrcBlend` somewhere in the
+  statement containing the `SRC1_` use, so a reformatted ternary passes. A gate in
+  an *enclosing* `if ()` still fails — deliberately conservative — and the message
+  now says which is which.
+- **Check 2 scans every `*.hlsl` / `*.hlsli` under `lib/rt64/src`** (contrib
+  pruned), not just `RasterPS.hlsl`, which stays as the preflight anchor. A new
+  shader declaring a secondary output can no longer escape.
+- **The awk walker has an `#elif` rule.** `#elif` clears the guard at that depth
+  unless the new condition re-establishes it (`#elif !defined(NO_DUAL_SRC_BLEND)`),
+  the same as `#else`.
+- **Deliberately still out of scope, now documented in the script header:** the
+  HLSL text `generateShaderText` builds in C++ names `SV_TARGET1` unconditionally.
+  That feeds DXIL/Metal only, both of which hardcode the capability true, and
+  rt64 asserts `shaderFormat == SPIRV || capabilities.dualSrcBlend` before
+  dispatching there. Policing it here would mean allowlisting the exact line this
+  guard forbids, so the assert covers it instead.
+
+**Provoked, not assumed** — before the change all three new cases behaved exactly
+as the review said (multi-line ternary → 2 false failures; new shader with a bare
+`SV_TARGET1` → clean pass; `#elif` branch → counted 2/2 gated). After: ternary
+passes, new shader fails, `#elif` fails, and `#elif !defined(NO_DUAL_SRC_BLEND)`
+still passes. The original five modes were re-provoked and all still fire
+(missing submodule, missing anchor shader, bare `SRC1_`, secondary output in
+`#else`, and both zero-site vacuous-pass guards), plus the new
+gate-in-enclosing-`if` case. Fixtures: minimal repo roots with the two real
+source files copied in and mutated.
+
 ## Known weak points the review may land on
 
 These are the things flagged as worth scrutiny — expect feedback here:
@@ -231,11 +275,14 @@ These are the things flagged as worth scrutiny — expect feedback here:
 - **No CI guard.** ~~A future unguarded `SRC1_` reintroduces this silently.~~
   **CLOSED 2026-07-23:** `.github/scripts/check-dual-src-blend.sh`, run early in
   both workflows. It requires every `SRC1_` factor in rt64's own C++ to be chosen
-  on a line naming `dualSrcBlend`, and every `SV_TARGET1` / `vk::index(1)` in
-  `RasterPS.hlsl` to sit inside `#if !defined(NO_DUAL_SRC_BLEND)`. It fails if it
-  finds neither, so deleting the dual-source path cannot make it pass vacuously
-  — the soft spot the `recomp_*` symbol guard has. Verified by provoking all
-  five failure modes, not just by watching it pass.
+  in a statement naming `dualSrcBlend`, and every `SV_TARGET1` / `vk::index(1)`
+  in any rt64 shader source to sit inside `#if !defined(NO_DUAL_SRC_BLEND)`. It
+  fails if it finds neither, so deleting the dual-source path cannot make it pass
+  vacuously — the soft spot the `recomp_*` symbol guard has. Verified by
+  provoking every failure mode, not just by watching it pass. **Widened
+  2026-07-24** by review round 2: statement-scoped C++ matching, all shader files
+  rather than only `RasterPS.hlsl`, and an `#elif` rule — see "What was applied"
+  above.
 - **Size cost:** ~1.3 MB of extra SPIR-V, uncompressed.
 
 ## Related reading
