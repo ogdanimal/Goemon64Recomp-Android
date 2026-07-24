@@ -593,6 +593,29 @@ downstream is deliberately gated on the review, not on anything technical.
   `64269bd`.
 
 ## Public repo + release process (DONE 2026-07-20)
+- **PII REGRESSION 2026-07-23 — scrubbed on `dev`, but NOT yet purged from
+  GitHub. Open item.** `docs/re-notes/RESUME-mali-issue15.md` (added by the
+  pre-rewrite commit `cb1cf87`) carried the Windows account name in two paths and
+  the A15's hardware **serial** into the public repo. No credentials. `main` never
+  carried the file. Fixed forward, then `dev` history was rewritten with
+  `git filter-branch` over `cb1cf87~1..dev` and force-pushed
+  (`da4eb53` → `df300ac`); all refs and every commit reachable from `dev` now scan
+  clean, and `main` was untouched (the rewrite range started after it).
+  **THE LESSON, which cost a false sense of completion: a history rewrite plus
+  force-push does NOT remove anything from GitHub.** The orphaned commits still
+  resolve — verified, not assumed:
+  `gh api repos/ogdanimal/Goemon64Recomp-Android/contents/<path>?ref=<old-sha>
+  -H "Accept: application/vnd.github.raw"` still returns the leaked lines. The
+  old SHAs are discoverable from the Actions run history, so this is not
+  security-by-obscurity-that-works. **Purging requires a GitHub Support request**
+  to drop the unreachable objects (deleting the repo would take issue #15 with
+  it). Until that is done, treat the identifiers as still public.
+  Backups of the pre-rewrite history: local branch `backup/pre-scrub-rewrite`,
+  `refs/original/refs/heads/dev`, and a verified bundle at
+  `%USERPROFILE%\goemon-backups\2026-07-23-pre-history-rewrite\`.
+  **Every doc that cited a pre-rewrite `dev` hash is now citing a dead commit** —
+  this is exactly why `RESUME-mali-review.md` says to read the tip rather than
+  trust a written hash.
 - **Repo is PUBLIC.** The `validate-external` fork-PR gate turned out UNNEEDED —
   neither workflow triggers on `pull_request`, so fork PRs can't run CI or reach
   the ROM secret. Before flipping, the whole repo + history + submodules + APK were
