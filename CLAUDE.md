@@ -138,15 +138,29 @@ downstream is deliberately gated on the review, not on anything technical.
     alpha; runtime selection of that variant plus `SRC_ALPHA`/`INV_SRC_ALPHA`
     (rt64 `3606f0b`). Devices reporting `dualSrcBlend=1` take the byte-identical
     old path. **TRADEOFF, by design: on the fallback path the coverage value the
-    primary output would carry is lost for alpha-blended draws, so coverage-based
-    effects (N64 AA edges) are approximate.** Sharpened 2026-07-23: `Copy()` sets
-    `srcBlendAlpha=ONE`/`dstBlendAlpha=ZERO`, so the framebuffer alpha receives
-    whatever `SV_TARGET0.a` holds — coverage normally, the blend factor on the
-    fallback. The worst case is therefore **`cvgAdd && alphaBlend`**, where
-    `dstBlendAlpha=ONE` accumulates that alpha: coverage-wrap emulation ends up
-    accumulating the blend factor instead of coverage, so it is **broken there,
-    not merely approximate**. `cvgAdd` WITHOUT `alphaBlend` is unaffected — the
-    shader only overrides `resultColor.a` when `alphaBlend` is set. If a Mali
+    primary output would carry is lost wherever the blend factor takes its place,
+    so coverage-based effects (N64 AA edges) are approximate.** Sharpened
+    2026-07-23: `Copy()` sets `srcBlendAlpha=ONE`/`dstBlendAlpha=ZERO`, so the
+    framebuffer alpha receives whatever `SV_TARGET0.a` holds — coverage normally,
+    the blend factor on the fallback.
+    **SCOPE CORRECTED 2026-07-24 — the two shader paths differ, and the earlier
+    wording here (written before the ubershader fix below) understated it.**
+    Specialized path: the shader overrides `resultColor.a` only when `alphaBlend`
+    is set, so `cvgAdd` WITHOUT `alphaBlend` is genuinely unaffected. Ubershader
+    path (`DYNAMIC_RENDER_PARAMS`): the factor is written UNCONDITIONALLY — that
+    is exactly what the follow-up fix below does — so **every** uber draw writes
+    the factor (`1.0f` when not blending) instead of coverage, `alphaBlend` or
+    not. Uber pipelines only cover draws until the specialized pipeline compiles,
+    so that loss is normally transient; `ubershadersOnly` makes it permanent.
+    Worst case either way is `cvgAdd`, where `dstBlendAlpha=ONE` accumulates that
+    alpha: coverage-wrap emulation accumulates the blend factor instead of
+    coverage, so it is **broken there, not merely approximate**.
+    **The wrong alpha also leaves the GPU:** `Float4ToRGBA16`
+    (`lib/rt64/src/shaders/Formats.hlsli:95`) derives the RGBA5551 alpha bit from
+    `round(a * 255) % 8`, and `FbWriteColorCS` packs that back into emulated
+    RDRAM — so on the fallback the *game* can read a blend factor where coverage
+    should be. Whether mnsg reads those bits is UNKNOWN and untested. All of this
+    is derived from the code; none of it has been measured on device. If a Mali
     user reports edge/transparency artifacts, this is the first suspect.
   - **Verified on device** (Galaxy A15, Mali-G57): logs `dualSrcBlend=0`, intro
     and title screen render in full colour, and Vulkan validation reports **0**
@@ -160,7 +174,9 @@ downstream is deliberately gated on the review, not on anything technical.
     correctly with no pipeline failures.
   - **FOLLOW-UP BUG IN THE FIX, found and fixed 2026-07-23 while reviewing it
     (rt64 `3606f0b`):** `RasterShaderUber` hardcodes `PipelineCreation::alphaBlend
-    = true` (`rt64_raster_shader.cpp:510`), so ubershader pipelines ALWAYS blend
+    = true` (the `RasterShaderUber` ctor, `rt64_raster_shader.cpp:516` — cite the
+    function, line numbers here have already drifted once), so ubershader
+    pipelines ALWAYS blend
     while the shader decides per draw. Dual-source tolerates that because
     `resultAlpha` initialises to `1.0f`, making the factor a neutral copy. The
     first cut of the fallback only moved the factor into `resultColor.a` when
@@ -291,7 +307,8 @@ downstream is deliberately gated on the review, not on anything technical.
     reinstall. Adding migration later means copy-verify-then-delete, never move.
 - **Vulkan diagnostics — DEPLOYED 2026-07-19** (`4a6552f`, via plume `65783a0`
   and rt64 `8c73b3f` — those were the fork tips THEN; **CURRENT TIPS ARE plume
-  `4e77e67` / rt64 `3606f0b`** after the 2026-07-23 issue #15 Mali fix. They were
+  `4e77e67` / rt64 `c6ea60d`** after the 2026-07-23 issue #15 Mali fix and its
+  review follow-ups (the fix itself was rt64 `3606f0b`). They were
   `c69ce04`/`3b49b22` between the pass-2 P1/S4 fix and that). Startup now logs
   the selected physical device (vendor, device API, driver version), the loader's
   Vulkan version vs what we request, and a feature line that now includes
@@ -408,7 +425,7 @@ downstream is deliberately gated on the review, not on anything technical.
   BOTH v1.0.0 and v1.0.1. Fixed all five HIGH + two integrity + three CI items;
   each fixed row in that doc ends with a verified `→ FIXED` note (cite it, don't
   re-derive). Submodule fork tips **as of this pass** (historical — both were
-  superseded on 2026-07-23 by plume `4e77e67` / rt64 `3606f0b` for the Mali fix):
+  superseded on 2026-07-23 by plume `4e77e67` / rt64 `c6ea60d` for the Mali fix):
   plume `c69ce04`, rt64 `3b49b22`, both pushed to their `goemon-android` forks.
   `git ls-remote`-verified the whole gitlink chain is CI-buildable. (**N64MR was `b6f6253` here but was
   bumped to `920d493` by the 2026-07-21 tail session** — see that bullet; plume/rt64
@@ -483,7 +500,7 @@ downstream is deliberately gated on the review, not on anything technical.
   record: **`docs/code-review-2026-07-21-remediation.md`** (cite it, don't
   re-derive). **N64ModernRuntime gitlink bumped `b6f6253` → `920d493`**
   (fork-pushed, ls-remote-verified; plume/rt64 tips unchanged at
-  `c69ce04`/`3b49b22`; **plume/rt64 have since moved to `4e77e67`/`3606f0b` for
+  `c69ce04`/`3b49b22`; **plume/rt64 have since moved to `4e77e67`/`c6ea60d` for
   the Mali fix**). Was held from device testing at the maintainer's request; a
   checksum-verified save backup was taken first
   (`goemon-backups/2026-07-21-preinstall-debug/`).
