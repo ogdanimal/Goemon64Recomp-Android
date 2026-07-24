@@ -158,6 +158,46 @@ Standing conclusion: the tradeoff is real and reachable, has no gross visual
 impact on the scenes tested, and remains the first suspect if a Mali user reports
 edge or transparency artifacts.
 
+## Review round 2 (2026-07-23) — RECEIVED, NOT YET APPLIED
+
+Feedback on the round-1 report. Four substantive points; all four were checked
+against the code and **all four are correct**. None blocks anything gated.
+
+**Note on the review's own base:** it verified against root commit `2b81c8e`,
+which no longer exists — `dev` history was rewritten after it (PII scrub). Its
+findings still hold because the content it read is unchanged, but re-derive any
+hash from the tip.
+
+1. **The 390 vs 6366 wrap-count gap was unexplained.** Answered here, from the
+   captured logs: the two numbers are at **different sample points**, not
+   different scene coverage. The counter prints every 50000 draws; 6366 was the
+   reading at `draws=550000` in the normal run, 390 was the reading at
+   `draws=50000` in the control run. At the **matched** 50000-draw sample the
+   normal run had `wrap=0` and the control had `wrap=390`, i.e. the control
+   reached coverage-wrap draws *earlier*, not less. So the control was not
+   running blind footage. What remains genuinely unproven is whether the
+   screenshot moment coincides with a wrap-heavy moment — the counts prove wrap
+   draws occurred during the run, not that they were on screen in that frame.
+2. **"It is the only case" overstates intro-scoped data.** Correct, and it
+   contradicts this doc's own "intro only" caveat. The defensible claim is "in
+   everything measured so far". Effect-heavy gameplay (explosions, water,
+   shadows) is where a non-blending `cvgAdd` draw would first plausibly appear.
+   **Fix the wording in CLAUDE.md and here when applying this round.**
+3. **"Device independence is now observed" answers a question nobody asked.**
+   Fair. What the two devices agree on is the *draw mix*, which was never in
+   doubt since the draws come from the emulated game. The cross-device question
+   that matters — does the fallback *render* equivalently — is exactly the one
+   still untested.
+4. **Three guard-script edge cases, all confirmed present:**
+   - Multi-line ternary (`= dualSrcBlend\n ? SRC1_ALPHA`) fails **closed** — a
+     false positive, and the message will not hint that reformatting caused it.
+   - The shader check is hardcoded to `RasterPS.hlsl` (`:26`), so a NEW shader
+     using `SV_TARGET1` / `vk::index(1)` escapes entirely. The C++ half is
+     repo-wide; the output half is not.
+   - The awk walker has no `#elif` rule, so a secondary output in an `#elif`
+     branch following a guarded `#if !defined(NO_DUAL_SRC_BLEND)` counts as
+     gated.
+
 ## Known weak points the review may land on
 
 These are the things flagged as worth scrutiny — expect feedback here:
