@@ -88,23 +88,56 @@ report_ungated() {
     done <<< "${report}"
 }
 
+# Shared awk prologue. Both checks judge code, not commentary: a comment carrying
+# the gate's vocabulary next to an ungated site would otherwise read as the gate
+# itself, and a commented-out preprocessor directive would corrupt the nesting
+# walk. Block comment state (inblock) is global and reset per file.
+AWK_STRIP_COMMENTS='
+    function strip_comments(s,   r, p, q) {
+        r = ""
+        while (length(s) > 0) {
+            if (inblock) {
+                p = index(s, "*/")
+                if (p == 0) { s = ""; break }
+                s = substr(s, p + 2)
+                inblock = 0
+            } else {
+                p = index(s, "/*")
+                q = index(s, "//")
+                if (q > 0 && (p == 0 || q < p)) { r = r substr(s, 1, q - 1); s = ""; break }
+                if (p == 0) { r = r s; s = ""; break }
+                r = r substr(s, 1, p - 1)
+                s = substr(s, p + 2)
+                inblock = 1
+            }
+        }
+        return r
+    }
+'
+
 # --- Check 1: every SRC1_ blend factor is selected by the capability --------
 # Each use must be part of a statement that also names dualSrcBlend, i.e. the
 # ternary that picks the fallback factor. A bare RenderBlend::SRC1_ALPHA is the
 # regression. The statement, not the line, is the unit: a ternary reformatted
 # across several lines keeps the gate on the first of them, and judging that line
 # by line would fail closed with a message pointing at the wrong thing.
-src1_report=$(printf '%s\n' "${cpp_files}" | xargs awk '
-    FNR == 1 { stmt = "" }
+#
+# Comments are stripped first. Widening the window from the line to the statement
+# also widens what can sit in it, and a "// dualSrcBlend picks this" above a bare
+# SRC1_ factor must not read as the gate -- that would be a WIDER false negative
+# than the line-based check this replaced.
+src1_report=$(printf '%s\n' "${cpp_files}" | xargs awk "${AWK_STRIP_COMMENTS}"'
+    FNR == 1 { stmt = ""; inblock = 0 }
     {
-        stmt = stmt " " $0
-        if ($0 ~ /SRC1_/) {
+        code = strip_comments($0)
+        stmt = stmt " " code
+        if (code ~ /SRC1_/) {
             total++
             if (stmt ~ /dualSrcBlend/) { gated++ }
             else { printf "UNGATED %s:%d: %s\n", FILENAME, FNR, $0 }
         }
         # Statement boundary: start accumulating again on the next line.
-        if ($0 ~ /[;{}]/) { stmt = "" }
+        if (code ~ /[;{}]/) { stmt = "" }
     }
     END { printf "TOTAL %d %d\n", total, gated }
 ')
@@ -121,36 +154,50 @@ fi
 # sit inside a "#if !defined(NO_DUAL_SRC_BLEND)" (or #ifndef) region. #else drops
 # the guard, and so does #elif unless the new condition re-establishes it, so a
 # secondary output in a fallback branch is flagged too.
-shader_report=$(printf '%s\n' "${shader_files}" | xargs awk '
+shader_report=$(printf '%s\n' "${shader_files}" | xargs awk "${AWK_STRIP_COMMENTS}"'
     function guarded(   d) {
         for (d = 1; d <= depth; d++) if (guard[d]) return 1
         return 0
     }
+    # A guard only counts when the negation applies to NO_DUAL_SRC_BLEND ITSELF.
+    # Testing for the macro name and for a "!defined" independently accepts
+    # "#if defined(NO_DUAL_SRC_BLEND) && !defined(FOO)", where the negation
+    # belongs to some other macro -- that is a secondary output living in the
+    # FALLBACK branch, the exact regression this check exists to catch.
+    #
+    # "&&" is safe: it can only narrow a region that already requires the macro
+    # to be undefined. "||" can widen it back into fallback builds, so any
+    # condition containing one is not accepted as a guard.
     function is_negated_guard(line) {
-        return (line ~ /NO_DUAL_SRC_BLEND/ &&
-                (line ~ /![[:space:]]*defined/ || line ~ /#[[:space:]]*ifndef/))
+        if (line ~ /\|\|/) { return 0 }
+        if (line ~ /#[[:space:]]*ifndef[[:space:]]+NO_DUAL_SRC_BLEND([^A-Za-z0-9_]|$)/) { return 1 }
+        if (line ~ /![[:space:]]*defined[[:space:]]*\(?[[:space:]]*NO_DUAL_SRC_BLEND([^A-Za-z0-9_]|$)/) { return 1 }
+        return 0
     }
-    FNR == 1 { depth = 0 }
-    /^[[:space:]]*#[[:space:]]*(if|ifdef|ifndef)/ {
-        depth++
-        guard[depth] = is_negated_guard($0) ? 1 : 0
-        next
-    }
-    /^[[:space:]]*#[[:space:]]*elif/ {
-        if (depth > 0) guard[depth] = is_negated_guard($0) ? 1 : 0
-        next
-    }
-    /^[[:space:]]*#[[:space:]]*else/ { if (depth > 0) guard[depth] = 0; next }
-    /^[[:space:]]*#[[:space:]]*endif/ { if (depth > 0) { guard[depth] = 0; depth-- } next }
-    /SV_TARGET1|vk::index\(1\)/ {
-        total++
-        if (guarded()) { gated++ } else { printf "UNGATED %s:%d: %s\n", FILENAME, FNR, $0 }
+    FNR == 1 { depth = 0; inblock = 0 }
+    {
+        line = strip_comments($0)
+        if (line ~ /^[[:space:]]*#[[:space:]]*(if|ifdef|ifndef)/) {
+            depth++
+            guard[depth] = is_negated_guard(line) ? 1 : 0
+            next
+        }
+        if (line ~ /^[[:space:]]*#[[:space:]]*elif/) {
+            if (depth > 0) { guard[depth] = is_negated_guard(line) ? 1 : 0 }
+            next
+        }
+        if (line ~ /^[[:space:]]*#[[:space:]]*else/) { if (depth > 0) { guard[depth] = 0 } next }
+        if (line ~ /^[[:space:]]*#[[:space:]]*endif/) { if (depth > 0) { guard[depth] = 0; depth-- } next }
+        if (line ~ /SV_TARGET1|vk::index\(1\)/) {
+            total++
+            if (guarded()) { gated++ } else { printf "UNGATED %s:%d: %s\n", FILENAME, FNR, $0 }
+        }
     }
     END { printf "TOTAL %d %d\n", total, gated }
 ')
 read -r shader_total shader_gated <<< "$(sum_totals "${shader_report}")"
 report_ungated "${shader_report}" "dual source shader output" \
-    "the secondary output must stay inside #if !defined(NO_DUAL_SRC_BLEND)."
+    "the secondary output must stay inside #if !defined(NO_DUAL_SRC_BLEND) or #ifndef NO_DUAL_SRC_BLEND. A compound condition counts only when the negation applies to NO_DUAL_SRC_BLEND itself and there is no ||."
 
 if [ "${shader_total}" -eq 0 ]; then
     fail "no secondary shader output found in any shader under ${RT64_SRC}. Either the dual source path was removed (update this guard) or the scan is broken."

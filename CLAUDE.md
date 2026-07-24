@@ -77,7 +77,19 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
   shader declaring a secondary output cannot escape; and the preprocessor walker
   has an `#elif` rule. The `SV_TARGET1` inside `generateShaderText`'s C++ string
   is deliberately out of scope — DXIL/Metal only, covered instead by rt64's
-  `shaderFormat == SPIRV || capabilities.dualSrcBlend` assert.
+  `shaderFormat == SPIRV || capabilities.dualSrcBlend` assert (reviewer-accepted;
+  note the assert compiles out under `NDEBUG`).
+  **TIGHTENED AGAIN 2026-07-24 (review round 3) — and this is the lesson:** those
+  round-2 widenings each opened a false NEGATIVE. Comments now get stripped
+  before either check runs (a `// dualSrcBlend` above a bare `SRC1_` had become
+  the gate — a *wider* hole than the line-based check it replaced), and a
+  `#if !defined(...)` only counts when the negation applies to
+  `NO_DUAL_SRC_BLEND` itself with no `||` (`#if defined(NO_DUAL_SRC_BLEND) &&
+  !defined(FOO)` had been passing a secondary output in the *fallback* branch).
+  **`.github/scripts/test-dual-src-blend-guard.sh` now pins all 27 cases in both
+  directions and runs in both workflows** — because twice in a row a fix for a
+  false positive moved a hole instead of closing it, and only external probing
+  caught it. Change a regex, run the suite.
 - **ROM-fetch step HARDENED 2026-07-22** (`64269bd`, on `dev` AND `main`; mirrors
   sibling Quest64-Recomp `7bd6068`): the secrets clone is `rm -rf`'d the instant the
   ROM is copied out (its `.git/config` holds the PAT — a raw clone has no post-job
@@ -97,12 +109,19 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
 
 ## Current focus & parked work
 
-**STATUS 2026-07-24: BLOCKED ON MAINTAINER REVIEW — do not proceed without it.**
+**STATUS 2026-07-24: REVIEW COMPLETE — awaiting the maintainer's release go/no-go.**
 The issue #15 Mali fix is complete, device-verified on both vendors, CI-green on
-`dev`, and **handed to the maintainer for review**. Review rounds 1 and 2 have
-come back and are both applied (see `RESUME-mali-review.md`); **the fix itself is
-unchanged** — round 2 was doc wording plus three CI-guard edge cases, nothing in
-the shader or blend path. **Do not trust any `dev` hash written in these docs — read the tip.
+`dev`, and **reviewed over three rounds, all applied** (see
+`RESUME-mali-review.md`); **the fix itself is unchanged through all three** —
+rounds 2 and 3 were doc wording plus CI-guard hardening, nothing in the shader or
+blend path. **Round 3 answered both open questions:** the `generateShaderText`
+guard exclusion is accepted as made (with the `NDEBUG` assert gap held
+knowingly), and **render-equivalence testing is NOT a ship blocker** — it is an
+accepted known limitation, provided the limitation is named in the release notes
+and the issue #15 reply and the same-frame Mali/Adreno capture happens
+post-release. **The reviewer explicitly deferred the release decision itself, so
+the maintainer's own go/no-go on cutting `v1.0.3` is still required.**
+**Do not trust any `dev` hash written in these docs — read the tip.
 `dev` history was REWRITTEN on 2026-07-23 (PII scrub, see the public-repo
 section), so every pre-rewrite hash in older notes is a dead commit.** An in-depth
 technical rundown was delivered in-session; the durable copy of everything it
@@ -110,12 +129,14 @@ covered is the issue #15 bullet below plus
 `docs/re-notes/RESUME-mali-review.md`, which is **the resume prompt for this
 waiting state — read it first**.
 
-**DO NOT, until the maintainer returns a verdict:** fast-forward `main`, tag any
-`v*`, reply to issue #15, or start the two open validation findings. Everything
-downstream is deliberately gated on the review, not on anything technical.
+**DO NOT, until the maintainer gives the release go-ahead:** fast-forward `main`,
+tag any `v*`, or reply to issue #15. The technical gate is cleared; what remains
+is the maintainer's own call on shipping, which the reviewer deliberately did not
+make for them.
 
-**NEXT ACTIONS once the review comes back:**
-1. **Apply whatever the review asks for**, on `dev`, through the submodule chain
+**NEXT ACTIONS, in order, once the maintainer says ship:**
+1. ~~Apply whatever the review asks for~~ **DONE — all three rounds applied.** If
+   a fourth arrives, apply it on `dev` through the submodule chain
    (plume → rt64 → root), re-verifying the gitlink chain with `git ls-remote`.
    Re-run the Mali device check for any shader/blend change — and use the
    `ubershadersOnly = true` positive control if the change touches the
@@ -129,13 +150,22 @@ downstream is deliberately gated on the review, not on anything technical.
 3. **Cut `v1.0.3`**, doing a `v1.0.3-rc1` dry-run tag first (proves the
    versionCode derivation → `10003`, monotonic over v1.0.2's `10002`). Release
    notes must be applied AFTER with `gh release edit --notes-file`, emoji-free.
+   **The notes MUST name the known limitation in one sentence** — coverage-based
+   effects are approximated on GPUs without dual-source blending — which is a
+   condition the reviewer attached to shipping without the render-equivalence
+   test, not optional polish.
    **Smoke-testing that rc on the RP5 needs an uninstall + save restore**, because
    the RP5 currently holds the *debug* build of the Mali fix and a release-signed
    APK cannot install over it — back up and checksum-verify first, and expect
    `saves/` to be emptied. See the RP5 bullet in § Environment.
 4. **Reply to issue #15** — the standing decision is to hold until the fix
-   ships, so this is gated on step 3, not on anything technical.
-5. Then: the two open Vulkan-validation findings (see the issue #15 bullet), and
+   ships, so this is gated on step 3, not on anything technical. **Carry the same
+   one-sentence limitation** into the reply.
+5. **Post-release validation (the reviewer's other condition):** the same-frame
+   Mali/Adreno capture plus effect-heavy gameplay with `RT64_DIAG_CVG_ADD`. It is
+   wanted for any upstream PR regardless, and it is the triage path if a Mali
+   user reports edge/transparency artifacts.
+6. Then: the two open Vulkan-validation findings (see the issue #15 bullet), and
    the still-deferred M8 + N5 device-gated checks.
 
 - **ISSUE #15 — white screen on Mali GPUs. ROOT CAUSE FOUND AND FIXED

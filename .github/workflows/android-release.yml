@@ -50,6 +50,11 @@ jobs:
       - name: Guard dual source blending gating
         run: ./.github/scripts/check-dual-src-blend.sh
 
+      # See the same step in android.yml -- the guard has regressed twice while
+      # being hardened, so its own behaviour is pinned by a suite.
+      - name: Test the dual source blending guard
+        run: ./.github/scripts/test-dual-src-blend-guard.sh
+
       # Validate the committed gradle-wrapper.jar against Gradle's published good
       # hashes before it runs with the signing keystore + ROM PAT in scope.
       # SHA-pinned like every other action here (H7).

@@ -59,6 +59,12 @@ jobs:
       - name: Guard dual source blending gating
         run: ./.github/scripts/check-dual-src-blend.sh
 
+      # The guard itself has regressed twice while being hardened, both times by
+      # a fix for a false positive quietly opening a false negative. This suite
+      # pins every case either direction against synthesized fixtures.
+      - name: Test the dual source blending guard
+        run: ./.github/scripts/test-dual-src-blend-guard.sh
+
       # The gradle-wrapper.jar is committed to the repo and executes with the ROM
       # PAT in scope; validate it against Gradle's published good hashes so a
       # tampered wrapper can't run. SHA-pinned like every other action here (H7).

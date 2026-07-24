@@ -242,6 +242,73 @@ still passes. The original five modes were re-provoked and all still fire
 gate-in-enclosing-`if` case. Fixtures: minimal repo roots with the two real
 source files copied in and mutated.
 
+## Review round 3 (2026-07-24) — APPLIED, and both open questions ANSWERED
+
+The reviewer re-derived everything from the new tip and re-provoked the round-2
+guard fixes independently rather than trusting the provocation table. All four
+behaved as reported. Two new probes then found residual false negatives.
+
+**Both were regressions round 2 introduced** — verified by re-running each probe
+against the pre-round-2 script (`f6409b5`), which caught both. Fixing two false
+positives had opened two false negatives, in the fail-open direction:
+
+1. **Compound fallback condition.** `is_negated_guard` tested for the macro name
+   and for a `!defined` *independently*, so
+   `#if defined(NO_DUAL_SRC_BLEND) && !defined(FOO)` counted as gated — a
+   secondary output in the FALLBACK branch, exactly what check 2 exists to
+   forbid. The pre-round-2 code required `!defined` adjacent to `#if`, so the
+   refactor to a helper is what lost it. Fixed: the negation must apply to
+   `NO_DUAL_SRC_BLEND` itself, and `||` (which can widen a guarded region back
+   into fallback builds) disqualifies the condition.
+2. **Comments inside the statement window.** Widening check 1 from the line to
+   the statement also widened what could sit in it, so a
+   `// dualSrcBlend chooses this` above a bare `SRC1_ALPHA` read as the gate — a
+   *wider* aperture than the line-based check it replaced. Fixed: both checks
+   strip `//` and `/* */` (tracked across lines) before matching.
+
+**Three more holes were found by writing the suite, present since the ORIGINAL
+guard and missed by all three review rounds:** a trailing `// dualSrcBlend` on
+the same line as a bare factor, `||` widening a guarded region, and
+`NO_DUAL_SRC_BLEND_EXTRA` matching as a prefix.
+
+**`.github/scripts/test-dual-src-blend-guard.sh` (new, wired into both
+workflows).** 27 cases, both directions, against synthesized fixtures so it runs
+without the submodule. Proven live rather than assumed: run against the round-2
+guard it fails on exactly the 7 known holes; against the original guard it fails
+on 8, including that round's false positives. **This is an addition beyond what
+the review asked for** — the review asked for two regexes. The argument for it is
+that this guard has now been hardened three times and two of those rounds moved a
+hole rather than closing one, which is the failure a suite exists to stop. Drop
+it if the extra CI surface is not wanted; the regexes stand alone.
+
+### The two open questions — answered by the reviewer
+
+- **`generateShaderText` exclusion: ACCEPTED as made.** Allowlisting the one line
+  containing the token the guard forbids would teach the script to ignore its own
+  target; the invariant belongs at the semantic layer where the assert puts it.
+  **Caveat to hold knowingly:** `assert` compiles out under `NDEBUG`, so release
+  D3D12/Metal builds do not check it. Acceptable today because both backends
+  hardcode the capability `true` at compile time, so it can only fire if someone
+  deliberately changes plume — and that person will run a debug build eventually.
+  If it ever needs to be hard, promote it to an unconditional check that fails
+  pipeline creation loudly. **Not required for this release.**
+- **Render-equivalence testing: NOT a ship blocker — accepted known limitation.**
+  The Mali baseline is a white screen, so the fallback strictly dominates the
+  status quo on affected hardware, and the dual-source path is byte-identical for
+  every currently-working device, so regression risk to existing users is zero.
+  What is unproven is subtle (AA-edge/coverage equivalence on draws the
+  measurements show always alpha-blend anyway) and the positive control bounds
+  the damage at "not grossly visible". **Conditions attached to shipping:** name
+  the limitation in one sentence in both the release notes and the issue #15
+  reply (coverage-based effects are approximated on GPUs without dual-source
+  blending), and keep the same-frame Mali/Adreno capture plus effect-heavy
+  gameplay as **post-release** validation — that evidence is wanted for any
+  upstream PR regardless, and the `RT64_DIAG_CVG_ADD` counter makes triage cheap
+  if a Mali user reports artifacts.
+
+**The maintainer's own go/no-go on cutting `v1.0.3` is still required** — the
+reviewer explicitly deferred the release decision rather than giving it.
+
 ## Known weak points the review may land on
 
 These are the things flagged as worth scrutiny — expect feedback here:
@@ -257,8 +324,11 @@ These are the things flagged as worth scrutiny — expect feedback here:
   backends hardcode the capability true. **Addressed 2026-07-23 (rt64 `c6ea60d`):**
   both `RasterShader` and `RasterShaderUber` now assert
   `shaderFormat == SPIRV || capabilities.dualSrcBlend` before the format
-  dispatch. It documents the coupling and fails loudly in a development build —
-  it does not add a fallback, and it compiles out under `NDEBUG`.
+  dispatch (`rt64_raster_shader.cpp:110` and `:458`). It documents the coupling
+  and fails loudly in a development build — it does not add a fallback, and it
+  compiles out under `NDEBUG`. **Reviewer-accepted round 3**, with that NDEBUG
+  gap held knowingly; promote it to an unconditional pipeline-creation failure
+  only if it ever needs to be hard.
 - **`assert(!blob.empty())` compiles out in release** — a parse failure would
   yield a null shader silently. Pre-existing pattern, now with four more blobs.
 - **Coverage fidelity is characterised from the code, not measured.** Nobody has
