@@ -51,6 +51,14 @@ jobs:
         with:
           submodules: recursive
 
+      # Issue #15 regression tripwire. RT64's dual source blending is invalid on
+      # every Mali GPU and the driver renders garbage instead of failing, so an
+      # ungated SRC1_ factor or secondary shader output would ship a white screen
+      # to hardware neither CI nor our test devices have. Runs before the long
+      # build so the failure is immediate.
+      - name: Guard dual source blending gating
+        run: ./.github/scripts/check-dual-src-blend.sh
+
       # The gradle-wrapper.jar is committed to the repo and executes with the ROM
       # PAT in scope; validate it against Gradle's published good hashes so a
       # tampered wrapper can't run. SHA-pinned like every other action here (H7).

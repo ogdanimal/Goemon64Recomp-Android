@@ -85,12 +85,18 @@ code before acting; two were real and had not been recorded anywhere.
   fix. It never entered any document — `grep` finds it in no `*.md`. Nothing to
   do. Several other "gaps" were already listed as known weak points below.
 
-Still open from this round, both deliberate:
+Also closed in this round: the CI guard (see the weak point below).
 
-- The `cvgAdd` breakage is still reasoned, never observed. The cheap way to
-  close it is `ubershadersOnly = true` on the A15 in a scene using coverage
-  wrap, which forces the worst case permanently instead of transiently.
-- No CI guard against a future unguarded `SRC1_`.
+Still open:
+
+- The `cvgAdd` breakage is still reasoned, never observed. **Do this before the
+  visual A/B**: instrument rt64 to count draws where `cvgAdd` is set and find out
+  whether mnsg issues any at all. That is a property of the game's display
+  lists, not of the GPU, so it can be measured on ANY device — if the count is
+  zero the worst case is unreachable in this game and the question is closed
+  without a Mali session. If it is non-zero, then do the A/B on the A15 with
+  `ubershadersOnly = true`, which forces the worst case permanently rather than
+  transiently.
 
 ## Known weak points the review may land on
 
@@ -122,9 +128,14 @@ These are the things flagged as worth scrutiny — expect feedback here:
   itself can read it. See the tradeoff bullet in CLAUDE.md § "Current focus".
 - **One Mali device, one driver** (G57 / r38p1). The reporter's G77 is
   unconfirmed and can only be confirmed by shipping and asking.
-- **No CI guard.** A future unguarded `SRC1_` reintroduces this silently. The
-  repo has precedent for this kind of check (`patches/Makefile`'s undefined
-  `recomp_*` symbol guard).
+- **No CI guard.** ~~A future unguarded `SRC1_` reintroduces this silently.~~
+  **CLOSED 2026-07-23:** `.github/scripts/check-dual-src-blend.sh`, run early in
+  both workflows. It requires every `SRC1_` factor in rt64's own C++ to be chosen
+  on a line naming `dualSrcBlend`, and every `SV_TARGET1` / `vk::index(1)` in
+  `RasterPS.hlsl` to sit inside `#if !defined(NO_DUAL_SRC_BLEND)`. It fails if it
+  finds neither, so deleting the dual-source path cannot make it pass vacuously
+  — the soft spot the `recomp_*` symbol guard has. Verified by provoking all
+  five failure modes, not just by watching it pass.
 - **Size cost:** ~1.3 MB of extra SPIR-V, uncompressed.
 
 ## Related reading

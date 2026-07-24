@@ -61,6 +61,15 @@ runners on every push to `dev`/`main`. It pulls the ROM from the PRIVATE compani
 `ogdanimal/Goemon64RecompSecrets` via the secret `G64RS_REPO_WITH_PAT` (an authenticated
 clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
 `gradle assembleDebug`. NDK 27.1.12297006, CMake 3.22.1. Actions pinned to node24 runtimes.
+- **DUAL-SOURCE-BLEND GUARD added 2026-07-23** (`.github/scripts/check-dual-src-blend.sh`,
+  run early in BOTH workflows): the issue #15 regression tripwire. Requires every
+  `SRC1_` blend factor in rt64's own C++ to be selected on a line naming
+  `dualSrcBlend`, and every `SV_TARGET1` / `vk::index(1)` in `RasterPS.hlsl` to
+  sit inside `#if !defined(NO_DUAL_SRC_BLEND)`. Unlike the `patches/Makefile`
+  guard it **cannot pass vacuously** — it fails if it finds no dual-source sites
+  at all, or if the submodule/shader is missing. All five failure modes were
+  provoked, not assumed. If a legitimate rt64 upstream merge moves these sites,
+  update the script rather than deleting the step.
 - **ROM-fetch step HARDENED 2026-07-22** (`64269bd`, on `dev` AND `main`; mirrors
   sibling Quest64-Recomp `7bd6068`): the secrets clone is `rm -rf`'d the instant the
   ROM is copied out (its `.git/config` holds the PAT — a raw clone has no post-job

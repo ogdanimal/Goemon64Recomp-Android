@@ -45,6 +45,11 @@ jobs:
           submodules: recursive
           fetch-depth: 0   # full history + tags (versionCode is now tag-derived, not commit count)
 
+      # Issue #15 regression tripwire -- see the same step in android.yml. This
+      # matters more here: a release ships to users whose GPUs we cannot test.
+      - name: Guard dual source blending gating
+        run: ./.github/scripts/check-dual-src-blend.sh
+
       # Validate the committed gradle-wrapper.jar against Gradle's published good
       # hashes before it runs with the signing keystore + ROM PAT in scope.
       # SHA-pinned like every other action here (H7).
