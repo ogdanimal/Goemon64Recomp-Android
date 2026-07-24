@@ -16,7 +16,11 @@ below; the fix itself is unchanged and the wait continues.
 - `dev` tip: check it, do not trust a hash written here (it drifts every commit)
 - submodule tips: rt64 **`c6ea60d`**, plume **`4e77e67`** (both fork-pushed and
   `ls-remote`-verified; the whole gitlink chain is CI-buildable)
-- CI green on both fix commits (`30053393161`, `30055908366`)
+- CI green. The two original fix-commit run records (`30053393161`,
+  `30055908366`) were **deleted** on 2026-07-23 during the PII cleanup — they
+  published pre-rewrite commit SHAs. Those commits no longer exist on `dev`
+  anyway; the rewritten history has its own green run. Re-check with
+  `gh run list --repo ogdanimal/Goemon64Recomp-Android --branch dev`.
 - `main` is **behind** `dev` and does NOT carry the fix — deliberately
 
 ## Do NOT do these without the maintainer saying so

@@ -91,7 +91,11 @@ clone URL), runs the host recompile + host `file_to_c` + patches codegen, then
 
 **STATUS 2026-07-24: BLOCKED ON MAINTAINER REVIEW — do not proceed without it.**
 The issue #15 Mali fix is complete, device-verified on both vendors, CI-green on
-`dev` (tip `b2c053b`), and **handed to the maintainer for review**. An in-depth
+`dev`, and **handed to the maintainer for review**. Review round 1 came back and
+was applied (see `RESUME-mali-review.md` § "Review round 1"); the fix itself is
+unchanged. **Do not trust any `dev` hash written in these docs — read the tip.
+`dev` history was REWRITTEN on 2026-07-23 (PII scrub, see the public-repo
+section), so every pre-rewrite hash in older notes is a dead commit.** An in-depth
 technical rundown was delivered in-session; the durable copy of everything it
 covered is the issue #15 bullet below plus
 `docs/re-notes/RESUME-mali-review.md`, which is **the resume prompt for this
@@ -606,10 +610,20 @@ downstream is deliberately gated on the review, not on anything technical.
   resolve — verified, not assumed:
   `gh api repos/ogdanimal/Goemon64Recomp-Android/contents/<path>?ref=<old-sha>
   -H "Accept: application/vnd.github.raw"` still returns the leaked lines. The
-  old SHAs are discoverable from the Actions run history, so this is not
-  security-by-obscurity-that-works. **Purging requires a GitHub Support request**
-  to drop the unreachable objects (deleting the repo would take issue #15 with
-  it). Until that is done, treat the identifiers as still public.
+  old SHAs were discoverable from the Actions run history, so this was not
+  security-by-obscurity-that-works.
+  **CLOSED 2026-07-23 by deleting the discovery path, not by purging.** All 79
+  workflow runs were matched against the exact 15-commit leaked set (derived from
+  the backup branch, NOT from a live orphan check — an earlier orphan check
+  silently mislabelled three unrelated runs and would have destroyed them); the
+  5 runs that published leaked-range SHAs were deleted, and the anonymous
+  discovery chain was re-run and returns nothing. Live surfaces — issues, all
+  comments, releases, tags — scanned clean.
+  **DECIDED: no GitHub Support request.** The objects survive on GitHub and are
+  still retrievable by anyone who *already* recorded a pre-rewrite SHA (an old
+  clone, a mirror, the archived events stream), but nothing in the repo hands out
+  the key any more. It is a surname, not a credential, so there is nothing to
+  rotate. Do not re-raise this without new evidence.
   Backups of the pre-rewrite history: local branch `backup/pre-scrub-rewrite`,
   `refs/original/refs/heads/dev`, and a verified bundle at
   `%USERPROFILE%\goemon-backups\2026-07-23-pre-history-rewrite\`.
