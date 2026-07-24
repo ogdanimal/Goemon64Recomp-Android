@@ -208,6 +208,6 @@ if [ "${status}" -eq 0 ]; then
     printf 'dual source blending is gated: %d/%d blend factors, %d/%d shader outputs.\n' \
         "${src1_gated}" "${src1_total}" "${shader_gated}" "${shader_total}"
 else
-    printf '\nSee the issue #15 notes in CLAUDE.md for why this matters.\n' >&2
+    printf '\nSee this script'"'"'s header for why dual source blending must stay gated.\n' >&2
 fi
 exit "${status}"
