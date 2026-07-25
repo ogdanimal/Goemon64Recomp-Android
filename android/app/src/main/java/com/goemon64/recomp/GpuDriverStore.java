@@ -74,11 +74,19 @@ import java.util.zip.ZipFile;
  *     process-death latch cannot see. On confirmation the id lands in
  *     {@code confirmed_id}.</li>
  * <li><b>Confirmed</b>: cleared automatically once the renderer has produced
- *     enough frames to prove it is alive, or on a clean shutdown. A human has
- *     already testified that this driver draws the game, so re-asking every
- *     launch would be nagging; what is still worth catching is the process dying
- *     or the GPU hanging, and both stop frames.</li>
+ *     enough frames to prove it is alive, and — best-effort — on a clean
+ *     shutdown. A human has already testified that this driver draws the game,
+ *     so re-asking every launch would be nagging; what is still worth catching
+ *     is the process dying or the GPU hanging, and both stop frames.</li>
  * </ul>
+ *
+ * <p>The frame count is the load-bearing path of those two. The shutdown clear
+ * runs in {@code MainActivity.onDestroy}, which Android only guarantees for a
+ * finishing activity, so a short session ended by a background kill can leave the
+ * latch armed and cost a confirmed driver a launch it survived. That trade is
+ * deliberate and the reasoning is on {@code onDestroy}; the short version is that
+ * a spurious revert is loud and one selection away from undone, while a missed
+ * hang is a crash loop.
  *
  * <p>A driver the latch reverts loses its confirmation, so it has to earn it
  * again if the user selects it a second time.

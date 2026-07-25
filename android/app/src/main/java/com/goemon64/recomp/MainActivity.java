@@ -411,6 +411,26 @@ public class MainActivity extends SDLActivity {
             // has an effect for a driver the user already confirmed; an
             // unconfirmed one still needs the in-game answer, or quitting would
             // silently endorse a driver nobody ever saw draw anything.
+            //
+            // This is a BEST-EFFORT clear, not a guaranteed one, and the design
+            // depends on it being the weaker of the two paths. Android only
+            // promises onDestroy for a finishing activity: a swipe from recents
+            // or a low-memory kill while backgrounded skips it. So a confirmed
+            // driver can lose a launch that was fine — backgrounded at 10s, killed
+            // by the system, and the next launch "recovers" from nothing, saying
+            // the game did not start when it did.
+            //
+            // Accepted deliberately, because the ambiguity is two-sided and only
+            // one side is fatal. "Backgrounded early, then killed" is also exactly
+            // what a user does when fleeing a driver that hung, so clearing the
+            // latch unconditionally in onStop would break the hang recovery this
+            // whole mechanism exists for. A spurious revert is loud, self-
+            // explaining and one selection away from undone; an un-recovered hang
+            // is a crash loop with the setting that fixes it locked inside the
+            // game that will not start. If it ever does bite, the discriminator is
+            // already the design's own currency -- clear in onStop only once the
+            // renderer has produced frames, since a hung driver stops producing
+            // them.
             gpuDriverNoteSurvived();
         }
         if (ioExecutor != null) {

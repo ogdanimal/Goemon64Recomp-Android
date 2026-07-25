@@ -82,16 +82,26 @@ GpuDriverModelContext driver_ctx;
 
 #if defined(__ANDROID__)
 
+// Both of these are counted in FRAMES, not seconds, and that is the point: the
+// question either one asks is whether the renderer is still producing anything,
+// which is exactly what a hung GPU stops doing and what a wall-clock timer cannot
+// see. It does mean the wall-clock equivalents move with the framerate, and this
+// port has menus running at 14-20fps on real hardware, so read the seconds below
+// as "at 60fps" and roughly four times that at the slow end. Both errors are in
+// the safe direction: asking later means more evidence that the driver draws, and
+// clearing later means the latch protects for longer.
+
 // How long to wait before asking the user to confirm an unconfirmed driver.
-// Frames rather than seconds because the question is whether the renderer is
-// producing any, and a couple of them is enough for the menu to have been drawn.
+// A couple of seconds at 60fps -- enough for the menu to have been drawn and
+// looked at, and well short of a session.
 constexpr uint64_t kConfirmPromptDelayFrames = 120;
 
 // How many frames a CONFIRMED driver has to keep rendering before this launch
 // counts as good and the crash latch is disarmed. Long enough to be past the
 // Adreno fault, which lands about a second after the first frame, and short
 // enough that an ordinary session banks it. A session shorter than this is
-// covered separately by MainActivity.onDestroy.
+// covered separately by MainActivity.onDestroy -- but only when that runs; see
+// the note on onDestroy there.
 constexpr uint64_t kSurvivedFrames = 900;
 
 void refresh_from_store();
