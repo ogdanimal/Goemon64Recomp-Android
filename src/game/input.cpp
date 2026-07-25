@@ -160,6 +160,30 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
             printf("Controller added: %d\n", controller_event->which);
             if (controller != nullptr) {
                 printf("  Instance ID: %d\n", SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)));
+                // Name and GUID of every pad that connects. A controller whose
+                // buttons partly do nothing is almost always a missing or wrong
+                // entry in recompcontrollerdb.txt, and without the GUID a report
+                // of that costs a round trip -- the reporter cannot look it up
+                // and we cannot guess it (on Android it encodes a CRC of the
+                // device descriptor plus packed button/axis masks).
+                {
+                    SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+                    char guid_str[33] = {};
+                    SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(joystick), guid_str, sizeof(guid_str));
+                    const char* controller_name = SDL_GameControllerName(controller);
+                    printf("  Name: %s\n", controller_name != nullptr ? controller_name : "(unknown)");
+                    printf("  GUID: %s\n", guid_str);
+                    printf("  Buttons/axes: %d/%d\n", SDL_JoystickNumButtons(joystick), SDL_JoystickNumAxes(joystick));
+                    // Which mapping SDL actually chose. A recompcontrollerdb.txt
+                    // entry whose GUID does not match is ignored SILENTLY and SDL
+                    // falls back to a built-in or auto-generated mapping, which
+                    // looks identical to the entry simply not working.
+                    char* mapping = SDL_GameControllerMapping(controller);
+                    if (mapping != nullptr) {
+                        printf("  Mapping: %s\n", mapping);
+                        SDL_free(mapping);
+                    }
+                }
                 {
                     // Same lock the guest thread holds to iterate controller_states in poll_inputs.
                     std::lock_guard lock{ InputState.cur_controllers_mutex };

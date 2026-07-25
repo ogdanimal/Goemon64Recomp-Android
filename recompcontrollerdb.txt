@@ -82,3 +82,12 @@
 4e363420436f6e74726f6c6c65720000,NSO N64 Controller,+rightx:b17,+righty:b10,-rightx:b2,-righty:b19,a:b1,b:b0,dpdown:b12,dpleft:b13,dpright:b14,dpup:b11,guide:b5,leftshoulder:b3,lefttrigger:b9,leftx:a0,lefty:a1,misc1:b7,rightshoulder:b20,righttrigger:b15,start:b18,platform:Android,
 37393234373533633333323633646531,RetroUSB N64 RetroPort,+rightx:b17,+righty:b15,-rightx:b18,-righty:b6,a:b10,b:b9,dpdown:b19,dpleft:b1,dpright:b0,dpup:b2,leftshoulder:b7,lefttrigger:b20,leftx:a0,lefty:a1,rightshoulder:b5,start:b3,platform:Android,
 5365616c6965436f6d707574696e6720,RetroUSB N64 RetroPort,+rightx:b17,+righty:b15,-rightx:b18,-righty:b6,a:b10,b:b9,dpdown:b19,dpleft:b1,dpright:b0,dpup:b2,leftshoulder:b7,lefttrigger:b20,leftx:a0,lefty:a1,rightshoulder:b5,start:b3,platform:Android,
+# DualSense / DualSense Edge on Android 12 and earlier.
+# These devices ship no PlayStation-aware key layout (the Edge's 054c:0df2 is
+# newer than those releases) and the kernels predate hid-playstation, so the pad
+# arrives as a generic HID gamepad: its buttons land on 14 contiguous evdev codes
+# and the face cluster is shifted one slot. Four buttons -- Circle, R1, Create and
+# Options -- end up on SDL indices 15-18, which SDL's auto-generated Android
+# mapping does not cover, so they do nothing at all. Verified on a Pixel 3 XL.
+# The GUID's CRC field is zeroed so this matches any pad rather than one pairing.
+050000004c050000f20d0000fffe3f80,DualSense Edge Wireless Controller,a:b1,b:b17,back:b15,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b5,leftshoulder:b3,leftstick:b4,lefttrigger:b9,leftx:a0,lefty:a1,misc1:b7,rightshoulder:b18,rightstick:b6,righttrigger:b10,rightx:a4,righty:a5,start:b16,x:b0,y:b2,platform:Android,
