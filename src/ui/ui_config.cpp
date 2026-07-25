@@ -13,6 +13,7 @@
 #include "RmlUi/Core.h"
 
 #include "core/ui_context.h"
+#include "ui_gpu_driver.h"
 
 ultramodern::renderer::GraphicsConfig new_options;
 Rml::DataModelHandle nav_help_model_handle;
@@ -41,6 +42,8 @@ int recompui::config_tab_to_index(recompui::ConfigTab tab) {
         return 5;
     case recompui::ConfigTab::Debug:
         return 6;
+    case recompui::ConfigTab::Driver:
+        return 7;
     default:
         assert(false && "Unknown config tab.");
         return 0;
@@ -813,6 +816,8 @@ public:
             [](const std::string& param, Rml::Event& event) {
                 //goemon64::set_time(debug_context.set_time_day, debug_context.set_time_hour, debug_context.set_time_minute);
             });
+
+        recompui::register_gpu_driver_events(listener);
     }
 
     void bind_config_list_events(Rml::DataModelConstructor &constructor) {
@@ -1233,7 +1238,10 @@ public:
         // Bind the debug mode enabled flag.
         constructor.Bind("debug_enabled", &debug_context.debug_enabled);
         
-        // Register the array type for string vectors.
+        // Register the array type for string vectors. RmlUi's type register is
+        // per-Context rather than per-model, so this one call serves every model
+        // in the config menu and must not be repeated -- the GPU driver model
+        // binds a std::vector<std::string> of its own on the strength of it.
         constructor.RegisterArray<std::vector<std::string>>();
         
         // Bind the warp parameter indices
@@ -1263,6 +1271,7 @@ public:
         make_sound_options_bindings(context);
         make_cheats_bindings(context);
         make_debug_bindings(context);
+        recompui::make_gpu_driver_bindings(context);
     }
 };
 

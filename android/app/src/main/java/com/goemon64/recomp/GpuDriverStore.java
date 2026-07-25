@@ -1,10 +1,8 @@
 package com.goemon64.recomp;
 
 import android.content.Context;
-import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
-import android.provider.OpenableColumns;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
@@ -42,6 +40,7 @@ import java.util.zip.ZipFile;
  *     drivers/&lt;id&gt;/&lt;libraryName&gt;   the driver itself
  *                  /driver.json          our normalised record of it
  *     state/active_id                    selected driver, absent = system driver
+ *          /confirmed_id                 driver the user confirmed renders, see below
  *          /boot_pending                 a launch is in flight, see the latch below
  *          /last_device                  GPU name the renderer actually got
  *          /last_status                  loader outcome, written by native code
@@ -57,20 +56,40 @@ import java.util.zip.ZipFile;
  * <p><b>The crash latch.</b> A bad driver takes the app down before any UI exists,
  * and the launcher goes straight back into the game, so it is otherwise an
  * unbreakable crash loop with no way to reach a setting. Before launching with a
- * custom driver we write {@code boot_pending}; MainActivity clears it once the
- * process has stayed alive long enough to count as good. Finding it still there
- * on the next launch means the previous attempt died, so the driver is deselected
- * and a notice is left for the launcher to show.
+ * custom driver we write {@code boot_pending}. Finding it still there on the next
+ * launch means the previous attempt did not survive, so the driver is deselected
+ * and a notice is left for the launcher to show. It is armed on <em>every</em>
+ * launch that uses a custom driver, not only the first: a driver that worked for
+ * months and then stops — after a system update, or after a change on our side —
+ * would otherwise be an unbreakable crash loop with the setting that undoes it
+ * locked inside the game that will not start.
  *
- * <p>The clear is on a timer rather than on the renderer reporting a working
- * device, because the Adreno fault this feature exists for kills the process
- * about a second <em>after</em> rendering starts — clearing at renderer setup
- * would disarm the latch immediately before the crash it is meant to catch.
+ * <p><b>What clears it depends on whether the driver has been confirmed.</b>
  *
- * <p><b>What the latch does not cover:</b> a driver that survives that window and
- * then renders wrong or crashes later. Nothing can detect that automatically,
- * which is why driver selection is also reachable from its own launcher icon
- * rather than only from inside the game.
+ * <ul>
+ * <li><b>Unconfirmed</b> (just switched to): only the user can clear it, by
+ *     answering the in-game "keep this driver?" prompt. Not seeing the prompt is
+ *     therefore the revert signal, which is what makes a driver that initialises
+ *     and then shows a black screen or hangs recoverable — the one failure mode a
+ *     process-death latch cannot see. On confirmation the id lands in
+ *     {@code confirmed_id}.</li>
+ * <li><b>Confirmed</b>: cleared automatically once the renderer has produced
+ *     enough frames to prove it is alive, or on a clean shutdown. A human has
+ *     already testified that this driver draws the game, so re-asking every
+ *     launch would be nagging; what is still worth catching is the process dying
+ *     or the GPU hanging, and both stop frames.</li>
+ * </ul>
+ *
+ * <p>A driver the latch reverts loses its confirmation, so it has to earn it
+ * again if the user selects it a second time.
+ *
+ * <p><b>The one case this does not cover</b> is a driver that was confirmed and
+ * later starts rendering nothing while still producing frames — a black screen
+ * that is not also a crash or a hang. Frames arriving is the only evidence
+ * available without asking, and it cannot distinguish that from working. Such a
+ * driver has to be switched off by hand, and if the game is unusable that means
+ * clearing the app's data. Re-asking for confirmation after an app update would
+ * close most of it and is the obvious thing to add if it ever bites.
  */
 public final class GpuDriverStore {
     private static final String TAG = "Goemon64";
@@ -82,6 +101,7 @@ public final class GpuDriverStore {
 
     private static final String RECORD_FILE = "driver.json";
     private static final String ACTIVE_FILE = "active_id";
+    private static final String CONFIRMED_FILE = "confirmed_id";
     private static final String BOOT_PENDING_FILE = "boot_pending";
     private static final String LAST_DEVICE_FILE = "last_device";
     private static final String LAST_STATUS_FILE = "last_status";
@@ -234,11 +254,29 @@ public final class GpuDriverStore {
         } else {
             writeState(context, ACTIVE_FILE, info.id);
         }
+        // A newly selected driver has not been seen to render anything yet, so it
+        // starts unconfirmed and has to be confirmed in-game on the next launch.
+        deleteState(context, CONFIRMED_FILE);
         // A deliberate change supersedes any past complaint about a driver, and
         // clears the stale reporting from whatever ran last.
         deleteState(context, DISABLED_NOTICE_FILE);
         deleteState(context, LAST_DEVICE_FILE);
         deleteState(context, LAST_STATUS_FILE);
+    }
+
+    /**
+     * Apply a selection the user made in the game's own settings, {@code id} empty
+     * meaning the system driver.
+     *
+     * <p>Also disarms this launch's crash latch, which is not incidental: the user
+     * is looking at the settings menu, which the current driver drew, so the driver
+     * running right now demonstrably did not take the process down. Leaving the
+     * latch armed would make the next launch "recover" from a launch that was fine
+     * and throw away the choice just made.
+     */
+    public static void applySelection(Context context, String id) {
+        setActive(context, (id == null || id.isEmpty()) ? null : find(context, id));
+        clearBootLatch(context);
     }
 
     public static void remove(Context context, DriverInfo info) {
@@ -260,18 +298,52 @@ public final class GpuDriverStore {
         writeState(context, BOOT_PENDING_FILE, info.id);
     }
 
-    /**
-     * Declare this launch a success, so the driver is not deselected next time.
-     *
-     * <p>Called on a timer rather than when the renderer reports a working device,
-     * and that is the whole point: the Adreno fault this feature exists for kills
-     * the process about a second <em>after</em> rendering starts, so clearing on
-     * renderer setup would disarm the latch immediately before the crash it is
-     * meant to catch. Surviving a wall-clock window covers both that and a driver
-     * that never initialises at all.
-     */
-    public static void clearBootLatch(Context context) {
+    private static void clearBootLatch(Context context) {
         deleteState(context, BOOT_PENDING_FILE);
+    }
+
+    /** True when the selected driver is one the user has confirmed renders the game. */
+    public static boolean isActiveConfirmed(Context context) {
+        DriverInfo info = active(context);
+        if (info == null) {
+            return false;
+        }
+        return info.id.equals(readState(context, CONFIRMED_FILE));
+    }
+
+    /**
+     * The user has seen the game rendered by the selected driver and asked to keep
+     * it. Records that and disarms the latch for this launch.
+     *
+     * <p>This is the only thing that can clear the latch for a driver nobody has
+     * vouched for yet, and that is deliberate: it means a driver which comes up to
+     * a black screen or a hang cannot clear it, because the prompt asking about it
+     * is drawn by the same renderer.
+     */
+    public static void confirmActive(Context context, String id) {
+        DriverInfo info = active(context);
+        // Only confirm the driver the caller believed it was asking about. The
+        // prompt and the answer are separated by however long the user took, and
+        // the selection can have changed in between.
+        if (info == null || !info.id.equals(id)) {
+            return;
+        }
+        writeState(context, CONFIRMED_FILE, info.id);
+        clearBootLatch(context);
+        Log.i(TAG, "custom driver: '" + info.name + "' confirmed by the user");
+    }
+
+    /**
+     * Report that a confirmed driver has demonstrably kept the renderer alive (a
+     * few seconds of frames, or a clean shutdown), so this launch counts as good.
+     *
+     * <p>Does nothing for an unconfirmed driver — see {@link #confirmActive}. Both
+     * callers are cheap and idempotent, so they can fire more than once.
+     */
+    public static void noteActiveSurvived(Context context) {
+        if (isActiveConfirmed(context)) {
+            clearBootLatch(context);
+        }
     }
 
     /**
@@ -294,6 +366,8 @@ public final class GpuDriverStore {
         String name = (info != null) ? info.name : pendingId;
         Log.w(TAG, "custom driver: '" + name + "' did not reach a working renderer last launch; "
                 + "reverting to the system driver");
+        // setActive also drops confirmed_id, so a driver that has just failed has
+        // to be confirmed again if the user gives it a second chance.
         setActive(context, null);
         writeState(context, DISABLED_NOTICE_FILE, name);
         return name;
@@ -336,6 +410,66 @@ public final class GpuDriverStore {
         }
     }
 
+    // ------------------------------------------------- state for the game's UI
+
+    /**
+     * Everything the in-game driver settings need, as a JSON object.
+     *
+     * <p>JSON because the reader is C++ on the other side of a JNI call and the
+     * app already parses JSON there; one string crossing the boundary beats a
+     * dozen accessors, and it cannot half-update the way a sequence of calls can.
+     * Text a user reads is rendered here rather than in the game's UI because it
+     * comes from {@code strings.xml} — the loader outcomes especially, which are
+     * an implementation detail of the Java-side status codes.
+     */
+    public static String stateJson(Context context) {
+        JSONObject out = new JSONObject();
+        try {
+            DriverInfo activeInfo = active(context);
+            out.put("activeId", activeInfo != null ? activeInfo.id : "");
+            out.put("needsConfirmation", activeInfo != null && !isActiveConfirmed(context));
+
+            String device = lastRenderDevice(context);
+            out.put("device", device != null ? device : "");
+            out.put("loader", describeLoaderStatus(context, lastLoaderStatus(context)));
+
+            org.json.JSONArray drivers = new org.json.JSONArray();
+            for (DriverInfo info : list(context)) {
+                JSONObject entry = new JSONObject();
+                entry.put("id", info.id);
+                entry.put("name", info.name);
+                String detail = info.subtitle();
+                if (info.isTooNewForThisDevice()) {
+                    detail = context.getString(R.string.driver_min_api_warning,
+                            info.minApi, Build.VERSION.SDK_INT) + " " + detail;
+                }
+                entry.put("detail", detail);
+                drivers.put(entry);
+            }
+            out.put("drivers", drivers);
+        } catch (org.json.JSONException e) {
+            // Only thrown for null keys, which none of the above can produce.
+            Log.e(TAG, "custom driver: cannot describe state", e);
+        }
+        return out.toString();
+    }
+
+    private static String describeLoaderStatus(Context context, int status) {
+        switch (status) {
+            case STATUS_REQUESTED:
+                return context.getString(R.string.driver_loader_requested);
+            case STATUS_OPEN_FAILED:
+                return context.getString(R.string.driver_loader_open_failed);
+            case STATUS_NO_PROC_ADDR:
+                return context.getString(R.string.driver_loader_no_proc_addr);
+            case STATUS_BAD_ARGUMENTS:
+                return context.getString(R.string.driver_loader_bad_arguments);
+            case STATUS_NOT_ATTEMPTED:
+            default:
+                return context.getString(R.string.driver_loader_not_attempted);
+        }
+    }
+
     // ---------------------------------------------------------------- import
 
     /**
@@ -350,7 +484,7 @@ public final class GpuDriverStore {
         try {
             staging = copyToStaging(context, uri);
 
-            String displayName = queryDisplayName(context, uri);
+            String displayName = SafFiles.displayName(context, uri);
             boolean isZip = looksLikeZip(staging);
 
             String id = allocateId(context, displayName);
@@ -619,26 +753,6 @@ public final class GpuDriverStore {
             suffix++;
         }
         return candidate;
-    }
-
-    private static String queryDisplayName(Context context, Uri uri) {
-        try (Cursor cursor = context.getContentResolver()
-                .query(uri, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                int column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
-                if (column >= 0) {
-                    String name = cursor.getString(column);
-                    if (name != null && !name.isEmpty()) {
-                        return name;
-                    }
-                }
-            }
-        } catch (RuntimeException e) {
-            // Some providers refuse this query; the fallback below is fine.
-            Log.w(TAG, "custom driver: no display name for " + uri, e);
-        }
-        String path = uri.getLastPathSegment();
-        return (path == null || path.isEmpty()) ? "driver.so" : new File(path).getName();
     }
 
     // ----------------------------------------------------------- state files

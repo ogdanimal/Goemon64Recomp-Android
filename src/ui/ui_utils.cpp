@@ -1,6 +1,19 @@
 #include "ultramodern/ultramodern.hpp"
 
+#include "recomp_ui.h"
+#include "goemon_support.h"
 #include "ui_utils.h"
+
+// On platforms whose file dialog is asynchronous -- Android, where picking a file
+// means the system document picker and a trip through another activity -- the
+// callback the caller registered has to be run somewhere. Here, once a frame, on
+// the render thread, which is where the blocking desktop implementations run
+// theirs. A no-op everywhere else.
+void recompui::pump_file_dialogs() {
+#if defined(__ANDROID__)
+    goemon64::android_pump_ui_callbacks();
+#endif
+}
 
 recompui::Color recompui::lerp_color(const recompui::Color& a, const recompui::Color& b, float factor) {
     return recompui::Color{

@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,8 @@
 #include <android/log.h>
 
 #include "SDL2/SDL.h"
+
+#include "json/json.hpp"
 
 #include "librecomp/game.hpp"
 #include "ultramodern/ultramodern.hpp"
@@ -103,6 +106,112 @@ namespace {
     // Set from the Intent extra when this process is a restart-to-title relaunch.
     // Written on the UI thread in nativeInit, consumed on the graphics thread.
     std::atomic_bool g_autostart{ false };
+
+    // ------------------------------------------------------------ calling Java
+    //
+    // Everything the game needs from the Android framework -- the document
+    // picker, the GPU driver store -- lives on MainActivity, so the game side
+    // calls back into it. Two rules make that safe.
+    //
+    // The activity and its method IDs are resolved ONCE, in nativeInit, and kept
+    // as global references. They cannot be looked up later: nativeInit runs on
+    // the UI thread with app classes on the call stack, whereas the render thread
+    // was created by the renderer and never entered from Java, so FindClass there
+    // searches only the system class loader and would not find our classes at all.
+    //
+    // The global reference to the activity is deliberately never released. It is
+    // the activity that hosts the game for the whole life of the process, and the
+    // process is taken down wholesale when it finishes (MainActivity.onDestroy),
+    // so there is no window in which releasing it would matter.
+    jobject g_activity = nullptr;
+    jclass g_activity_class = nullptr;
+    jmethodID g_mid_request_open_document = nullptr;
+    jmethodID g_mid_request_driver_import = nullptr;
+    jmethodID g_mid_gpu_state = nullptr;
+    jmethodID g_mid_gpu_select = nullptr;
+    jmethodID g_mid_gpu_remove = nullptr;
+    jmethodID g_mid_gpu_confirm = nullptr;
+    jmethodID g_mid_gpu_note_survived = nullptr;
+
+    // Guards both pending-answer slots below. Java answers on one of its own
+    // threads; the game reads on the render thread.
+    std::mutex g_java_answer_mutex;
+
+    std::function<void(bool, const std::list<std::filesystem::path>&)> g_dialog_callback;
+    bool g_dialog_answered = false;
+    bool g_dialog_success = false;
+    std::list<std::filesystem::path> g_dialog_paths;
+
+    std::function<void(bool, const std::string&)> g_import_callback;
+    bool g_import_answered = false;
+    bool g_import_success = false;
+    std::string g_import_message;
+
+    std::string to_string(JNIEnv* env, jstring value) {
+        if (env == nullptr || value == nullptr) {
+            return {};
+        }
+        const char* chars = env->GetStringUTFChars(value, nullptr);
+        std::string out = (chars != nullptr) ? chars : "";
+        env->ReleaseStringUTFChars(value, chars);
+        return out;
+    }
+
+    // A JNIEnv for the calling thread, attaching it if this is the first call
+    // from it. SDL owns the attachment and detaches the thread when it exits, so
+    // this must not be paired with a manual DetachCurrentThread.
+    JNIEnv* java_env() {
+        if (g_activity == nullptr) {
+            return nullptr;
+        }
+        return static_cast<JNIEnv*>(SDL_AndroidGetJNIEnv());
+    }
+
+    // An exception left pending would abort the process at the next JNI call, in
+    // a place with nothing to do with the cause, so clear it here and say what it
+    // was. Every method called through this bridge is expected not to throw.
+    void clear_java_exception(JNIEnv* env, const char* what) {
+        if (env != nullptr && env->ExceptionCheck()) {
+            LOGE("java call failed: %s", what);
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+        }
+    }
+
+    void call_java_void(jmethodID method, const char* what) {
+        JNIEnv* env = java_env();
+        if (env == nullptr || method == nullptr) {
+            return;
+        }
+        env->CallVoidMethod(g_activity, method);
+        clear_java_exception(env, what);
+    }
+
+    void call_java_void_string(jmethodID method, const std::string& argument, const char* what) {
+        JNIEnv* env = java_env();
+        if (env == nullptr || method == nullptr) {
+            return;
+        }
+        jstring value = env->NewStringUTF(argument.c_str());
+        env->CallVoidMethod(g_activity, method, value);
+        clear_java_exception(env, what);
+        env->DeleteLocalRef(value);
+    }
+
+    std::string call_java_string(jmethodID method, const char* what) {
+        JNIEnv* env = java_env();
+        if (env == nullptr || method == nullptr) {
+            return {};
+        }
+        auto result = static_cast<jstring>(env->CallObjectMethod(g_activity, method));
+        clear_java_exception(env, what);
+        if (result == nullptr) {
+            return {};
+        }
+        std::string out = to_string(env, result);
+        env->DeleteLocalRef(result);
+        return out;
+    }
 }
 
 namespace goemon64 {
@@ -138,15 +247,17 @@ namespace goemon64 {
     // This is the ONLY authority on whether an optional user-supplied Vulkan
     // driver is in use: loading one succeeds even when the system driver ends up
     // being used, so the loader's own result cannot answer the question. The
-    // driver screen shows this name so a bug report says which driver rendered.
+    // driver settings show this name so a bug report says which driver rendered.
     //
     // It deliberately does NOT clear the boot latch, even though this is the
     // obvious place for it. Reaching here means Vulkan initialised, which is
     // earlier than the failure that matters most: the Adreno fault this whole
     // feature exists for kills the process about a second AFTER rendering starts.
     // Clearing the latch here would therefore disarm it just before the crash it
-    // is meant to catch, leaving the crash loop unbroken. MainActivity clears it
-    // on a timer instead, once the process has demonstrably survived that window.
+    // is meant to catch, leaving the crash loop unbroken. Nor does initialising
+    // prove anything is on screen. What clears the latch is the user answering
+    // the confirmation prompt, or -- for a driver already confirmed -- the
+    // renderer having kept going for a while; see recompui::tick_gpu_driver.
     //
     // Outside the extern "C" block below: goemon_support.h declares it as ordinary
     // C++ and it must keep that linkage.
@@ -161,12 +272,179 @@ namespace goemon64 {
         (void)device_name;
 #endif
     }
+
+    // ------------------------------------------------------ picking a document
+
+    void android_request_open_document(bool multiple,
+            std::function<void(bool, const std::list<std::filesystem::path>&)> callback) {
+        bool refuse = false;
+        {
+            std::lock_guard lock{ g_java_answer_mutex };
+            // One picker at a time. A second request would overwrite the first
+            // callback, and the caller waiting on it would never hear anything.
+            refuse = (g_dialog_callback != nullptr) || (g_activity == nullptr);
+            if (!refuse) {
+                g_dialog_callback = std::move(callback);
+                g_dialog_answered = false;
+            }
+        }
+        if (refuse) {
+            // Answer outside the lock: the callback may open a menu, which can
+            // come back through this file.
+            callback(false, {});
+            return;
+        }
+
+        JNIEnv* env = java_env();
+        if (env != nullptr && g_mid_request_open_document != nullptr) {
+            env->CallVoidMethod(g_activity, g_mid_request_open_document, multiple ? JNI_TRUE : JNI_FALSE);
+            clear_java_exception(env, "requestOpenDocument");
+        }
+    }
+
+    void android_pump_ui_callbacks() {
+        std::function<void(bool, const std::list<std::filesystem::path>&)> dialog_callback;
+        bool dialog_success = false;
+        std::list<std::filesystem::path> dialog_paths;
+
+        std::function<void(bool, const std::string&)> import_callback;
+        bool import_success = false;
+        std::string import_message;
+
+        {
+            std::lock_guard lock{ g_java_answer_mutex };
+            if (g_dialog_answered) {
+                dialog_callback = std::move(g_dialog_callback);
+                g_dialog_callback = nullptr;
+                dialog_success = g_dialog_success;
+                dialog_paths = std::move(g_dialog_paths);
+                g_dialog_paths.clear();
+                g_dialog_answered = false;
+            }
+            if (g_import_answered) {
+                import_callback = std::move(g_import_callback);
+                g_import_callback = nullptr;
+                import_success = g_import_success;
+                import_message = std::move(g_import_message);
+                g_import_message.clear();
+                g_import_answered = false;
+            }
+        }
+
+        // Callbacks run outside the lock and on this (render) thread, which is
+        // what makes them safe to touch the UI from -- the same thread the
+        // desktop file dialog's callback runs on.
+        if (dialog_callback) {
+            dialog_callback(dialog_success, dialog_paths);
+        }
+        if (import_callback) {
+            import_callback(import_success, import_message);
+        }
+    }
+
+    // -------------------------------------------- optional user-supplied driver
+
+    bool android_gpu_driver_supported() {
+#if defined(GOEMON_CUSTOM_VULKAN_DRIVER)
+        return g_activity != nullptr;
+#else
+        return false;
+#endif
+    }
+
+    GpuDriverState android_gpu_driver_state() {
+        GpuDriverState state;
+        std::string raw = call_java_string(g_mid_gpu_state, "gpuDriverStateJson");
+        if (raw.empty()) {
+            return state;
+        }
+        nlohmann::json json = nlohmann::json::parse(raw, nullptr, /*allow_exceptions=*/false);
+        if (json.is_discarded() || !json.is_object()) {
+            LOGE("custom driver: could not parse the state Java handed back");
+            return state;
+        }
+        state.active_id = json.value("activeId", std::string{});
+        state.device = json.value("device", std::string{});
+        state.loader = json.value("loader", std::string{});
+        state.needs_confirmation = json.value("needsConfirmation", false);
+        if (json.contains("drivers") && json["drivers"].is_array()) {
+            for (const auto& entry : json["drivers"]) {
+                if (!entry.is_object()) {
+                    continue;
+                }
+                state.drivers.push_back(GpuDriverEntry{
+                    entry.value("id", std::string{}),
+                    entry.value("name", std::string{}),
+                    entry.value("detail", std::string{}),
+                });
+            }
+        }
+        return state;
+    }
+
+    void android_gpu_driver_select(const std::string& id) {
+        call_java_void_string(g_mid_gpu_select, id, "gpuDriverSelect");
+    }
+
+    void android_gpu_driver_remove(const std::string& id) {
+        call_java_void_string(g_mid_gpu_remove, id, "gpuDriverRemove");
+    }
+
+    void android_gpu_driver_confirm(const std::string& id) {
+        call_java_void_string(g_mid_gpu_confirm, id, "gpuDriverConfirm");
+    }
+
+    void android_gpu_driver_note_survived() {
+        call_java_void(g_mid_gpu_note_survived, "gpuDriverNoteSurvived");
+    }
+
+    void android_gpu_driver_request_import(std::function<void(bool, const std::string&)> callback) {
+        bool refuse = false;
+        {
+            std::lock_guard lock{ g_java_answer_mutex };
+            refuse = (g_import_callback != nullptr) || (g_activity == nullptr);
+            if (!refuse) {
+                g_import_callback = std::move(callback);
+                g_import_answered = false;
+            }
+        }
+        if (refuse) {
+            callback(false, {});
+            return;
+        }
+
+        JNIEnv* env = java_env();
+        if (env != nullptr && g_mid_request_driver_import != nullptr) {
+            env->CallVoidMethod(g_activity, g_mid_request_driver_import);
+            clear_java_exception(env, "requestDriverImport");
+        }
+    }
 }
 
 extern "C" {
 
 JNIEXPORT void JNICALL
-Java_com_goemon64_recomp_MainActivity_nativeInit(JNIEnv* env, jobject /*thiz*/, jstring dataPath, jboolean autostart) {
+Java_com_goemon64_recomp_MainActivity_nativeInit(JNIEnv* env, jobject thiz, jstring dataPath, jboolean autostart) {
+    // Resolve everything the game will later want to call on the activity. This
+    // has to happen here, on the UI thread: the render thread that makes those
+    // calls was never entered from Java, so a class lookup from it would search
+    // the system class loader and miss every class in this app. See the notes on
+    // the cached handles above.
+    g_activity = env->NewGlobalRef(thiz);
+    jclass local_class = env->GetObjectClass(thiz);
+    g_activity_class = static_cast<jclass>(env->NewGlobalRef(local_class));
+    env->DeleteLocalRef(local_class);
+    g_mid_request_open_document = env->GetMethodID(g_activity_class, "requestOpenDocument", "(Z)V");
+    g_mid_request_driver_import = env->GetMethodID(g_activity_class, "requestDriverImport", "()V");
+    g_mid_gpu_state = env->GetMethodID(g_activity_class, "gpuDriverStateJson", "()Ljava/lang/String;");
+    g_mid_gpu_select = env->GetMethodID(g_activity_class, "gpuDriverSelect", "(Ljava/lang/String;)V");
+    g_mid_gpu_remove = env->GetMethodID(g_activity_class, "gpuDriverRemove", "(Ljava/lang/String;)V");
+    g_mid_gpu_confirm = env->GetMethodID(g_activity_class, "gpuDriverConfirm", "(Ljava/lang/String;)V");
+    g_mid_gpu_note_survived = env->GetMethodID(g_activity_class, "gpuDriverNoteSurvived", "()V");
+    // A missing method is a rename that got away, and it would otherwise surface
+    // as a feature that silently does nothing.
+    clear_java_exception(env, "resolving MainActivity methods");
+
     const char* c_data = env->GetStringUTFChars(dataPath, nullptr);
     g_data_dir = std::filesystem::path{c_data};
     g_autostart.store(autostart == JNI_TRUE);
@@ -191,7 +469,7 @@ Java_com_goemon64_recomp_MainActivity_nativeInit(JNIEnv* env, jobject /*thiz*/, 
 // JNI entry point itself always exists so the Java call never hits an
 // UnsatisfiedLinkError. Passing an empty driverName means "use the system
 // driver", so even a custom-driver build behaves normally until a user selects
-// something in the driver screen.
+// something in the game's GPU driver settings.
 //
 // The driver and its name come from the Java side rather than being discovered
 // here: GpuDriverStore has already parsed the package's meta.json for the
@@ -284,7 +562,7 @@ Java_com_goemon64_recomp_MainActivity_nativeInitCustomDriver(JNIEnv* env, jobjec
     // in use. adrenotools can succeed here and still fall back to the system
     // driver, or enumerate zero devices, if the hook libraries were not found.
     // The device name recorded by report_render_device() below is the authority,
-    // and it is what the driver screen shows the user.
+    // and it is what the driver settings show the user.
     LOGI("custom driver: requested %s via libadrenotools (hooks: %s) -- confirm with the reported device",
          driver_name.c_str(), hook_dir.c_str());
     set_driver_status(CustomDriverStatus::Requested);
@@ -303,6 +581,47 @@ Java_com_goemon64_recomp_MainActivity_nativeInitCustomDriver(JNIEnv* env, jobjec
 JNIEXPORT void JNICALL
 Java_com_goemon64_recomp_MainActivity_nativeDestroy(JNIEnv* /*env*/, jobject /*thiz*/) {
     LOGI("nativeDestroy");
+}
+
+// The user has finished with (or dismissed) the document picker native code
+// asked for. Called on a Java background thread once the picked documents have
+// been copied somewhere native code can open; the paths are those copies.
+//
+// This only parks the answer. Running the callback here would run UI code on a
+// Java worker thread; android_pump_ui_callbacks() picks it up on the render
+// thread instead.
+JNIEXPORT void JNICALL
+Java_com_goemon64_recomp_MainActivity_nativeOnFileDialogResult(JNIEnv* env, jobject /*thiz*/,
+                                                               jboolean success, jobjectArray paths) {
+    std::list<std::filesystem::path> parsed;
+    if (paths != nullptr) {
+        const jsize count = env->GetArrayLength(paths);
+        for (jsize i = 0; i < count; i++) {
+            auto value = static_cast<jstring>(env->GetObjectArrayElement(paths, i));
+            if (value != nullptr) {
+                parsed.emplace_back(to_string(env, value));
+                env->DeleteLocalRef(value);
+            }
+        }
+    }
+
+    std::lock_guard lock{ g_java_answer_mutex };
+    g_dialog_success = (success == JNI_TRUE);
+    g_dialog_paths = std::move(parsed);
+    g_dialog_answered = true;
+}
+
+// Outcome of a GPU driver import: the driver's name on success, or the reason it
+// was rejected. Parked for the render thread, as above.
+JNIEXPORT void JNICALL
+Java_com_goemon64_recomp_MainActivity_nativeOnDriverImportResult(JNIEnv* env, jobject /*thiz*/,
+                                                                 jboolean success, jstring message) {
+    std::string parsed = to_string(env, message);
+
+    std::lock_guard lock{ g_java_answer_mutex };
+    g_import_success = (success == JNI_TRUE);
+    g_import_message = std::move(parsed);
+    g_import_answered = true;
 }
 
 // Read by MainActivity.onDestroy() to decide whether to relaunch. See

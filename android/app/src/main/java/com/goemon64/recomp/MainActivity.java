@@ -1,6 +1,7 @@
 package com.goemon64.recomp;
 
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
@@ -8,6 +9,11 @@ import android.view.WindowManager;
 import org.libsdl.app.SDLActivity;
 
 import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Hosts the recompiled game. SDLActivity loads the native libraries listed in
@@ -49,14 +55,6 @@ public class MainActivity extends SDLActivity {
     // fast-resume path never trips this. volatile: main-thread only, but paired
     // with sGameRunning for clarity.
     private static volatile boolean sNativeInitedThisProcess = false;
-
-    /**
-     * How long a launch with a user-supplied Vulkan driver must survive before we
-     * stop treating it as suspect. Comfortably longer than renderer setup plus the
-     * roughly one second after first render in which the Adreno fault lands, and
-     * short enough that a user who quits quickly still banks the success.
-     */
-    private static final long BOOT_LATCH_CLEAR_DELAY_MS = 20_000L;
 
     // Must match goemon64::RestartTarget in include/goemon_support.h.
     private static final int RESTART_NONE = 0;
@@ -166,7 +164,7 @@ public class MainActivity extends SDLActivity {
      * deselected before it can be loaded again — otherwise a driver that cannot
      * initialise is an unbreakable crash loop, because the game is what crashes
      * and the launcher goes straight back into it. Only then do we arm the latch
-     * for this attempt; the renderer clears it once a Vulkan device is up.
+     * for this attempt.
      *
      * <p>The driver directory is deliberately {@code getFilesDir()} and NOT the
      * DataPaths data dir: {@code dlopen} refuses libraries on shared or SD
@@ -188,21 +186,11 @@ public class MainActivity extends SDLActivity {
             driverDir = GpuDriverStore.directoryFor(this, driver).getAbsolutePath();
             driverName = driver.libraryName;
             // Written and fsynced before the driver is touched, because the process
-            // may not survive touching it.
+            // may not survive touching it. Nothing here disarms it: an unconfirmed
+            // driver is disarmed only by the user answering the in-game prompt, and
+            // a confirmed one by the renderer proving it is alive. Both of those
+            // live on the game side; see GpuDriverStore's class comment.
             GpuDriverStore.armBootLatch(this, driver);
-            // Disarmed only once the process has survived long enough to have got
-            // past the failures we can actually catch: a driver that will not
-            // initialise (a few seconds), and one that initialises and then faults
-            // during rendering (the Adreno case, about a second after the first
-            // frame). A native crash kills the process and this never runs, which
-            // is exactly the signal we want. Clearing it when the renderer reports
-            // a device would be too early and would disarm the latch just before
-            // the crash it exists to catch.
-            //
-            // A driver that fails LATER than this window is not covered, and cannot
-            // be: that is what the driver screen's own launcher icon is for.
-            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
-                    () -> GpuDriverStore.clearBootLatch(this), BOOT_LATCH_CLEAR_DELAY_MS);
         }
 
         // nativeLibraryDir is where libadrenotools expects its own hook libraries,
@@ -214,6 +202,171 @@ public class MainActivity extends SDLActivity {
                 driverName,
                 GpuDriverStore.tmpDir(this).getAbsolutePath(),
                 GpuDriverStore.stateDir(this).getAbsolutePath());
+    }
+
+    // ------------------------------------------------- picking files for native
+    //
+    // Android has no native file dialog, so goemon64::open_file_dialog and the
+    // GPU driver import both come back here: native asks, this launches the
+    // system document picker, and the answer is handed back through a native
+    // method once the document has been copied somewhere native code can open.
+    //
+    // These run on the game and render threads, so everything touching the
+    // activity is posted to the UI thread, and everything touching the disk runs
+    // on ioExecutor. SDLActivity extends android.app.Activity rather than
+    // ComponentActivity, so this is the classic startActivityForResult pair and
+    // not ActivityResultContracts.
+
+    private static final int REQUEST_PICK_FILE = 0x60D0;
+    private static final int REQUEST_PICK_FILES = 0x60D1;
+    private static final int REQUEST_IMPORT_DRIVER = 0x60D2;
+
+    /** UI-thread-only; created on first use because most sessions never pick a file. */
+    private ExecutorService ioExecutor;
+
+    /**
+     * Ask the user for a file on behalf of native code. Returns immediately; the
+     * result arrives at nativeOnFileDialogResult, possibly much later, and a
+     * cancelled or failed pick reports failure rather than nothing so the caller's
+     * callback is always run exactly once.
+     */
+    void requestOpenDocument(final boolean multiple) {
+        runOnUiThread(() -> launchPicker(multiple ? REQUEST_PICK_FILES : REQUEST_PICK_FILE, multiple));
+    }
+
+    /** As above, but the file is imported as a GPU driver and never reaches native. */
+    void requestDriverImport() {
+        runOnUiThread(() -> launchPicker(REQUEST_IMPORT_DRIVER, false));
+    }
+
+    private void launchPicker(int requestCode, boolean multiple) {
+        // Neither a mod nor a driver package has a MIME type providers agree on,
+        // so the filter has to stay wide.
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("*/*");
+        if (multiple) {
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        }
+        try {
+            startActivityForResult(intent, requestCode);
+        } catch (android.content.ActivityNotFoundException e) {
+            android.util.Log.e("Goemon64", "no document picker available", e);
+            deliverResult(requestCode, false, new String[0], getString(R.string.driver_import_failed_no_picker));
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode != REQUEST_PICK_FILE && requestCode != REQUEST_PICK_FILES
+                && requestCode != REQUEST_IMPORT_DRIVER) {
+            super.onActivityResult(requestCode, resultCode, data);
+            return;
+        }
+
+        final List<Uri> uris = collectUris(resultCode, data);
+        if (uris.isEmpty()) {
+            // Cancelled. Reported as a failure with no message: the caller has to
+            // hear something to stop waiting, but there is nothing to tell them.
+            deliverResult(requestCode, false, new String[0], "");
+            return;
+        }
+
+        if (ioExecutor == null) {
+            ioExecutor = Executors.newSingleThreadExecutor();
+        }
+        ioExecutor.execute(() -> {
+            if (requestCode == REQUEST_IMPORT_DRIVER) {
+                importDriver(uris.get(0));
+            } else {
+                copyPickedFiles(requestCode, uris);
+            }
+        });
+    }
+
+    private List<Uri> collectUris(int resultCode, Intent data) {
+        List<Uri> uris = new ArrayList<>();
+        if (resultCode != RESULT_OK || data == null) {
+            return uris;
+        }
+        android.content.ClipData clip = data.getClipData();
+        if (clip != null) {
+            for (int i = 0; i < clip.getItemCount(); i++) {
+                Uri uri = clip.getItemAt(i).getUri();
+                if (uri != null) {
+                    uris.add(uri);
+                }
+            }
+        } else if (data.getData() != null) {
+            uris.add(data.getData());
+        }
+        return uris;
+    }
+
+    /** Background thread: copy each pick into the cache and hand back the paths. */
+    private void copyPickedFiles(int requestCode, List<Uri> uris) {
+        SafFiles.clearCache(this);
+        List<String> paths = new ArrayList<>();
+        for (int i = 0; i < uris.size(); i++) {
+            try {
+                paths.add(SafFiles.copyToCache(this, uris.get(i), i).getAbsolutePath());
+            } catch (IOException e) {
+                android.util.Log.e("Goemon64", "could not copy the picked file", e);
+            }
+        }
+        // A partial result is still useful for a multi-select, but nothing copied
+        // means the pick failed as far as the caller is concerned.
+        deliverResult(requestCode, !paths.isEmpty(), paths.toArray(new String[0]), "");
+    }
+
+    /** Background thread: import a picked driver package into the driver store. */
+    private void importDriver(Uri uri) {
+        try {
+            GpuDriverStore.DriverInfo info = GpuDriverStore.importFrom(this, uri);
+            deliverResult(REQUEST_IMPORT_DRIVER, true, new String[0], info.name);
+        } catch (GpuDriverStore.ImportException e) {
+            String message = e.getMessage();
+            deliverResult(REQUEST_IMPORT_DRIVER, false, new String[0],
+                    message != null ? message : getString(R.string.driver_import_failed_read));
+        }
+    }
+
+    private void deliverResult(int requestCode, boolean success, String[] paths, String message) {
+        if (requestCode == REQUEST_IMPORT_DRIVER) {
+            nativeOnDriverImportResult(success, message);
+        } else {
+            nativeOnFileDialogResult(success, paths);
+        }
+    }
+
+    // ------------------------------------------------ GPU driver, for the game
+    //
+    // The driver settings live in the game's own RmlUi menu, so these are called
+    // from the render thread. They are all small file operations on app-private
+    // storage; GpuDriverStore stays the single authority on what is installed and
+    // what is selected, rather than the native side reading the same files.
+
+    String gpuDriverStateJson() {
+        return GpuDriverStore.stateJson(this);
+    }
+
+    void gpuDriverSelect(String id) {
+        GpuDriverStore.applySelection(this, id);
+    }
+
+    void gpuDriverRemove(String id) {
+        GpuDriverStore.DriverInfo info = GpuDriverStore.find(this, id);
+        if (info != null) {
+            GpuDriverStore.remove(this, info);
+        }
+    }
+
+    void gpuDriverConfirm(String id) {
+        GpuDriverStore.confirmActive(this, id);
+    }
+
+    void gpuDriverNoteSurvived() {
+        GpuDriverStore.noteActiveSurvived(this);
     }
 
     private void hideSystemUI() {
@@ -250,6 +403,20 @@ public class MainActivity extends SDLActivity {
         // The game is going away (quit or restart-to-fresh-process); stop
         // advertising a live instance so a subsequent launch takes the full path.
         sGameRunning = false;
+
+        if (BuildConfig.CUSTOM_VULKAN_DRIVER) {
+            // Reaching onDestroy means the process was not taken down by the
+            // driver, so this launch counts as survived — which matters for a
+            // session shorter than the frame count the game side waits for. Only
+            // has an effect for a driver the user already confirmed; an
+            // unconfirmed one still needs the in-game answer, or quitting would
+            // silently endorse a driver nobody ever saw draw anything.
+            gpuDriverNoteSurvived();
+        }
+        if (ioExecutor != null) {
+            ioExecutor.shutdownNow();
+            ioExecutor = null;
+        }
         int restartTarget = nativeGetRestartTarget();
         nativeDestroy();
         super.onDestroy();
@@ -312,4 +479,12 @@ public class MainActivity extends SDLActivity {
                                              String tmpLibDir, String stateDir);
     public native void nativeDestroy();
     public native int nativeGetRestartTarget();
+    /**
+     * Answers to a pick native code asked for. Called on a background thread; the
+     * native side hands the result to the render thread itself. Paths are copies
+     * in the cache, not the picked documents.
+     */
+    private native void nativeOnFileDialogResult(boolean success, String[] paths);
+    /** Outcome of a driver import: the driver's name on success, else why not. */
+    private native void nativeOnDriverImportResult(boolean success, String message);
 }

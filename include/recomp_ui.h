@@ -67,11 +67,26 @@ namespace recompui {
         Mods,
         Cheats,
         Debug,
+        // Last on purpose: like Debug it is conditional (Android, and only in a
+        // build that can load a user-supplied Vulkan driver), and a hidden tab in
+        // the middle would leave a gap in the tabset's own indices.
+        Driver,
     };
 
     // Shows/hides the config menu's restart button. Cheap to call per frame; it
     // only touches the DOM when the answer changes. See the definition.
     void sync_restart_button_visibility();
+
+    // Runs the callbacks for any file the user has picked on a platform whose file
+    // dialog is asynchronous (Android). A no-op elsewhere, where the dialog blocks
+    // and its callback has already run. Render thread, once per frame.
+    void pump_file_dialogs();
+
+    // Drives the user-supplied Vulkan driver's confirm-to-keep recovery: asks the
+    // user to confirm a driver that has not been confirmed before, and reports a
+    // confirmed one as having survived once the renderer has proved it is alive.
+    // A no-op unless a driver could be loaded at all. Render thread, once per frame.
+    void tick_gpu_driver();
 
     void set_config_tab(ConfigTab tab);
     int config_tab_to_index(ConfigTab tab);

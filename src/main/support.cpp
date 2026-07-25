@@ -8,14 +8,22 @@
 namespace goemon64 {
     // MARK: - Internal Helpers
 #if defined(__ANDROID__)
-    // Native file dialogs don't exist on Android; ROM selection is handled by the
-    // Java SAF launcher before the game starts, so these are no-ops here.
+    // Android has no native file dialog: picking a file means the Storage Access
+    // Framework, which is Java, asynchronous, and hands back a content:// URI
+    // rather than a path. android_request_open_document() bridges all three --
+    // the document is copied into the cache and the callback is delivered on this
+    // (render) thread, which is where the desktop implementations below run
+    // theirs. The only visible difference is that the callback runs after this
+    // function has returned instead of during it.
     void perform_file_dialog_operation(const std::function<void(bool, const std::filesystem::path&)>& callback) {
-        callback(false, {});
+        android_request_open_document(/*multiple=*/false,
+            [callback](bool success, const std::list<std::filesystem::path>& paths) {
+                callback(success && !paths.empty(), paths.empty() ? std::filesystem::path{} : paths.front());
+            });
     }
 
     void perform_file_dialog_operation_multiple(const std::function<void(bool, const std::list<std::filesystem::path>&)>& callback) {
-        callback(false, {});
+        android_request_open_document(/*multiple=*/true, callback);
     }
 #else
     void perform_file_dialog_operation(const std::function<void(bool, const std::filesystem::path&)>& callback) {

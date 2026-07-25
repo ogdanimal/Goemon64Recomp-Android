@@ -576,6 +576,14 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
 
     recompui::sync_restart_button_visibility();
 
+    // Both before the launcher check below, and before ui_state_mutex is taken:
+    // these run callbacks and can open a prompt, and a prompt opened here has to
+    // count as a shown context on this frame or the launcher would be raised over
+    // it. See tick_gpu_driver -- the driver confirmation prompt is a recovery
+    // mechanism, not a courtesy, so it must not be pushed behind anything.
+    recompui::pump_file_dialogs();
+    recompui::tick_gpu_driver();
+
     // Runs before the launcher check below so an expiring toast updates
     // is_any_context_shown() first and can't suppress the launcher for a frame.
     // (ui_state_mutex is recursive -- declared above -- and this re-locks it via

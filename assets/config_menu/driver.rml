@@ -1,0 +1,118 @@
+<template name="config-menu__driver">
+    <head>
+    </head>
+    <body>
+        <form class="config__form">
+            <div class="config__hz-wrapper">
+                <!-- Options -->
+                <div class="config__wrapper" data-event-mouseout="set_cur_config_index(-1)">
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(0)">
+                        <label class="config-option__title">Driver</label>
+                        <!-- The select styling lives on these two classes; they are
+                             named after the debug menu only because that is where
+                             they were first used. Hand-editing recomp.rcss is not an
+                             option -- it is generated from assets/scss.
+                             The outer block is what gives the select a width:
+                             .config-option is a COLUMN flex box, so the wrapper's own
+                             `flex: 1 1 100%` sizes its height, not its width, and
+                             without this it collapses onto the label. -->
+                        <div class="config-debug__option-controls" style="width: 100%;">
+                        <div class="config-debug__select-wrapper">
+                            <select
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                data-value="driver_index"
+                                onchange="gpu_driver_selected"
+                                id="driver_select"
+                                style="nav-up: #tab_driver; nav-down: #driver_import_button;"
+                            >
+                                <option data-for="driver_name, i : driver_names" data-attr-value="i">{{driver_name}}</option>
+                            </select>
+                        </div>
+                        </div>
+                        <p>{{driver_detail}}</p>
+                    </div>
+
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(1)">
+                        <label class="config-option__title">Add a driver</label>
+                        <div class="config-option__list">
+                            <button
+                                class="button button--secondary"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(1)"
+                                onclick="gpu_driver_import"
+                                id="driver_import_button"
+                                style="nav-up: #driver_select;"
+                                data-style-nav-down="driver_removable ? '#driver_remove_button' : 'none'"
+                            >
+                                <div class="button__label">Import a driver file</div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(2)">
+                        <label class="config-option__title">Remove</label>
+                        <div class="config-option__list">
+                            <button
+                                class="button button--secondary"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(2)"
+                                data-attrif-disabled="!driver_removable"
+                                onclick="gpu_driver_remove"
+                                id="driver_remove_button"
+                                style="nav-up: #driver_import_button;"
+                            >
+                                <div class="button__label">Delete the selected driver</div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Not focusable: this is the report a bug report needs. The
+                         "rendered by" line is the only authority on which driver was
+                         really used -- loading one can succeed and still fall back to
+                         the system driver. -->
+                    <div class="config-option">
+                        <label class="config-option__title">Last launch</label>
+                        <p>Selected: {{driver_selected_name}}</p>
+                        <p>Rendered by: {{driver_device}}</p>
+                        <p>Loader: {{driver_loader}}</p>
+                    </div>
+
+                    <div class="config-option" data-if="driver_message != ''">
+                        <p>{{driver_message}}</p>
+                    </div>
+                </div>
+                <!-- Descriptions -->
+                <div class="config__wrapper">
+                    <p data-if="cur_config_index == 0">
+                        Chooses which Vulkan driver draws the game.
+                        <br />
+                        <br />
+                        Some Qualcomm Adreno drivers crash this game a second or two after it starts. If your device is one of them, a driver you supply yourself may run it properly. <b>There is no reason to change this on a device that already works.</b>
+                        <br />
+                        <br />
+                        The driver is picked while the game is starting, so a change here takes effect the next time it starts.
+                        <br />
+                        <br />
+                        <b>These drivers are not ours and are not supported.</b> Only you can judge whether one renders the game correctly.
+                    </p>
+                    <p data-if="cur_config_index == 1">
+                        Adds a driver from a file on this device: either an <b>.adpkg</b> package, or the <b>.so</b> library on its own.
+                        <br />
+                        <br />
+                        Importing a driver does not switch to it. Choose it above once it is in the list.
+                        <br />
+                        <br />
+                        Drivers are kept in this app's private storage and go away when the app is uninstalled.
+                    </p>
+                    <p data-if="cur_config_index == 2">
+                        Deletes the selected driver from this app. The system driver cannot be removed.
+                    </p>
+                    <p data-if="cur_config_index == -1">
+                        After you switch to a driver, the game asks you to confirm that you can see it working. If you never answer — because the screen stays black, or the game does not come back at all — it switches itself back to the system driver on the next launch.
+                    </p>
+                </div>
+            </div>
+        </form>
+    </body>
+</template>

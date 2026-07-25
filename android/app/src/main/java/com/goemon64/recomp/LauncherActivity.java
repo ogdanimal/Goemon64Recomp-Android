@@ -128,10 +128,10 @@ public class LauncherActivity extends AppCompatActivity {
     }
 
     /**
-     * Report a driver the crash latch turned off, and offer the driver screen so
-     * the user can pick a different one instead of hitting the same wall. Either
-     * way the launch continues on the system driver, which is by then already
-     * selected — the app must not become unusable because a driver was bad.
+     * Report a driver the crash latch turned off. The launch then continues on the
+     * system driver, which is by then already selected — the app must not become
+     * unusable because a driver was bad. The message says where the setting is,
+     * since that is the only thing left for the user to act on.
      */
     private void showDriverDisabledDialog(String driverName) {
         GpuDriverStore.clearDisabledNotice(this);
@@ -140,12 +140,6 @@ public class LauncherActivity extends AppCompatActivity {
                 .setMessage(getString(R.string.driver_disabled_message, driverName))
                 .setCancelable(false)
                 .setPositiveButton(android.R.string.ok, (d, w) -> beginStorageSetup())
-                .setNeutralButton(R.string.driver_disabled_manage, (d, w) -> {
-                    startActivity(new Intent(this, GpuDriverActivity.class));
-                    // Nothing further here: onCreate runs again when the user comes
-                    // back, and by then the notice is cleared so this is skipped.
-                    finish();
-                })
                 .show();
     }
 

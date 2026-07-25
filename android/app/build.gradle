@@ -61,12 +61,10 @@ android {
         }
 
         // The Java side has to agree with the native side about whether this build
-        // can load a custom driver: without the loader, the driver screen would
-        // offer a choice that silently does nothing. One flag drives both, plus the
-        // manifest placeholder that enables (and so shows the launcher icon for)
-        // GpuDriverActivity.
+        // can load a custom driver: without the loader, the driver settings would
+        // offer a choice that silently does nothing, so the game hides that whole
+        // settings category unless the loader is compiled in.
         buildConfigField "boolean", "CUSTOM_VULKAN_DRIVER", customDriver.toString()
-        manifestPlaceholders = [gpuDriverEnabled: customDriver.toString()]
 
         externalNativeBuild {
             cmake {

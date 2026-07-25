@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <filesystem>
+#include <string>
 #include <vector>
 #include <optional>
 #include <list>
@@ -46,11 +47,67 @@ namespace goemon64 {
     bool android_autostart();
 
     // Called once the renderer has a working Vulkan device, with the name of the
-    // device it selected. Records that name where the GPU driver screen can show
-    // it, and clears the boot latch that would otherwise deselect an optional
-    // user-supplied driver. See android_glue.cpp; a no-op in a build without
-    // custom-driver support.
+    // device it selected. Records that name where the GPU driver settings can
+    // show it. See android_glue.cpp; a no-op in a build without custom-driver
+    // support. It deliberately does NOT clear the driver's boot latch -- see the
+    // comment on the definition.
     void report_render_device(const char* device_name);
+
+    // Android has no native file dialog, so picking a file means asking Java to
+    // launch the system document picker: this returns immediately and the answer
+    // arrives LATER, from android_pump_ui_callbacks() on the render thread. The
+    // callback runs exactly once -- a cancelled or failed pick reports failure --
+    // and the paths it receives are copies in the cache, not the picked documents
+    // themselves, because native code needs something it can open by path.
+    //
+    // Only one pick can be outstanding; a second request fails immediately rather
+    // than stranding the first caller's callback.
+    void android_request_open_document(bool multiple,
+        std::function<void(bool success, const std::list<std::filesystem::path>& paths)> callback);
+
+    // Runs whatever Java has answered since the last call. Render thread only:
+    // the callbacks are the ones registered above, and they touch the UI.
+    void android_pump_ui_callbacks();
+
+    // --- optional user-supplied Vulkan driver (see GpuDriverStore.java) ---
+
+    // True only in a build with the loader compiled in. The settings category is
+    // hidden otherwise, since selecting a driver would silently do nothing.
+    bool android_gpu_driver_supported();
+
+    struct GpuDriverEntry {
+        std::string id;
+        std::string name;
+        std::string detail;   // version/vendor, or why this one may not work here
+    };
+
+    struct GpuDriverState {
+        std::vector<GpuDriverEntry> drivers;
+        std::string active_id;          // empty means the system driver
+        std::string device;             // GPU the renderer came up on, empty if unrecorded
+        std::string loader;             // what the loader did last launch, in words
+        // A driver is in use that nobody has confirmed renders the game yet, so
+        // the crash latch is armed and only the user can clear it.
+        bool needs_confirmation = false;
+    };
+
+    // All of these are small file operations behind a JNI call, safe to make from
+    // the render thread, and Java remains the only writer of the driver store.
+    GpuDriverState android_gpu_driver_state();
+    void android_gpu_driver_select(const std::string& id);   // empty id = system driver
+    void android_gpu_driver_remove(const std::string& id);
+    // Keep the running driver: clears the crash latch and marks it confirmed. The
+    // id is passed so a selection changed in the meantime cannot be confirmed by
+    // an answer that was about a different driver.
+    void android_gpu_driver_confirm(const std::string& id);
+    // A confirmed driver has kept the renderer alive; clears the latch for this
+    // launch. Does nothing for an unconfirmed one.
+    void android_gpu_driver_note_survived();
+    // Import a driver the user picks. Asynchronous exactly like the file dialog
+    // above, and answered from the same pump: on success the message is the
+    // driver's name, on failure it is why it was rejected (empty if cancelled).
+    void android_gpu_driver_request_import(
+        std::function<void(bool success, const std::string& message)> callback);
 
     // TEMPORARY Bug-6 crash diagnostics (android_diag.cpp). Remove with the fix.
     namespace diag {
