@@ -80,8 +80,25 @@ public class LauncherActivity extends AppCompatActivity {
         progressText = findViewById(R.id.progressText);
         ioExecutor = Executors.newSingleThreadExecutor();
 
-        // Storage location is chosen ONCE, before any data exists. Existing
-        // installs are grandfathered to internal and never prompted.
+        // A user-supplied Vulkan driver that never got the renderer up was
+        // deselected by MainActivity on the previous launch. Say so before booting
+        // the game, or the driver silently stops being used and the next report is
+        // about a fix that appeared to work once and then stopped.
+        String disabledDriver = BuildConfig.CUSTOM_VULKAN_DRIVER
+                ? GpuDriverStore.pendingDisabledNotice(this) : null;
+        if (disabledDriver != null) {
+            showDriverDisabledDialog(disabledDriver);
+            return;   // continues in beginStorageSetup()
+        }
+
+        beginStorageSetup();
+    }
+
+    /**
+     * Storage location is chosen ONCE, before any data exists. Existing installs
+     * are grandfathered to internal and never prompted.
+     */
+    private void beginStorageSetup() {
         if (DataPaths.storedLocation(this) == null) {
             if (DataPaths.hasExistingInternalData(this)) {
                 DataPaths.setLocation(this, DataPaths.LOCATION_INTERNAL);
@@ -94,6 +111,28 @@ public class LauncherActivity extends AppCompatActivity {
         }
 
         proceedAfterStorageChoice();
+    }
+
+    /**
+     * Report a driver the crash latch turned off, and offer the driver screen so
+     * the user can pick a different one instead of hitting the same wall. Either
+     * way the launch continues on the system driver, which is by then already
+     * selected — the app must not become unusable because a driver was bad.
+     */
+    private void showDriverDisabledDialog(String driverName) {
+        GpuDriverStore.clearDisabledNotice(this);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.driver_disabled_title)
+                .setMessage(getString(R.string.driver_disabled_message, driverName))
+                .setCancelable(false)
+                .setPositiveButton(android.R.string.ok, (d, w) -> beginStorageSetup())
+                .setNeutralButton(R.string.driver_disabled_manage, (d, w) -> {
+                    startActivity(new Intent(this, GpuDriverActivity.class));
+                    // Nothing further here: onCreate runs again when the user comes
+                    // back, and by then the notice is cleared so this is skipped.
+                    finish();
+                })
+                .show();
     }
 
     /**

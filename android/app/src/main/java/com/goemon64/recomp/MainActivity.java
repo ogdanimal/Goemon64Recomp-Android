@@ -50,6 +50,14 @@ public class MainActivity extends SDLActivity {
     // with sGameRunning for clarity.
     private static volatile boolean sNativeInitedThisProcess = false;
 
+    /**
+     * How long a launch with a user-supplied Vulkan driver must survive before we
+     * stop treating it as suspect. Comfortably longer than renderer setup plus the
+     * roughly one second after first render in which the Adreno fault lands, and
+     * short enough that a user who quits quickly still banks the success.
+     */
+    private static final long BOOT_LATCH_CLEAR_DELAY_MS = 20_000L;
+
     // Must match goemon64::RestartTarget in include/goemon_support.h.
     private static final int RESTART_NONE = 0;
     private static final int RESTART_APP_MENU = 1;
@@ -121,14 +129,7 @@ public class MainActivity extends SDLActivity {
         }
         AssetInstaller.installIfNeeded(this, dataDir);
 
-        // Optional user-supplied Vulkan driver. A no-op unless this APK was built
-        // with -PcustomDriver=true AND a driver .so has been placed in the
-        // directory below. That directory is deliberately getFilesDir() and NOT
-        // the DataPaths dataDir: dlopen refuses libraries on shared/SD storage,
-        // which dataDir may well be. nativeLibraryDir is where libadrenotools
-        // expects to find its own hook libraries.
-        File driverDir = new File(getFilesDir(), "gpu_driver");
-        nativeInitCustomDriver(getApplicationInfo().nativeLibraryDir, driverDir.getAbsolutePath());
+        initCustomVulkanDriver();
 
         nativeInit(dataDir.getAbsolutePath(),
                 getIntent().getBooleanExtra(EXTRA_AUTOSTART, false));
@@ -150,6 +151,69 @@ public class MainActivity extends SDLActivity {
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         }
         hideSystemUI();
+    }
+
+    /**
+     * Hand the selected user-supplied Vulkan driver to native code, if there is
+     * one and this build supports it.
+     *
+     * <p>Must run before {@code super.onCreate()}, which is the only window in
+     * which a loader can be installed: SDLActivity starts the thread that
+     * initialises the renderer, and by then volk has already resolved Vulkan.
+     *
+     * <p>The order here is the recovery path and matters. We consume any failed
+     * boot FIRST, so a driver that took the process down last launch is
+     * deselected before it can be loaded again — otherwise a driver that cannot
+     * initialise is an unbreakable crash loop, because the game is what crashes
+     * and the launcher goes straight back into it. Only then do we arm the latch
+     * for this attempt; the renderer clears it once a Vulkan device is up.
+     *
+     * <p>The driver directory is deliberately {@code getFilesDir()} and NOT the
+     * DataPaths data dir: {@code dlopen} refuses libraries on shared or SD
+     * storage, and the data dir may well be a removable card.
+     */
+    private void initCustomVulkanDriver() {
+        if (!BuildConfig.CUSTOM_VULKAN_DRIVER) {
+            return;
+        }
+        GpuDriverStore.ensureDirectories(this);
+
+        // Deselects the driver and leaves a notice for the launcher to show.
+        GpuDriverStore.consumeFailedBoot(this);
+
+        GpuDriverStore.DriverInfo driver = GpuDriverStore.active(this);
+        String driverDir = "";
+        String driverName = "";
+        if (driver != null) {
+            driverDir = GpuDriverStore.directoryFor(this, driver).getAbsolutePath();
+            driverName = driver.libraryName;
+            // Written and fsynced before the driver is touched, because the process
+            // may not survive touching it.
+            GpuDriverStore.armBootLatch(this, driver);
+            // Disarmed only once the process has survived long enough to have got
+            // past the failures we can actually catch: a driver that will not
+            // initialise (a few seconds), and one that initialises and then faults
+            // during rendering (the Adreno case, about a second after the first
+            // frame). A native crash kills the process and this never runs, which
+            // is exactly the signal we want. Clearing it when the renderer reports
+            // a device would be too early and would disarm the latch just before
+            // the crash it exists to catch.
+            //
+            // A driver that fails LATER than this window is not covered, and cannot
+            // be: that is what the driver screen's own launcher icon is for.
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                    () -> GpuDriverStore.clearBootLatch(this), BOOT_LATCH_CLEAR_DELAY_MS);
+        }
+
+        // nativeLibraryDir is where libadrenotools expects its own hook libraries,
+        // and it only holds real files because the custom-driver build also sets
+        // jniLibs.useLegacyPackaging.
+        nativeInitCustomDriver(
+                getApplicationInfo().nativeLibraryDir,
+                driverDir,
+                driverName,
+                GpuDriverStore.tmpDir(this).getAbsolutePath(),
+                GpuDriverStore.stateDir(this).getAbsolutePath());
     }
 
     private void hideSystemUI() {
@@ -239,8 +303,13 @@ public class MainActivity extends SDLActivity {
 
     // Implemented in android_glue.cpp.
     public native void nativeInit(String dataPath, boolean autostart);
-    /** No-op in a normal build; see android_glue.cpp. */
-    public native void nativeInitCustomDriver(String hookLibDir, String driverDir);
+    /**
+     * Loads a user-supplied Vulkan driver. No-op in a normal build, and no-op
+     * when driverName is empty; returns a GpuDriverStore.STATUS_ value. See
+     * android_glue.cpp.
+     */
+    public native int nativeInitCustomDriver(String hookLibDir, String driverDir, String driverName,
+                                             String tmpLibDir, String stateDir);
     public native void nativeDestroy();
     public native int nativeGetRestartTarget();
 }

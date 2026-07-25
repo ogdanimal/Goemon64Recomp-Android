@@ -45,6 +45,13 @@ namespace goemon64 {
     // boot the game rather than stopping at the launcher.
     bool android_autostart();
 
+    // Called once the renderer has a working Vulkan device, with the name of the
+    // device it selected. Records that name where the GPU driver screen can show
+    // it, and clears the boot latch that would otherwise deselect an optional
+    // user-supplied driver. See android_glue.cpp; a no-op in a build without
+    // custom-driver support.
+    void report_render_device(const char* device_name);
+
     // TEMPORARY Bug-6 crash diagnostics (android_diag.cpp). Remove with the fix.
     namespace diag {
         enum Phase : int { Foreground = 0, Background = 1, Resuming = 2 };

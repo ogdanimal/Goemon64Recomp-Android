@@ -19,6 +19,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,40 @@
 // time. Only declared under the same define that makes plume define it.
 namespace plume {
     void SetCustomVulkanLoader(PFN_vkGetInstanceProcAddr getInstanceProcAddr);
+}
+
+namespace {
+    // Outcome of the load attempt, written to state/last_status for the driver UI
+    // to show. MUST stay in sync with GpuDriverStore's STATUS_ constants.
+    enum class CustomDriverStatus : int {
+        NotAttempted = 0,
+        // The loader accepted the driver and plume will be handed it. NOT proof the
+        // driver is in use -- adrenotools can succeed and still fall back to the
+        // system driver. The device name written by the render context is the
+        // authority, which is why the UI reports both.
+        Requested = 1,
+        OpenFailed = 2,
+        NoProcAddr = 3,
+        BadArguments = 4,
+    };
+
+    // Where the driver UI reads our results from. Captured at init so the
+    // render-context callback below can report without being handed a path.
+    std::string g_driver_state_dir;
+
+    void write_driver_state(const std::string& name, const std::string& value) {
+        if (g_driver_state_dir.empty()) {
+            return;
+        }
+        std::ofstream out(g_driver_state_dir + "/" + name, std::ios::binary | std::ios::trunc);
+        if (out.is_open()) {
+            out << value;
+        }
+    }
+
+    void set_driver_status(CustomDriverStatus status) {
+        write_driver_state("last_status", std::to_string(static_cast<int>(status)));
+    }
 }
 #endif
 
@@ -96,6 +131,36 @@ namespace goemon64 {
         // SDLActivity finishes the activity and onDestroy() does the relaunch.
         ultramodern::quit();
     }
+
+    // Called by the render context once a Vulkan device is up, with the name of
+    // the device that was actually selected.
+    //
+    // This is the ONLY authority on whether an optional user-supplied Vulkan
+    // driver is in use: loading one succeeds even when the system driver ends up
+    // being used, so the loader's own result cannot answer the question. The
+    // driver screen shows this name so a bug report says which driver rendered.
+    //
+    // It deliberately does NOT clear the boot latch, even though this is the
+    // obvious place for it. Reaching here means Vulkan initialised, which is
+    // earlier than the failure that matters most: the Adreno fault this whole
+    // feature exists for kills the process about a second AFTER rendering starts.
+    // Clearing the latch here would therefore disarm it just before the crash it
+    // is meant to catch, leaving the crash loop unbroken. MainActivity clears it
+    // on a timer instead, once the process has demonstrably survived that window.
+    //
+    // Outside the extern "C" block below: goemon_support.h declares it as ordinary
+    // C++ and it must keep that linkage.
+    void report_render_device(const char* device_name) {
+#if defined(GOEMON_CUSTOM_VULKAN_DRIVER)
+        if (g_driver_state_dir.empty()) {
+            return;
+        }
+        write_driver_state("last_device", (device_name != nullptr) ? device_name : "");
+        LOGI("custom driver: renderer came up on '%s'", (device_name != nullptr) ? device_name : "?");
+#else
+        (void)device_name;
+#endif
+    }
 }
 
 extern "C" {
@@ -124,56 +189,74 @@ Java_com_goemon64_recomp_MainActivity_nativeInit(JNIEnv* env, jobject /*thiz*/, 
 //
 // The whole body is compiled out unless -PcustomDriver=true built this APK; the
 // JNI entry point itself always exists so the Java call never hits an
-// UnsatisfiedLinkError. With no driver file present it is a no-op, so even a
-// custom-driver build behaves normally until someone puts a driver in place.
-JNIEXPORT void JNICALL
+// UnsatisfiedLinkError. Passing an empty driverName means "use the system
+// driver", so even a custom-driver build behaves normally until a user selects
+// something in the driver screen.
+//
+// The driver and its name come from the Java side rather than being discovered
+// here: GpuDriverStore has already parsed the package's meta.json for the
+// library name, which is the only thing that reliably identifies it, and it
+// supports several installed drivers at once.
+//
+// Returns a CustomDriverStatus for the driver UI to report.
+JNIEXPORT jint JNICALL
 Java_com_goemon64_recomp_MainActivity_nativeInitCustomDriver(JNIEnv* env, jobject /*thiz*/,
-                                                             jstring hookLibDir, jstring driverDir) {
+                                                             jstring hookLibDir, jstring driverDir,
+                                                             jstring driverName, jstring tmpLibDir,
+                                                             jstring stateDir) {
 #if defined(GOEMON_CUSTOM_VULKAN_DRIVER)
-    const char* c_hook = env->GetStringUTFChars(hookLibDir, nullptr);
-    const char* c_driver = env->GetStringUTFChars(driverDir, nullptr);
-    const std::string hook_dir = c_hook;
+    auto to_string = [env](jstring value) -> std::string {
+        if (value == nullptr) {
+            return {};
+        }
+        const char* chars = env->GetStringUTFChars(value, nullptr);
+        std::string out = (chars != nullptr) ? chars : "";
+        env->ReleaseStringUTFChars(value, chars);
+        return out;
+    };
+
+    const std::string hook_dir = to_string(hookLibDir);
+    const std::string driver_name = to_string(driverName);
+    const std::string tmp_dir = to_string(tmpLibDir);
+    g_driver_state_dir = to_string(stateDir);
+
     // MUST end in a separator: adrenotools_open_libvulkan builds the driver path
     // as customDriverDir + customDriverName with nothing between them, so a
     // directory without the trailing slash makes its stat() miss and the whole
     // call return null with no diagnostic (driver.cpp:45 in the vendored copy).
-    std::string driver_dir = c_driver;
+    std::string driver_dir = to_string(driverDir);
     if (!driver_dir.empty() && driver_dir.back() != '/') {
         driver_dir.push_back('/');
     }
-    env->ReleaseStringUTFChars(hookLibDir, c_hook);
-    env->ReleaseStringUTFChars(driverDir, c_driver);
 
-    // The driver is identified by whatever single .so sits in the directory --
-    // an .adpkg names it in meta.json, but reading that here would mean shipping
-    // a JSON parser into the glue for one string. More than one file means we
-    // cannot tell which was intended, so refuse rather than pick.
-    std::error_code ec;
-    std::string driver_name;
-    int so_count = 0;
-    for (const auto& entry : std::filesystem::directory_iterator(driver_dir, ec)) {
-        if (entry.path().extension() == ".so") {
-            driver_name = entry.path().filename().string();
-            ++so_count;
-        }
+    // Reset both results up front. Otherwise a launch that does not reach the
+    // renderer leaves the previous launch's values on screen, which is exactly
+    // the situation the user is trying to diagnose.
+    write_driver_state("last_device", "");
+
+    if (driver_name.empty()) {
+        LOGI("custom driver: none selected, using the system Vulkan driver");
+        set_driver_status(CustomDriverStatus::NotAttempted);
+        return static_cast<jint>(CustomDriverStatus::NotAttempted);
     }
-    if (so_count == 0) {
-        LOGI("custom driver: nothing in %s, using the system Vulkan driver", driver_dir.c_str());
-        return;
-    }
-    if (so_count > 1) {
-        LOGE("custom driver: %d .so files in %s, refusing to guess which one to load", so_count, driver_dir.c_str());
-        return;
+    if (driver_dir.empty() || hook_dir.empty()) {
+        LOGE("custom driver: missing driver dir or hook dir, using the system Vulkan driver");
+        set_driver_status(CustomDriverStatus::BadArguments);
+        return static_cast<jint>(CustomDriverStatus::BadArguments);
     }
 
-    // tmpLibDir is null because it is only consulted below API 29, where
-    // libadrenotools falls back to memfd; minSdk here is 28, so a device at
-    // exactly 28 can legitimately fail this call and drop to the system driver.
+    // tmpLibDir is only consulted below API 29, where libadrenotools patches the
+    // hook libraries on disk because memfd may be unavailable. Passing null there
+    // makes it attempt memfd and return null if the kernel lacks it -- and minSdk
+    // is 28, so a device at exactly 28 would silently fall through to the system
+    // driver. Passing a writable directory removes that failure mode. It is
+    // ignored on API 29 and above, so it costs nothing to always supply it.
+    //
     // hookLibDir MUST be nativeLibraryDir and the APK must use legacy jniLibs
     // packaging, or the hook silently does nothing (see adrenotools/driver.h).
     void* libvulkan = adrenotools_open_libvulkan(
         RTLD_NOW, ADRENOTOOLS_DRIVER_CUSTOM,
-        /*tmpLibDir=*/nullptr,
+        tmp_dir.empty() ? nullptr : tmp_dir.c_str(),
         hook_dir.c_str(),
         driver_dir.c_str(),
         driver_name.c_str(),
@@ -182,30 +265,38 @@ Java_com_goemon64_recomp_MainActivity_nativeInitCustomDriver(JNIEnv* env, jobjec
     if (libvulkan == nullptr) {
         // It reports no reason, so log everything a reader would otherwise have to
         // guess at. Every one of its early exits is a silent `return nullptr`.
-        LOGE("custom driver: adrenotools_open_libvulkan failed -- driver '%s' dir '%s' hooks '%s'",
-             driver_name.c_str(), driver_dir.c_str(), hook_dir.c_str());
-        return;
+        LOGE("custom driver: adrenotools_open_libvulkan failed -- driver '%s' dir '%s' hooks '%s' tmp '%s'",
+             driver_name.c_str(), driver_dir.c_str(), hook_dir.c_str(), tmp_dir.c_str());
+        set_driver_status(CustomDriverStatus::OpenFailed);
+        return static_cast<jint>(CustomDriverStatus::OpenFailed);
     }
 
     auto get_instance_proc_addr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(
         dlsym(libvulkan, "vkGetInstanceProcAddr"));
     if (get_instance_proc_addr == nullptr) {
         LOGE("custom driver: vkGetInstanceProcAddr missing from %s (%s)", driver_name.c_str(), dlerror());
-        return;
+        set_driver_status(CustomDriverStatus::NoProcAddr);
+        return static_cast<jint>(CustomDriverStatus::NoProcAddr);
     }
 
     plume::SetCustomVulkanLoader(get_instance_proc_addr);
     // Deliberately hedged: a non-null handle does NOT prove the custom driver is
     // in use. adrenotools can succeed here and still fall back to the system
     // driver, or enumerate zero devices, if the hook libraries were not found.
-    // The '[plume] Using device' line later in startup is the authority on which
-    // driver actually got loaded -- read that, not this.
-    LOGI("custom driver: requested %s via libadrenotools (hooks: %s) -- confirm with the [plume] device line",
+    // The device name recorded by report_render_device() below is the authority,
+    // and it is what the driver screen shows the user.
+    LOGI("custom driver: requested %s via libadrenotools (hooks: %s) -- confirm with the reported device",
          driver_name.c_str(), hook_dir.c_str());
+    set_driver_status(CustomDriverStatus::Requested);
+    return static_cast<jint>(CustomDriverStatus::Requested);
 #else
     (void)env;
     (void)hookLibDir;
     (void)driverDir;
+    (void)driverName;
+    (void)tmpLibDir;
+    (void)stateDir;
+    return 0;
 #endif
 }
 

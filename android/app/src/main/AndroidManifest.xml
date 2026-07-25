@@ -79,6 +79,35 @@
             android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation|fontScale|density|fontWeightAdjustment|mcc|mnc|colorMode|grammaticalGender"
             android:theme="@style/Theme.Goemon64.Fullscreen"/>
 
+        <!-- Optional user-supplied Vulkan driver picker.
+
+             android:enabled comes from a manifest placeholder driven by the same
+             -PcustomDriver=true gradle flag that builds the native loader, so a
+             normal build ships this disabled: no icon, and nothing can start it.
+             That matters because without the loader the screen could not do
+             anything, and a disabled component with a LAUNCHER filter contributes
+             no icon at all.
+
+             It is a SEPARATE LAUNCHER ICON rather than a row in the in-game
+             settings menu on purpose. A driver that fails to initialise takes the
+             game down before any in-game UI exists, so a setting reachable only
+             from inside the game would be unreachable in exactly the case it is
+             needed. Its own task affinity keeps it out of the game's task. -->
+        <activity
+            android:name=".GpuDriverActivity"
+            android:enabled="${gpuDriverEnabled}"
+            android:exported="true"
+            android:label="@string/driver_activity_label"
+            android:taskAffinity="com.goemon64.recomp.driver"
+            android:excludeFromRecents="true"
+            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
+            android:theme="@style/Theme.Goemon64">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!-- Restart trampoline. Runs in its own process so it can kill the game
              process from the outside and start a clean one; see RestartActivity. -->
         <activity

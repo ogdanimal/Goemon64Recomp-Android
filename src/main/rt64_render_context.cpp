@@ -408,6 +408,16 @@ goemon64::renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::render
         return;
     }
 
+#if defined(__ANDROID__)
+    // Report the device we actually got. This is where the optional user-supplied
+    // Vulkan driver is confirmed or refuted: loading one succeeds even when the
+    // system driver ends up being used, so the selected device name is the only
+    // evidence of which driver rendered. It also clears the boot latch that
+    // otherwise deselects a driver which never gets this far -- see
+    // android_glue.cpp. A no-op in a build without custom-driver support.
+    goemon64::report_render_device(app->device->getDescription().name.c_str());
+#endif
+
     // Set the application's fullscreen state.
     app->setFullScreen(cur_config.wm_option == ultramodern::renderer::WindowMode::Fullscreen);
 

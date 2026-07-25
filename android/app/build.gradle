@@ -60,6 +60,14 @@ android {
             abiFilters 'arm64-v8a'
         }
 
+        // The Java side has to agree with the native side about whether this build
+        // can load a custom driver: without the loader, the driver screen would
+        // offer a choice that silently does nothing. One flag drives both, plus the
+        // manifest placeholder that enables (and so shows the launcher icon for)
+        // GpuDriverActivity.
+        buildConfigField "boolean", "CUSTOM_VULKAN_DRIVER", customDriver.toString()
+        manifestPlaceholders = [gpuDriverEnabled: customDriver.toString()]
+
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++20"

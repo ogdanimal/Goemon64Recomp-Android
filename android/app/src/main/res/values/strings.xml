@@ -7,4 +7,59 @@
     <string name="copying_rom">Copying ROM…</string>
     <string name="verifying_rom">Verifying ROM…</string>
     <string name="preparing_files">Preparing game files…</string>
+
+    <!-- GPU driver picker. Only reachable in a build made with -PcustomDriver=true;
+         see GpuDriverActivity. -->
+    <string name="driver_activity_label">Goemon 64 GPU Driver</string>
+    <string name="driver_title">GPU driver</string>
+    <string name="driver_intro">Some Qualcomm Adreno drivers crash this game at launch. If your device is affected, you can supply your own Vulkan driver instead. This is optional and unsupported: the driver is not ours, and only you can judge whether it renders the game correctly.</string>
+    <string name="driver_list_heading">Driver to use</string>
+    <string name="driver_system">System driver</string>
+    <string name="driver_system_subtitle">The driver that came with your device</string>
+    <string name="driver_none_imported">No drivers imported yet.</string>
+    <string name="driver_import">Import driver…</string>
+    <string name="driver_importing">Importing…</string>
+    <string name="driver_remove">Remove</string>
+    <string name="driver_remove_title">Remove driver?</string>
+    <string name="driver_remove_message">Delete %1$s from this app? You can import it again later.</string>
+    <string name="driver_restart_required">Takes effect the next time the game starts.</string>
+    <string name="driver_imported_title">Driver imported</string>
+    <string name="driver_imported_message">%1$s is ready to use. Switch to it now?</string>
+    <string name="driver_use_now">Use it</string>
+    <string name="driver_keep_current">Not now</string>
+    <string name="driver_copy_report">Copy report</string>
+    <string name="driver_report_copied">Copied.</string>
+    <string name="driver_footer">Drivers are stored in this app\'s private storage and are removed when the app is uninstalled. If the game will not start after switching driver, it reverts to the system driver by itself on the next launch.</string>
+
+    <!-- Status block. The GPU line is the authority on which driver was really
+         used: the loader can succeed and still fall back to the system driver. -->
+    <string name="driver_status_selected">Selected:</string>
+    <string name="driver_status_gpu">GPU last launch:</string>
+    <string name="driver_status_loader">Loader:</string>
+    <string name="driver_status_unknown">not recorded yet</string>
+    <string name="driver_status_auto_disabled">%1$s was turned off automatically because the game did not start with it.</string>
+    <string name="driver_loader_not_attempted">system driver (no custom driver requested)</string>
+    <string name="driver_loader_requested">custom driver requested — check the GPU line above to see if it was used</string>
+    <string name="driver_loader_open_failed">could not load the driver; the system driver was used instead</string>
+    <string name="driver_loader_no_proc_addr">the file loaded but is not a Vulkan driver; the system driver was used instead</string>
+    <string name="driver_loader_bad_arguments">driver not loaded (internal error)</string>
+
+    <!-- Import failures, shown verbatim, so each says what to do differently. -->
+    <string name="driver_import_failed_title">Could not import that file</string>
+    <string name="driver_import_failed_read">The file could not be read.</string>
+    <string name="driver_import_failed_storage">There was not enough room to store the driver.</string>
+    <string name="driver_import_failed_too_large">That file is far too large to be a Vulkan driver.</string>
+    <string name="driver_import_failed_no_meta">That archive has no meta.json, so it is not a driver package. Pick the .adpkg file, or the .so inside it.</string>
+    <string name="driver_import_failed_bad_meta">That package\'s meta.json is missing or malformed.</string>
+    <string name="driver_import_failed_bad_zip">That archive could not be opened.</string>
+    <string name="driver_import_failed_missing_lib">That package names %1$s but does not contain it.</string>
+    <string name="driver_import_failed_not_elf">That is not a shared library. Pick an .adpkg package or a .so file.</string>
+    <string name="driver_import_failed_not_arm64">That driver is built for a different CPU architecture. This device needs a 64-bit Arm (arm64-v8a) driver.</string>
+    <string name="driver_import_failed_no_picker">No file picker is available on this device.</string>
+    <string name="driver_min_api_warning">Needs Android API %1$d; this device is API %2$d. It may not load.</string>
+
+    <!-- Shown by the launcher after the crash latch has reverted a bad driver. -->
+    <string name="driver_disabled_title">GPU driver turned off</string>
+    <string name="driver_disabled_message">The game did not start with %1$s, so it has been switched back to the system driver.</string>
+    <string name="driver_disabled_manage">Driver settings</string>
 </resources>
