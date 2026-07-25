@@ -95,3 +95,19 @@ CLAUDE.md
 docs/re-notes/RESUME.md
 docs/re-notes/RESUME-*.md
 docs/code-review-*.md
+
+# Working notes and raw evidence for the Adreno driver-crash work, which is
+# committed but not yet released. Same rule as the notes above: they are written
+# for eventual publication and stay local until the project winds down, so that
+# a stray `git add -A` cannot publish them early. Listed by name rather than by
+# pattern so a future doc is never hidden silently — add new ones here yourself.
+#
+# fixtures/g60-crash/ is additionally unfit to commit as-is: 76 MB of raw device
+# captures (two 22 MB logcats, ~30 MB of screenshots) against the 500 KB of
+# curated files the tracked fixtures/ corpus holds. If any of it is ever
+# published, distil it first rather than committing the directory wholesale.
+docs/re-notes/g60-mitigation-plan.md
+docs/re-notes/fbe-toggle-review-2026-07-25.md
+docs/re-notes/option-g-review-2026-07-25.md
+docs/re-notes/android-custom-driver-precedent.md
+docs/re-notes/fixtures/g60-crash/
