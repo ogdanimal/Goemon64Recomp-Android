@@ -80,12 +80,26 @@ public class LauncherActivity extends AppCompatActivity {
         progressText = findViewById(R.id.progressText);
         ioExecutor = Executors.newSingleThreadExecutor();
 
-        // A user-supplied Vulkan driver that never got the renderer up was
-        // deselected by MainActivity on the previous launch. Say so before booting
-        // the game, or the driver silently stops being used and the next report is
+        // A user-supplied Vulkan driver that took the process down last launch has
+        // to be deselected before the game is started again, and the user told why
+        // — otherwise the driver silently stops being used and the next report is
         // about a fix that appeared to work once and then stopped.
-        String disabledDriver = BuildConfig.CUSTOM_VULKAN_DRIVER
-                ? GpuDriverStore.pendingDisabledNotice(this) : null;
+        //
+        // We consume the failed boot HERE rather than relying on MainActivity to
+        // have done it. MainActivity also consumes it, because it can be entered
+        // directly from recents without passing through this screen and must not
+        // load a driver that already failed. But it runs AFTER us, so leaving the
+        // detection solely to it made the notice arrive one launch late — it wrote
+        // the notice only after we had already looked for it. Consuming is
+        // idempotent, so whichever runs first reports and the other finds nothing.
+        String disabledDriver = null;
+        if (BuildConfig.CUSTOM_VULKAN_DRIVER) {
+            disabledDriver = GpuDriverStore.consumeFailedBoot(this);
+            if (disabledDriver == null) {
+                // Left by a MainActivity-direct launch that we never saw.
+                disabledDriver = GpuDriverStore.pendingDisabledNotice(this);
+            }
+        }
         if (disabledDriver != null) {
             showDriverDisabledDialog(disabledDriver);
             return;   // continues in beginStorageSetup()
