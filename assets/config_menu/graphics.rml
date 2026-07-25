@@ -248,7 +248,7 @@
                                 data-checked="msaa_option"
                                 value="None"
                                 id="msaa_none"
-                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #hr_original' : 'nav-up: #rr_original; nav-down: #hr_original'"
+                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #fbe_on' : 'nav-up: #rr_original; nav-down: #fbe_on'"
                             />
                             <label class="config-option__tab-label" for="msaa_none">None</label>
                             <input type="radio"
@@ -259,7 +259,7 @@
                                 data-checked="msaa_option"
                                 value="MSAA2X"
                                 id="msaa_2x"
-                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #hr_16_9' : 'nav-up: #rr_display; nav-down: #hr_16_9'"
+                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #fbe_off' : 'nav-up: #rr_display; nav-down: #fbe_off'"
                                 data-style-nav-right="msaa4x_supported ? '#msaa_4x' : 'none'"
                             />
                             <label class="config-option__tab-label" for="msaa_2x">2x</label>
@@ -271,10 +271,36 @@
                                 data-checked="msaa_option"
                                 value="MSAA4X"
                                 id="msaa_4x"
-                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #hr_full' : 'nav-up: #rr_manual; nav-down: #hr_full'"
+                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #fbe_off' : 'nav-up: #rr_manual; nav-down: #fbe_off'"
                             />
                             <label class="config-option__tab-label" for="msaa_4x">4x</label>
                             <div class="config-option__details" data-if="!sample_positions_supported">Not available (missing sample positions support)</div>
+                        </div>
+                    </div>
+
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(7)">
+                        <label class="config-option__title">Framebuffer Effects</label>
+                        <div class="config-option__list">
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(7)"
+                                name="framebuffer_effects"
+                                data-checked="fbe_option"
+                                value="On"
+                                id="fbe_on"
+                                style="nav-up: #msaa_none; nav-down: #apply_button"
+                            />
+                            <label class="config-option__tab-label" for="fbe_on">On</label>
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(7)"
+                                name="framebuffer_effects"
+                                data-checked="fbe_option"
+                                value="Off"
+                                id="fbe_off"
+                                style="nav-up: #msaa_none; nav-down: #apply_button"
+                            />
+                            <label class="config-option__tab-label" for="fbe_off">Off</label>
                         </div>
                     </div>
                 </div>
@@ -312,6 +338,15 @@
                     <p data-if="cur_config_index == 6">
                         Adjusts the placement of HUD elements to fit the selected aspect ratio. <b>Expand</b> will use the aspect ratio of the game's output window.
                     </p>
+                    <p data-if="cur_config_index == 7">
+                        Keeps the console's framebuffer in memory and the image on the GPU in sync with each other. Visual effects that read back or draw directly into the rendered image depend on this, so leave it <b>On</b> unless you have a reason not to.
+                        <br />
+                        <br />
+                        <b>Turn this Off only if the game crashes a second or two after you start it.</b> Some Qualcomm Adreno graphics drivers crash while performing this synchronisation, and switching it off is what lets those devices run the game at all. In exchange, effects that rely on it may look wrong or not appear.
+                        <br />
+                        <br />
+                        There is nothing to gain from turning it off on hardware that already works.
+                    </p>
                 </div>
             </div>
             <div class="config__footer">
@@ -324,7 +359,7 @@
                         data-attrif-disabled="!options_changed"
                         onclick="apply_options"
                         id="apply_button"
-                        style="nav-up:#hr_original"
+                        style="nav-up:#fbe_on"
                     >
                         <div class="button__label">Apply<span class="prompt-font-sm">{{gfx_help__apply}}</span></div>
                     </button>

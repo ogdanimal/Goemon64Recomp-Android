@@ -858,6 +858,7 @@ public:
         bind_option(constructor, "ar_option", &new_options.ar_option);
         bind_option(constructor, "hr_option", &new_options.hr_option);
         bind_option(constructor, "msaa_option", &new_options.msaa_option);
+        bind_option(constructor, "fbe_option", &new_options.fbe_option);
         bind_option(constructor, "rr_option", &new_options.rr_option);
         constructor.BindFunc("rr_manual_value",
             [](Rml::Variant& out) {

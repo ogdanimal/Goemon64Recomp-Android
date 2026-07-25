@@ -12,6 +12,7 @@
 #endif
 
 #define HLSL_CPU
+#include "common/rt64_device_workarounds.h"
 #include "hle/rt64_application.h"
 #include "rt64_render_hooks.h"
 #include "overloaded.h"
@@ -237,6 +238,12 @@ void set_application_user_config(RT64::Application* application, const ultramode
     application->userConfig.refreshRateTarget = config.rr_manual_value;
     application->userConfig.internalColorFormat = to_rt64(config.hpfb_option);
     application->userConfig.displayBuffering = RT64::UserConfiguration::DisplayBuffering::Triple;
+
+    // Not part of userConfig: the sites that read this are deep inside command
+    // recording with no path to the configuration. See rt64_device_workarounds.h.
+    // Set here rather than only at startup so the toggle applies without a restart
+    // -- update_config() routes every later change through this same function.
+    RT64::SetFramebufferSyncEnabled(config.fbe_option != ultramodern::renderer::FramebufferEffects::Off);
 }
 
 ultramodern::renderer::SetupResult map_setup_result(RT64::Application::SetupResult rt64_result) {
