@@ -103,7 +103,11 @@ namespace recompui {
         static constexpr uint32_t initial_index_buffer_size = 1024 * sizeof(int);
         static constexpr plume::RenderFormat RmlTextureFormat = plume::RenderFormat::R8G8B8A8_UNORM;
         static constexpr plume::RenderFormat RmlTextureFormatBgra = plume::RenderFormat::B8G8R8A8_UNORM;
-        static constexpr plume::RenderFormat SwapChainFormat = plume::RenderFormat::B8G8R8A8_UNORM;
+        // Not a constant: the swap chain format differs per platform (Android surfaces do
+        // not offer B8G8R8A8_UNORM), and every pipeline drawing into the swap chain has to
+        // agree with it or Vulkan reports VUID-vkCmdDraw*-renderPass-02684. RT64 owns the
+        // decision -- do not reintroduce a local copy of the format here.
+        static plume::RenderFormat SwapChainFormat() { return RT64::GetSwapChainFormat(); }
         static constexpr uint32_t RmlTextureFormatBytesPerPixel = RenderFormatSize(RmlTextureFormat);
         static_assert(RenderFormatSize(RmlTextureFormatBgra) == RmlTextureFormatBytesPerPixel);
         plume::RenderInterface* interface_;
@@ -157,7 +161,7 @@ namespace recompui {
 
             // Enable 4X MSAA if supported by the device.
             const plume::RenderSampleCounts desired_sample_count = plume::RenderSampleCount::COUNT_8;
-            if (device_->getSampleCountsSupported(SwapChainFormat) & desired_sample_count) {
+            if (device_->getSampleCountsSupported(SwapChainFormat()) & desired_sample_count) {
                 multisampling_.sampleCount = desired_sample_count;
             }
 
@@ -235,7 +239,7 @@ namespace recompui {
                 .dstBlendAlpha = plume::RenderBlend::INV_SRC_ALPHA,
                 .blendOpAlpha = plume::RenderBlendOperation::ADD,
             };
-            pipeline_desc.renderTargetFormat[0] = SwapChainFormat; // TODO: Use whatever format the swap chain was created with.
+            pipeline_desc.renderTargetFormat[0] = SwapChainFormat();
             pipeline_desc.renderTargetCount = 1;
             pipeline_desc.cullMode = plume::RenderCullMode::NONE;
             pipeline_desc.inputSlots = &vertex_slot_;
@@ -581,8 +585,8 @@ namespace recompui {
             if (multisampling_.sampleCount > 1) {
                 if (window_width_ != image_width || window_height_ != image_height) {
                     screen_framebuffer_.reset();
-                    screen_texture_ = device_->createTexture(plume::RenderTextureDesc::ColorTarget(image_width, image_height, SwapChainFormat));
-                    screen_texture_ms_ = device_->createTexture(plume::RenderTextureDesc::ColorTarget(image_width, image_height, SwapChainFormat, multisampling_));
+                    screen_texture_ = device_->createTexture(plume::RenderTextureDesc::ColorTarget(image_width, image_height, SwapChainFormat()));
+                    screen_texture_ms_ = device_->createTexture(plume::RenderTextureDesc::ColorTarget(image_width, image_height, SwapChainFormat(), multisampling_));
                     const plume::RenderTexture *color_attachment = screen_texture_ms_.get();
                     screen_framebuffer_ = device_->createFramebuffer(plume::RenderFramebufferDesc(&color_attachment, 1));
                     screen_descriptor_set_->setTexture(0, screen_texture_.get(), plume::RenderTextureLayout::SHADER_READ);
