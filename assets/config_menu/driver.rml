@@ -10,8 +10,13 @@
                         <label class="config-option__title">Driver</label>
                         <!-- The select styling lives on these two classes; they are
                              named after the debug menu only because that is where
-                             they were first used. Hand-editing recomp.rcss is not an
-                             option -- it is generated from assets/scss.
+                             they were first used.
+                             NOTE: an earlier version of this comment said recomp.rcss
+                             must not be hand-edited because assets/scss generates it.
+                             That is no longer true -- the shipped rcss has diverged
+                             from the scss (different palette and font, plus rules
+                             added directly to it), so regenerating would re-theme the
+                             UI. Edit recomp.rcss, and mirror into the scss.
                              The outer block is what gives the select a width:
                              .config-option is a COLUMN flex box, so the wrapper's own
                              `flex: 1 1 100%` sizes its height, not its width, and

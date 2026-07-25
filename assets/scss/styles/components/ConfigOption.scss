@@ -55,6 +55,22 @@
         nav-right: none;
     }
 
+    // A .button standing in for the tab labels as an option's control, as the
+    // GPU Driver tab's Import and Delete rows do. Unlike a tab label it carries
+    // its own padding and a visible border, and it has no margin of its own, so
+    // without this it sits flush against the option title with its border
+    // hanging outside the title's 12dp inset. The 12dp top matches the offset a
+    // tab label's text gets (space(4) margin + space(8) padding), so the
+    // button's border starts on the same rhythm.
+    //
+    // NOTE: this file no longer generates ../../recomp.rcss -- the shipped file
+    // has diverged (different palette, different font, plus a hand-added
+    // .config-option--disabled rule). The rule above is duplicated there by
+    // hand, and both copies have to be kept in step until that is reconciled.
+    .button {
+        margin: space(12) space(12) 0;
+    }
+
     .config-option__tab-label {
         @extend %label-sm;
         @include trans-colors-opa;

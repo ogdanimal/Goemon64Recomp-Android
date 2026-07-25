@@ -713,6 +713,18 @@ scrollbarhorizontal sliderbar {
 .config-option__list input:last-of-type {
   nav-right: none;
 }
+/* A .button standing in for the tab labels as an option's control, as the GPU
+   Driver tab's Import and Delete rows do. Unlike a tab label it carries its own
+   padding and a visible border, and it has no margin of its own, so without this
+   it sits flush against the option title with its border hanging outside the
+   title's 12dp inset. The 12dp top matches the offset a tab label's text gets
+   (4dp margin + 8dp padding), so the button's border starts on the same rhythm.
+   Mirrored in assets/scss/styles/components/ConfigOption.scss -- see the note in
+   CLAUDE.md about that file no longer generating this one. */
+.config-option__radio-tabs .button,
+.config-option__list .button {
+  margin: 12dp 12dp 0;
+}
 .config-option__radio-tabs .config-option__tab-label,
 .config-option__list .config-option__tab-label {
   transition: color 0.05s linear-in-out, background-color 0.05s linear-in-out, opacity 0.05s linear-in-out;
