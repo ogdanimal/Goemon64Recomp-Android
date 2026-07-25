@@ -120,6 +120,16 @@ public class MainActivity extends SDLActivity {
             dataDir.mkdirs();
         }
         AssetInstaller.installIfNeeded(this, dataDir);
+
+        // Optional user-supplied Vulkan driver. A no-op unless this APK was built
+        // with -PcustomDriver=true AND a driver .so has been placed in the
+        // directory below. That directory is deliberately getFilesDir() and NOT
+        // the DataPaths dataDir: dlopen refuses libraries on shared/SD storage,
+        // which dataDir may well be. nativeLibraryDir is where libadrenotools
+        // expects to find its own hook libraries.
+        File driverDir = new File(getFilesDir(), "gpu_driver");
+        nativeInitCustomDriver(getApplicationInfo().nativeLibraryDir, driverDir.getAbsolutePath());
+
         nativeInit(dataDir.getAbsolutePath(),
                 getIntent().getBooleanExtra(EXTRA_AUTOSTART, false));
 
@@ -229,6 +239,8 @@ public class MainActivity extends SDLActivity {
 
     // Implemented in android_glue.cpp.
     public native void nativeInit(String dataPath, boolean autostart);
+    /** No-op in a normal build; see android_glue.cpp. */
+    public native void nativeInitCustomDriver(String hookLibDir, String driverDir);
     public native void nativeDestroy();
     public native int nativeGetRestartTarget();
 }

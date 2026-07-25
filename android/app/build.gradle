@@ -19,6 +19,15 @@ if (keystorePropertiesFile.exists()) {
 def repoRoot = rootProject.file("..")
 def hostFileToC = new File(repoRoot, "build-host-tools/file_to_c").absolutePath
 
+// Custom Vulkan driver loading (libadrenotools), off unless -PcustomDriver=true.
+// One switch deliberately drives two things, because either alone is broken:
+// the CMake option builds the loader and its hook libraries, and legacy jniLibs
+// packaging is what puts those hooks in nativeLibraryDir as real files.
+// libadrenotools REQUIRES the latter (see driver.h) -- without it the loader
+// returns a valid pointer and then silently falls back to the system driver.
+def customDriver = project.hasProperty('customDriver') &&
+        project.property('customDriver').toString().toBoolean()
+
 android {
     namespace 'com.goemon64.recomp'
     compileSdk 34
@@ -60,7 +69,8 @@ android {
                 arguments "-DANDROID_STL=c++_shared",
                           "-DANDROID_PLATFORM=android-28",
                           "-DGOEMON_VERSION_STRING=${nativeVersion}",
-                          "-DGOEMON_FILE_TO_C=${hostFileToC}"
+                          "-DGOEMON_FILE_TO_C=${hostFileToC}",
+                          "-DGOEMON_CUSTOM_VULKAN_DRIVER=${customDriver ? 'ON' : 'OFF'}"
             }
         }
     }
@@ -112,6 +122,17 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    // Only when -PcustomDriver=true: extract native libraries at install time so
+    // getApplicationInfo().nativeLibraryDir holds real files for libadrenotools'
+    // hook libraries. Left at AGP's default otherwise -- flipping it globally
+    // would change install footprint and .so load behaviour for every user to
+    // support a build nobody is running.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = customDriver
+        }
     }
 
     externalNativeBuild {

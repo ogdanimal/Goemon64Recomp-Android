@@ -21,3 +21,6 @@
 [submodule "lib/mnsg"]
 	path = lib/mnsg
 	url = https://github.com/klorfmorf/mnsg
+[submodule "lib/libadrenotools"]
+	path = lib/libadrenotools
+	url = https://github.com/bylaws/libadrenotools.git

@@ -31,6 +31,21 @@
 #include "ultramodern/ultramodern.hpp"
 #include "goemon_support.h"
 
+#if defined(GOEMON_CUSTOM_VULKAN_DRIVER)
+#include <dlfcn.h>
+#include <vulkan/vulkan_core.h>
+#include <adrenotools/driver.h>
+
+// Declared rather than included: pulling plume_vulkan.h in here would drag volk
+// and the whole render interface into this translation unit for one function.
+// PFN_vkGetInstanceProcAddr is a standard Vulkan typedef, identical on both
+// sides, and any drift shows up as an undefined symbol at link time, not at run
+// time. Only declared under the same define that makes plume define it.
+namespace plume {
+    void SetCustomVulkanLoader(PFN_vkGetInstanceProcAddr getInstanceProcAddr);
+}
+#endif
+
 #define LOG_TAG "Goemon64"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -99,6 +114,99 @@ Java_com_goemon64_recomp_MainActivity_nativeInit(JNIEnv* env, jobject /*thiz*/, 
     // NOTE: ROM registration is deferred to game_main() (see main.cpp), which runs
     // it after recomp::register_game(). Calling select_rom() here fails with
     // OtherError because the game hasn't been registered yet at nativeInit time.
+}
+
+// Loads a user-supplied Vulkan driver (Mesa Turnip and friends) through
+// libadrenotools and hands its vkGetInstanceProcAddr to plume, in place of the
+// system Vulkan loader volk would otherwise dlopen. Called by MainActivity
+// before super.onCreate() starts the SDL thread, which is the only window in
+// which this can be installed -- the renderer initialises Vulkan from there.
+//
+// The whole body is compiled out unless -PcustomDriver=true built this APK; the
+// JNI entry point itself always exists so the Java call never hits an
+// UnsatisfiedLinkError. With no driver file present it is a no-op, so even a
+// custom-driver build behaves normally until someone puts a driver in place.
+JNIEXPORT void JNICALL
+Java_com_goemon64_recomp_MainActivity_nativeInitCustomDriver(JNIEnv* env, jobject /*thiz*/,
+                                                             jstring hookLibDir, jstring driverDir) {
+#if defined(GOEMON_CUSTOM_VULKAN_DRIVER)
+    const char* c_hook = env->GetStringUTFChars(hookLibDir, nullptr);
+    const char* c_driver = env->GetStringUTFChars(driverDir, nullptr);
+    const std::string hook_dir = c_hook;
+    // MUST end in a separator: adrenotools_open_libvulkan builds the driver path
+    // as customDriverDir + customDriverName with nothing between them, so a
+    // directory without the trailing slash makes its stat() miss and the whole
+    // call return null with no diagnostic (driver.cpp:45 in the vendored copy).
+    std::string driver_dir = c_driver;
+    if (!driver_dir.empty() && driver_dir.back() != '/') {
+        driver_dir.push_back('/');
+    }
+    env->ReleaseStringUTFChars(hookLibDir, c_hook);
+    env->ReleaseStringUTFChars(driverDir, c_driver);
+
+    // The driver is identified by whatever single .so sits in the directory --
+    // an .adpkg names it in meta.json, but reading that here would mean shipping
+    // a JSON parser into the glue for one string. More than one file means we
+    // cannot tell which was intended, so refuse rather than pick.
+    std::error_code ec;
+    std::string driver_name;
+    int so_count = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(driver_dir, ec)) {
+        if (entry.path().extension() == ".so") {
+            driver_name = entry.path().filename().string();
+            ++so_count;
+        }
+    }
+    if (so_count == 0) {
+        LOGI("custom driver: nothing in %s, using the system Vulkan driver", driver_dir.c_str());
+        return;
+    }
+    if (so_count > 1) {
+        LOGE("custom driver: %d .so files in %s, refusing to guess which one to load", so_count, driver_dir.c_str());
+        return;
+    }
+
+    // tmpLibDir is null because it is only consulted below API 29, where
+    // libadrenotools falls back to memfd; minSdk here is 28, so a device at
+    // exactly 28 can legitimately fail this call and drop to the system driver.
+    // hookLibDir MUST be nativeLibraryDir and the APK must use legacy jniLibs
+    // packaging, or the hook silently does nothing (see adrenotools/driver.h).
+    void* libvulkan = adrenotools_open_libvulkan(
+        RTLD_NOW, ADRENOTOOLS_DRIVER_CUSTOM,
+        /*tmpLibDir=*/nullptr,
+        hook_dir.c_str(),
+        driver_dir.c_str(),
+        driver_name.c_str(),
+        /*fileRedirectDir=*/nullptr,
+        /*userMappingHandle=*/nullptr);
+    if (libvulkan == nullptr) {
+        // It reports no reason, so log everything a reader would otherwise have to
+        // guess at. Every one of its early exits is a silent `return nullptr`.
+        LOGE("custom driver: adrenotools_open_libvulkan failed -- driver '%s' dir '%s' hooks '%s'",
+             driver_name.c_str(), driver_dir.c_str(), hook_dir.c_str());
+        return;
+    }
+
+    auto get_instance_proc_addr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(
+        dlsym(libvulkan, "vkGetInstanceProcAddr"));
+    if (get_instance_proc_addr == nullptr) {
+        LOGE("custom driver: vkGetInstanceProcAddr missing from %s (%s)", driver_name.c_str(), dlerror());
+        return;
+    }
+
+    plume::SetCustomVulkanLoader(get_instance_proc_addr);
+    // Deliberately hedged: a non-null handle does NOT prove the custom driver is
+    // in use. adrenotools can succeed here and still fall back to the system
+    // driver, or enumerate zero devices, if the hook libraries were not found.
+    // The '[plume] Using device' line later in startup is the authority on which
+    // driver actually got loaded -- read that, not this.
+    LOGI("custom driver: requested %s via libadrenotools (hooks: %s) -- confirm with the [plume] device line",
+         driver_name.c_str(), hook_dir.c_str());
+#else
+    (void)env;
+    (void)hookLibDir;
+    (void)driverDir;
+#endif
 }
 
 JNIEXPORT void JNICALL

@@ -134,6 +134,28 @@ target_compile_definitions(rmlui_core PRIVATE LUNASVG_BUILD_STATIC)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime)
 
+# Custom Vulkan driver loading (libadrenotools). OFF by default so a normal
+# build is byte-identical and the Vulkan init path is untouched -- the hook goes
+# in plume's volkInitialize call, which every platform runs. Gradle turns this on
+# via -PcustomDriver=true, which ALSO flips jniLibs.useLegacyPackaging: the hook
+# libraries below must exist as real files in nativeLibraryDir, and AGP 8's
+# default (uncompressed, read straight from the APK) leaves that directory
+# without them. Verified against this repo's own APKs -- both debug and release
+# store .so uncompressed today.
+if (ANDROID AND GOEMON_CUSTOM_VULKAN_DRIVER)
+    if (NOT CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+        message(FATAL_ERROR "GOEMON_CUSTOM_VULKAN_DRIVER requires arm64-v8a (libadrenotools supports no other ABI).")
+    endif()
+    # Builds libadrenotools (static, linked into libGoemon64.so) plus four SHARED
+    # hook libraries -- main_hook, file_redirect_hook, gsl_alloc_hook, hook_impl --
+    # which are loaded by path at runtime, not linked. They land in CMake's
+    # library output directory, which is how AGP finds and packages them.
+    add_subdirectory(${CMAKE_SOURCE_DIR}/lib/libadrenotools ${CMAKE_BINARY_DIR}/libadrenotools)
+    # plume's hook is behind its own define so that a build without this option
+    # compiles the original volkInitialize() statement unchanged.
+    target_compile_definitions(plume PRIVATE PLUME_CUSTOM_VULKAN_LOADER)
+endif()
+
 target_include_directories(rt64 PRIVATE ${CMAKE_BINARY_DIR}/rt64/src)
 
 # RecompiledFuncs - Library containing the primary recompiler output
@@ -449,6 +471,12 @@ if (ANDROID)
     # wired to the JNI SDLActivity bootstrap. Also link the Android system libs
     # RT64/Plume/SDL need (Vulkan surface, native window, logging, GLES/EGL).
     target_link_libraries(Goemon64Recompiled PRIVATE SDL2main android log vulkan)
+
+    # Custom Vulkan driver loading, see the GOEMON_CUSTOM_VULKAN_DRIVER block above.
+    if (GOEMON_CUSTOM_VULKAN_DRIVER)
+        target_link_libraries(Goemon64Recompiled PRIVATE adrenotools)
+        target_compile_definitions(Goemon64Recompiled PRIVATE GOEMON_CUSTOM_VULKAN_DRIVER)
+    endif()
 
     # Android's Bionic provides libc/pthread; no -latomic/-static-libstdc++.
     # 16 KB page compliance (Play deadline 2027-02-01): every loadable segment
