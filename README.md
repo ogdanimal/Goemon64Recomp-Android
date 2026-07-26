@@ -6,13 +6,25 @@ This fork packages [Goemon 64: Recompiled](https://github.com/klorfmorf/Goemon64
 
 - Primarily developed and tested on **Retroid Pocket 5** and **AYN Thor** class handhelds (Snapdragon / Adreno). Device-specific Vulkan or driver issues are still possible on untested hardware.
 - **Mali GPUs are supported as of `1.0.3`.** Earlier versions rendered a white screen with missing textures on Mali devices; see the Mali note below.
-- Requires a working **Vulkan** driver. On devices with incomplete drivers, a custom Turnip driver (e.g. [Mr Purple](https://github.com/MrPurple666/purple-turnip/releases)) may help.
+- **Some older Adreno devices crashed on launch before `1.0.4`.** If the game closes itself a few seconds after starting, see the Adreno note below.
+- Requires a working **Vulkan** driver. If your device's driver is the problem, `1.0.4` can load a driver you supply yourself — see **Settings → GPU Driver**, and the Adreno note below.
 
 ### Mali GPUs
 
 Versions before `1.0.3` showed a white screen with most textures missing on devices with Mali GPUs, because the renderer required a Vulkan feature (dual-source blending) that no Mali GPU supports. `1.0.3` adds a fallback that is selected automatically on any GPU without that feature, so no configuration is needed.
 
-The fix was verified on a Mali-G57 device and is expected to work across Mali hardware, since it is chosen from the GPU's reported capabilities rather than from a device list. On GPUs without dual-source blending, N64 coverage-based effects such as anti-aliased edges are approximated rather than exact; no visible difference was found in testing. If you see edge or transparency artifacts on a Mali device, please open an issue.
+The fix was developed on a Mali-G57 device and confirmed by the original reporter on a Mali-G77 (Retroid Pocket 4 Pro). It is chosen from the GPU's reported capabilities rather than from a device list, so it should engage on any Mali GPU. On GPUs without dual-source blending, N64 coverage-based effects such as anti-aliased edges are approximated rather than exact; no visible difference was found in testing. If you see edge or transparency artifacts on a Mali device, please open an issue.
+
+### Adreno launch crash
+
+Some Adreno devices closed the app a few seconds after starting the game, before it reached the title screen. This was reported on a Motorola G60 and reproduced here on an Adreno 630. It is a bug in the Qualcomm Vulkan driver on those devices, not in the game: the same build runs on the same hardware under a third-party driver, and crashes under the system one.
+
+`1.0.4` adds two independent ways around it, either of which is enough on its own:
+
+- **Graphics → Framebuffer Effects → Off** avoids the driver call that crashes. This works on any device and needs nothing installed, at the cost of some visual effects (see the Features section below).
+- **Settings → GPU Driver** lets you install a different Vulkan driver, such as a [Mesa Turnip](https://github.com/MrPurple666/purple-turnip/releases) build, and run the game on that instead. Adreno hardware only.
+
+Both are reachable even on an affected device: the crash happens once the game itself starts rendering, while the app's own menu screen (Start Game / Controls / Settings / Mods) comes up before that and is unaffected. Change the setting there, then start the game.
 
 This fork is based on Goemon 64: Recompiled:
 
@@ -35,7 +47,7 @@ The release APK does not contain the game ROM. You must provide your own legally
 - Vulkan-capable GPU and a working Vulkan driver (tested on Snapdragon / Adreno handhelds)
 - Enough free storage for the app data folder, the imported ROM, and saves
 
-This port has been tested primarily on Snapdragon / Adreno handhelds, and on a Mali-G57 device (see the Mali note above). If graphics are incorrect, crashes happen at game start, or Vulkan device creation fails, your device may need a newer or different Vulkan driver.
+This port has been tested primarily on Snapdragon / Adreno handhelds, and on Mali-G57 and Mali-G77 devices (see the Mali note above). If graphics are incorrect, crashes happen at game start, or Vulkan device creation fails, your device may need a newer or different Vulkan driver — on Adreno hardware you can supply one yourself under **Settings → GPU Driver**.
 
 ## What This Android Fork Adds
 
@@ -45,6 +57,7 @@ This port has been tested primarily on Snapdragon / Adreno handhelds, and on a M
 - Game/UI assets bundled in the APK and installed to private storage on first launch
 - Physical controller support through SDL
 - Landscape-locked, fullscreen game presentation
+- Optional loading of a user-supplied Vulkan driver on Adreno devices
 
 ## Default Controls
 
@@ -68,6 +81,12 @@ The default gamepad layout (Xbox-style face buttons). Everything is remappable i
 | Select | — | Open this app's settings menu |
 
 The right stick and the D-Pad both cover the C-buttons, so with Analog Camera on the right stick orbits while the D-Pad keeps the C-button actions.
+
+### Controller compatibility
+
+Controllers are recognised through SDL's own controller database, which ships with the app. If a pad is newer than your Android version, Android may not know its layout and will hand it over as a generic HID device, with some buttons landing in slots that have no meaning — those buttons then do nothing, in every app, and remapping cannot reach them.
+
+`1.0.4` adds a database entry for the **DualSense Edge on Android 12 and earlier**, where Circle, R1, Create and Options did not register. Devices running Android 13 or newer already enumerate the pad correctly and are unaffected. If your controller has buttons that do nothing and do not appear when rebinding, please open an issue with the pad's model and your Android version.
 
 ## Features
 
@@ -129,8 +148,21 @@ Either way, anything since your last save is lost, so the prompt asks for confir
 ### Display and Presentation
 
 - **Higher internal resolutions** — Original 3x / 4x / 6x / 8x in addition to the stock tiers. Downsampling is only offered at Original and Original 2x, where it is meaningful.
+- **Framebuffer Effects** (Graphics, default **On**) — keeps the console's framebuffer in memory and the image on the GPU in sync. Effects that read back or draw straight into the rendered image depend on it, so leave it on unless the game will not launch on your device; see the Adreno note above.
 - Fullscreen (immersive) presentation is applied reliably on launch and re-applied when the app regains focus.
 - The desktop-only Window Mode option is hidden on Android, and menu navigation skips it.
+
+### GPU Driver
+
+On Adreno devices, **Settings → GPU Driver** can run the game on a Vulkan driver you supply instead of your device's own — useful when the system driver is the thing that is broken. It is a per-app choice: nothing about your device is modified, no root is needed, and no other app is affected.
+
+Import a Turnip `.adpkg` package or a bare `.so` through the file picker, select it, and restart the app when asked. Import rejects anything that is not a 64-bit Arm shared library, and any package missing the library its `meta.json` names, telling you which. Whether the file is genuinely a Vulkan driver is only known when it loads — if it is not, the game says so and carries on with the system driver.
+
+Because a bad driver can leave you with a black screen or a hang, a newly selected driver has to be **confirmed**: the game asks "Keep this graphics driver?" once it is running, and a driver that never gets that far is switched back to the system one on the next launch. So a driver that does not work costs you a restart, not your ability to reach the settings menu.
+
+The system driver is always the default, and the tab is only present on Android. Note that it is not gated on your GPU: the tab appears on Mali and other hardware too, but the replacement drivers that exist are Adreno/Qualcomm builds, so there is nothing useful to import on those devices.
+
+Two limits worth knowing. A driver that works at first and breaks later, while still producing frames, is not detected automatically — switch back by hand. And if Android kills the app very early in a session, a driver you had already confirmed may ask for confirmation again on the next launch.
 
 ## ROM and Storage
 
