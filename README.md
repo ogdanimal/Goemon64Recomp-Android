@@ -22,7 +22,7 @@ Some Adreno devices closed the app a few seconds after starting the game, before
 `1.0.4` adds two independent ways around it, either of which is enough on its own:
 
 - **Graphics → Framebuffer Effects → Off** avoids the driver call that crashes. This works on any device and needs nothing installed, at the cost of some visual effects (see the Features section below).
-- **Settings → GPU Driver** lets you install a different Vulkan driver, such as a [Mesa Turnip](https://github.com/MrPurple666/purple-turnip/releases) build, and run the game on that instead. Adreno hardware only.
+- **Settings → GPU Driver** lets you install a different Vulkan driver and run the game on that instead. The Mesa Turnip builds by **Mr. Purple** ([purple-turnip](https://github.com/MrPurple666/purple-turnip/releases)) are the ones widely used on retro handhelds, and are what this was developed against. Adreno hardware only.
 
 Both are reachable even on an affected device: the crash happens once the game itself starts rendering, while the app's own menu screen (Start Game / Controls / Settings / Mods) comes up before that and is unaffected. Change the setting there, then start the game.
 
@@ -156,7 +156,7 @@ Either way, anything since your last save is lost, so the prompt asks for confir
 
 On Adreno devices, **Settings → GPU Driver** can run the game on a Vulkan driver you supply instead of your device's own — useful when the system driver is the thing that is broken. It is a per-app choice: nothing about your device is modified, no root is needed, and no other app is affected.
 
-Import a Turnip `.adpkg` package or a bare `.so` through the file picker, select it, and restart the app when asked. Import rejects anything that is not a 64-bit Arm shared library, and any package missing the library its `meta.json` names, telling you which. Whether the file is genuinely a Vulkan driver is only known when it loads — if it is not, the game says so and carries on with the system driver.
+Import a driver `.adpkg` package or a bare `.so` through the file picker, select it, and restart the app when asked. Mr. Purple's [purple-turnip](https://github.com/MrPurple666/purple-turnip/releases) releases are the usual source on Adreno handhelds, and are what the feature was tested with; other Turnip builds packaged the same way should work too. Import rejects anything that is not a 64-bit Arm shared library, and any package missing the library its `meta.json` names, telling you which. Whether the file is genuinely a Vulkan driver is only known when it loads — if it is not, the game says so and carries on with the system driver.
 
 Because a bad driver can leave you with a black screen or a hang, a newly selected driver has to be **confirmed**: the game asks "Keep this graphics driver?" once it is running, and a driver that never gets that far is switched back to the system one on the next launch. So a driver that does not work costs you a restart, not your ability to reach the settings menu.
 
