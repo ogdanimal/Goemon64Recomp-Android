@@ -6,9 +6,10 @@
 // ATTACK WHILE WALKING / RUNNING
 //
 // Vanilla Goemon roots the player for the whole attack: the attack action
-// states (action_id 0x58-0x5E) never run the movement pipeline, so world
-// velocity (+0xC0/+0xC4/+0xC8) is held at zero for the entire swing even with
-// the stick fully deflected (device-probed across 900+ frames).
+// states (the melee band 0x58-0x6F and the sub-weapon actions) never run the
+// movement pipeline, so world velocity (+0xC0/+0xC4/+0xC8) is held at zero for
+// the entire swing even with the stick fully deflected (device-probed across
+// 900+ frames).
 //
 // This feature re-injects movement during attacks by adding a per-frame
 // displacement onto the authoritative player position node.
@@ -38,11 +39,12 @@
 
 // Temporary state-discovery logger ([astate] ...). Flip to 1 to capture the
 // action_id / character_id / velocity of attacks that the whitelist does NOT
-// currently cover — e.g. LEVEL-2 (upgraded) weapon swings. Fires (throttled)
-// for any state that is neither idle nor locomotion, i.e. exactly the attack /
-// special states, WITHOUT needing to know their ids in advance. Read the
-// [astate] lines from logcat while performing a level-2 attack, then add the
-// confirmed ids to is_attack_state() and set this back to 0.
+// currently cover — e.g. an upgraded-weapon swing. Fires (throttled) for any
+// state that is neither idle nor locomotion, i.e. exactly the attack / special
+// states, WITHOUT needing to know their ids in advance. Read the [astate] lines
+// from logcat while performing the attack, then add the confirmed ids to
+// is_attack_state() and set this back to 0. Useful here to confirm the
+// statically-derived level-3 ids 0x68-0x6E actually appear on device.
 #define ATTACK_MOVE_STATE_DIAG 0
 
 // Peak per-frame world units at full stick deflection (mag ~0.7). Run is ~2.8;
@@ -88,15 +90,79 @@
 //   0x60-0x65 : level-2 melee combo. Observed cycling 0x60/0x61/0x62/0x65 on
 //               ALL FOUR characters; 0x63/0x64 inferred as the in-family swing
 //               frames (mirrors the 0x5B/0x5C inference above).
-//   0x7F      : Goemon level-2 coin-throw variant (seen between 0x7C throws).
-//   0x82-0x89 : character level-2 specials. Observed 0x82/0x83 (Goemon) and
+//   0x66      : level-2 dash attack. NOT observed on device -- established
+//               statically below, as the level-2 counterpart of L1's 0x5E.
+//   0x7F      : Goemon powered coin-throw variant (seen between 0x7C throws).
+//   0x82-0x89 : character specials. Observed 0x82/0x83 (Goemon) and
 //               0x84/0x85/0x86/0x89 (Ebisumaru); 0x87/0x88 inferred in-family.
-//   0x93-0x94 : Sasuke level-2 special (sustained, alternating 0x93<->0x94).
-//   NOTE: Yae's (char 3) level-2 special was NOT captured -- she only performed
-//   the 0x60 combo. If one exists it will still root the player and log
-//   whitelisted=0; the [astate] logger is left on to catch it.
+//   0x93-0x94 : Sasuke special (sustained, alternating 0x93<->0x94).
+//   NOTE: Yae's (char 3) special was NOT captured -- she only performed the
+//   0x60 combo. If one exists it will still root the player and log
+//   whitelisted=0; the [astate] logger is left in to catch it.
+//
+// LEVEL 3 (second upgrade) -- derived statically 2026-07-26 from the recompiled
+// MIPS + ROM rodata, then CONFIRMED ON DEVICE the same day: a play session
+// logged 0x68/0x69/0x6A/0x6B/0x6C/0x6D/0x6E across ALL FOUR characters, every
+// one whitelisted=1, and the feature was reported working. The melee action
+// space is laid out as three contiguous 8-id blocks, `0x58 + level*8`:
+//
+//   * Weapon upgrade level is a u32 per character at 0x8015C6AC[character_id],
+//     values 0/1/2 (new game writes 0 for all four -- func_08001BC4_71F394).
+//   * The attack dispatcher func_801E4624_5A0534 selects the melee entry id
+//     from that level. Sasuke's branch does it inline and reads directly:
+//         0x801E4A0C  lw    $v0, -0x3954($v0)   ; weaponLevel[char]
+//         0x801E4A28  addiu $a1, $zero, 0x60    ; level 1
+//         0x801E4A58  addiu $a1, $zero, 0x68    ; level 2  <-- LEVEL 3 WEAPON
+//         0x801E4A80  addiu $a1, $zero, 0x58    ; level 0
+//     The other three characters go through func_801E4ED4_5A0DE4, which indexes
+//     the same level into three 3-byte rodata tables at 0x802046E8/EC/F0
+//     (ROM 0x5C05F8): `58 60 68 | 5e 66 6e | 5f 67 6f` -- i.e.
+//     ground-combo / dash-attack / jump-attack, one column per level.
+//   * The per-action handler table at 0x80203B90 (ROM 0x5BFAA0) carries three
+//     structurally parallel 8-entry blocks with DISTINCT handlers, so 0x68-0x6F
+//     is a real populated family, not padding.
+//   * The combo chain confirms it: the 0x68 handler func_801DE374_59A284
+//     passes successors 0x69 (a2) and 0x6B (a3) into the combo driver, and the
+//     0x6A handler func_801DE434_59A344 chains to 0x6D -- exactly mirroring
+//     0x58->0x59/0x5B and 0x5A->0x5D at level 1.
+//
+//   0x68-0x6D : level-3 melee combo (entry 0x68; successors 0x69/0x6A and the
+//               alternate branch 0x6B/0x6C/0x6D).
+//   0x6E      : level-3 dash attack (counterpart of 0x5E / 0x66).
+//
+// ONLY MELEE HAS A LEVEL-3 TIER. The sub-weapon actions (hookshot 0x70/0x75/
+// 0x77, coin throw 0x7C-0x81, Ebisumaru 0x84-0x8D, bombs 0x90-0x92, Sasuke
+// 0x93-0x99, Yae 0xA2/0xA4-0xA9) are NOT indexed by the level array -- the
+// dispatcher picks them from the equipped-slot value at 0x8015C604. So there is
+// nothing further to add for level 3.
+//
+// YAE'S BAZOOKA -- added 2026-07-26 on request, after a play session logged it
+// as whitelisted=0. Its family is structured exactly like Goemon's ryo throw,
+// three variants each with a "powered" counterpart (func_801E4624_5A0534, the
+// char-3 arm at 0x801E4D08):
+//
+//     variant 0 (ground) : 0xA4   powered 0xA7   <-- whitelisted
+//     variant 1 (dash)   : 0xA5   powered 0xA8
+//     variant 2 (jump)   : 0xA6   powered 0xA9
+//
+// The "powered" branch is gated on player->0x68 == 3 AND a counter at
+// 0x8015C5E8 >= 3 (0x801E4DC8-0x801E4DE8) -- a charge/ammo state, NOT an upgrade
+// level, which is why it does not multiply out per weapon level.
+//
+// Only 0xA4 and 0xA7 are whitelisted, mirroring the ryo throw exactly (which
+// takes 0x7C/0x7F and leaves 0x7D/0x7E/0x80/0x81 out). Both were observed on
+// device reading vel==(0,0), i.e. genuinely rooted, so the injection has
+// something to do. The dash and jump variants are left out: they were never
+// observed, and in both the game is already driving velocity, where
+// amove_target bails on its own velocity guard anyway.
 //
 // EXCLUDED ON PURPOSE:
+//   0x5F, 0x67, 0x6F : the JUMP-attack slot of each level's block. Airborne, so
+//               the game drives its own velocity and amove_target would bail on
+//               the velocity guard anyway -- but that guard is a runtime
+//               accident, not a decision, and an injected lunge on a grounded
+//               start/land frame is untested. Level 1 has always excluded 0x5F;
+//               keeping all three levels consistent rather than widening.
 //   0x70-0x72 : pipe hookshot/extension -- anchors the pipe to a world point;
 //               sliding during it risks desyncing the grapple (same hazard
 //               class as the ladder character-swap failure).
@@ -105,12 +171,16 @@
 //               it. Injecting movement here is exactly the kind of untested
 //               state the whitelist exists to keep out.
 static inline s32 is_attack_state(u8 act) {
-    return (act >= 0x58 && act <= 0x5E) ||   // L1 melee / jump family
-           (act >= 0x60 && act <= 0x65) ||   // L2 melee combo (all characters)
-           act == 0x7C || act == 0x7F ||     // ryo throw (+ L2 variant)
-           (act >= 0x82 && act <= 0x89) ||   // L2 character specials
-           (act >= 0x93 && act <= 0x94) ||   // Sasuke L2 special
-           act == 0x90;                      // bombs
+    // Melee: slots +0..+6 of each 8-wide level block (combo + dash attack).
+    // Slot +7 (the jump attack: 0x5F / 0x67 / 0x6F) is deliberately out.
+    return (act >= 0x58 && act <= 0x5E) ||   // L1 melee combo + dash
+           (act >= 0x60 && act <= 0x66) ||   // L2 melee combo + dash
+           (act >= 0x68 && act <= 0x6E) ||   // L3 melee combo + dash
+           act == 0x7C || act == 0x7F ||     // Goemon ryo throw (+ powered)
+           (act >= 0x82 && act <= 0x89) ||   // character specials
+           (act >= 0x93 && act <= 0x94) ||   // Sasuke special
+           act == 0x90 ||                    // bombs
+           act == 0xA4 || act == 0xA7;       // Yae bazooka (+ powered)
 }
 
 static inline s32 in_ram(u32 p) {

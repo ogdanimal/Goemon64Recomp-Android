@@ -639,3 +639,76 @@ not merely look wrong. Unknown states must default to refused.
 - Swimming is **safe**; it needed no exclusion.
 - The measured swap cost is **~0.93s** of locked input (30-frame lock plus a
   24-frame settle), not the ~30 frames implied by the input lock alone.
+
+---
+
+## 11. THE MELEE ACTION-ID SPACE (2026-07-26, static)
+
+Derived from the recompiled MIPS and ROM rodata, not from a device capture.
+It refines §10's `0x58`–`0x5E` row, which was an observation subset.
+
+**Weapon upgrade level** is a `u32` per character at `0x8015C6AC[character_id]`
+(save-buffer offset `+0xA4 + char*4`, live-block offset `+0xD4 + char*4`),
+values `0`/`1`/`2` — i.e. player-facing weapon levels 1/2/3. A new game writes
+`0` for all four characters (`func_08001BC4_71F394`).
+
+**The melee action ids are laid out as three contiguous 8-id blocks,
+`0x58 + level*8`:**
+
+| slot | meaning | level 1 | level 2 | level 3 |
+|---|---|---|---|---|
+| +0 | ground combo, hit 1 | `0x58` | `0x60` | `0x68` |
+| +1 | combo hit 2 | `0x59` | `0x61` | `0x69` |
+| +2 | combo hit 3 | `0x5A` | `0x62` | `0x6A` |
+| +3 | alternate branch 1 | `0x5B` | `0x63` | `0x6B` |
+| +4 | alternate branch 2 | `0x5C` | `0x64` | `0x6C` |
+| +5 | alternate branch 3 | `0x5D` | `0x65` | `0x6D` |
+| +6 | dash attack | `0x5E` | `0x66` | `0x6E` |
+| +7 | jump attack | `0x5F` | `0x67` | `0x6F` |
+
+Four independent confirmations, each read directly:
+
+1. **The dispatcher.** `func_801E4624_5A0534` reads the level and branches.
+   Sasuke's arm does it inline: `0x801E4A0C lw $v0, -0x3954($v0)` then
+   `0x801E4A28 addiu $a1,$zero,0x60` (level 1) / `0x801E4A58 … 0x68` (level 2) /
+   `0x801E4A80 … 0x58` (level 0). Its dash-attack arm gives `0x66`/`0x6E`/`0x5E`.
+2. **The rodata tables.** The other three characters go through
+   `func_801E4ED4_5A0DE4`, which indexes the same level into three 3-byte tables
+   at `0x802046E8`/`EC`/`F0` (ROM `0x5C05F8`):
+   `58 60 68 | 5e 66 6e | 5f 67 6f` — one row per slot group, one column per
+   level. (Three more tables at `0x802046F4`/`F8`/`FC` hold the matching
+   `0/5/10`, `3/8/13`, `4/9/14` aux params.)
+3. **The handler table.** `0x80203B90` (ROM `0x5BFAA0`, indexed by action id,
+   bound `< 0xE8`) holds three structurally parallel 8-entry blocks with
+   *distinct* handlers, so `0x68`–`0x6F` is a real populated family:
+   `801DE1F4 801DE220 801DE24C 801DE47C 801DE49C 801DE4BC 801DE59C 801DEFC8` /
+   `801DE270 801DE2CC 801DE32C 801DE4DC 801DE4FC 801DE51C 801DE5BC 801DEFE8` /
+   `801DE374 801DE3D4 801DE434 801DE53C 801DE55C 801DE57C 801DE600 801DF008`.
+4. **The combo chain.** The `0x68` handler `func_801DE374_59A284` passes
+   successors `0x69` (a2) and `0x6B` (a3) into the combo driver
+   `func_801E4078_59FF88`, and the `0x6A` handler `func_801DE434_59A344` chains
+   to `0x6D` — mirroring `0x58 -> 0x59/0x5B` and `0x5A -> 0x5D` at level 1.
+
+Every action id is set through one setter, `func_801DAD68_596C78`
+(`0x801DAED4: sb $s1, 0xCC($s0)`), reached via three thin wrappers
+`func_801DAC7C` / `func_801DACDC` / `func_801DAD08` — in all of them the action
+id is `a1`. That is why grepping for direct stores to `+0xCC` finds only ~14
+sites; grep the wrappers' call sites instead.
+
+### Only melee is level-indexed
+
+The sub-weapon actions are **not** selected by `0x8015C6AC`. The dispatcher
+picks them from the equipped-slot value at `0x8015C604` (compared against 1/2/3)
+and they are hardcoded per character: hookshot `0x70`/`0x75`/`0x77`, coin throw
+`0x7C`–`0x7E`, Ebisumaru `0x84`–`0x8D`, bombs `0x90`–`0x92`, Sasuke
+`0x93`–`0x99`, Yae `0xA2`+. The "powered" coin throws `0x7F`/`0x80`/`0x81` are
+gated on `player->0x68 == 3` **and** a counter at `0x8015C5E8 >= 3`
+(`0x801E47B0`–`0x801E47D0`) — a charge state, not an upgrade level. So there is
+no level-3 tier outside the melee band.
+
+### Observed quirk (shipped game, not ours)
+
+In Sasuke's inline dispatcher arm the jump-attack variant at `L_801E4B14`
+hardcodes `0x5F` with **no level check**, while the other three characters get
+`0x67`/`0x6F` from `D_802046F0`. So Sasuke can never reach the level-2/3 jump
+attack through this path. Deliberate special case or shipped bug — undetermined.

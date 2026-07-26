@@ -2,6 +2,8 @@
 
 This fork packages [Goemon 64: Recompiled](https://github.com/klorfmorf/Goemon64Recomp) for Android. It is an Android port of the recompilation, running the native game through [RT64](https://github.com/rt64/rt64) Vulkan rendering with SDL input, in-APK asset installation, and app-scoped ROM storage.
 
+Goemon 64: Recompiled uses [N64: Recompiled](https://github.com/Mr-Wiseguy/N64Recomp) to statically recompile *Mystical Ninja Starring Goemon* into a native port, with RT64 as the rendering engine. For general project information, features, and desktop releases, see the upstream repository.
+
 ## Notes
 
 - Primarily developed and tested on **Retroid Pocket 5** and **AYN Thor** class handhelds (Snapdragon / Adreno). Device-specific Vulkan or driver issues are still possible on untested hardware.
@@ -26,12 +28,6 @@ Some Adreno devices closed the app a few seconds after starting the game, before
 
 Both are reachable even on an affected device: the crash happens once the game itself starts rendering, while the app's own menu screen (Start Game / Controls / Settings / Mods) comes up before that and is unaffected. Change the setting there, then start the game.
 
-This fork is based on Goemon 64: Recompiled:
-
-https://github.com/klorfmorf/Goemon64Recomp
-
-Goemon 64: Recompiled uses [N64: Recompiled](https://github.com/Mr-Wiseguy/N64Recomp) to statically recompile *Mystical Ninja Starring Goemon* into a native port, with [RT64](https://github.com/rt64/rt64) as the rendering engine. For general project information, features, and desktop releases, see the upstream repository.
-
 ## Download
 
 Android builds are published on this repo's releases page:
@@ -47,7 +43,7 @@ The release APK does not contain the game ROM. You must provide your own legally
 - Vulkan-capable GPU and a working Vulkan driver (tested on Snapdragon / Adreno handhelds)
 - Enough free storage for the app data folder, the imported ROM, and saves
 
-This port has been tested primarily on Snapdragon / Adreno handhelds, and on Mali-G57 and Mali-G77 devices (see the Mali note above). If graphics are incorrect, crashes happen at game start, or Vulkan device creation fails, your device may need a newer or different Vulkan driver — on Adreno hardware you can supply one yourself under **Settings → GPU Driver**.
+Tested primarily on Snapdragon / Adreno handhelds, plus Mali-G57 and Mali-G77 (see the Mali note above). If graphics are incorrect, the game crashes at launch, or Vulkan device creation fails, your device may need a different Vulkan driver — on Adreno hardware you can supply one yourself under **Settings → GPU Driver**.
 
 ## What This Android Fork Adds
 
@@ -112,7 +108,7 @@ Note this does not make swapping faster. Changing character reloads the new char
 
 ### Attack While Moving
 
-- **Attack While Moving** (General) — lets you keep moving during a ground attack instead of rooting in place. You lunge in the direction you were last running. Covers each character's melee combos, throws, bombs, and specials, including the upgraded weapons.
+- **Attack While Moving** (General) — lets you keep moving during a ground attack instead of rooting in place. You lunge in the direction you were last running. Covers each character's melee combos at all three weapon upgrade levels, along with throws, bombs, Yae's bazooka, and the character specials.
 
 This is a novelty toggle: the attack animation stays planted while you glide along, so the character appears to slide during the swing. Normal movement resumes the moment the attack ends. Goemon's chain pipe is deliberately unaffected, since it anchors to a fixed point in the world.
 
