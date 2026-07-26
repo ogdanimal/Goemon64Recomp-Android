@@ -158,7 +158,15 @@ On Adreno devices, **Settings → GPU Driver** can run the game on a Vulkan driv
 
 Import a driver `.adpkg` package or a bare `.so` through the file picker, select it, and restart the app when asked. Mr. Purple's [purple-turnip](https://github.com/MrPurple666/purple-turnip/releases) releases are the usual source on Adreno handhelds, and are what the feature was tested with; other Turnip builds packaged the same way should work too. Import rejects anything that is not a 64-bit Arm shared library, and any package missing the library its `meta.json` names, telling you which. Whether the file is genuinely a Vulkan driver is only known when it loads — if it is not, the game says so and carries on with the system driver.
 
-**Which build to start with.** On the Adreno 630 device this was developed on (Android 12), Mr. Purple's Turnip **T21** (`25.2.0-devel-Unified-1.4.318`) and **T24** (`26.0.0-T24-1.4.335`) both worked, and T24 is the one the game was actually played on. **T29** (`26.2.0-T29-1.4.354`) would not load on that device at all — it needs a C library function (`pthread_getaffinity_np`) that Android 12 does not provide, and would be expected to work only on Android 13 or newer. The package's own `minApi` field is no help here: T21, T24 and T29 all declare the same value. If a driver will not load the game tells you and falls back to the system driver, so trying another costs nothing.
+**Which build to start with.** These are Mr. Purple's Turnip builds, as tested on the Adreno 630 device this was developed on, running Android 12:
+
+| Build | Driver version | Result |
+|---|---|---|
+| **T21** | `25.2.0-devel-Unified-1.4.318` | Works |
+| **T24** | `26.0.0-T24-1.4.335` | Works — the build the game was actually played on |
+| **T29** | `26.2.0-T29-1.4.354` | **Does not load on Android 12.** Needs a C library function (`pthread_getaffinity_np`) that Android 12 does not provide; expected to need Android 13 or newer |
+
+The package's own `minApi` field will not warn you about the T29 case — all three declare the same value. If a driver will not load the game tells you and falls back to the system driver, so trying another costs nothing.
 
 That is one GPU on one Android version, so treat it as a place to start rather than a compatibility list. Newer builds generally want newer Android.
 
