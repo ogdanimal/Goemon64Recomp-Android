@@ -45,13 +45,22 @@ sdkmanager "ndk;27.1.12297006" "cmake;3.22.1"
 
 ## 3. Decompress the target ROM
 
-You need a decompressed NTSC-U *Mystical Ninja Starring Goemon* ROM
-(decompressed ROM sha1: `df8083a54296b8c151917c5333e1c85f014a2a66`).
+Two different NTSC-U *Mystical Ninja Starring Goemon* ROMs are involved here, with
+two different hashes. Mixing them up is the easiest way to fail this build.
+
+| | Size | sha1 | Used for |
+|---|---|---|---|
+| Original cart dump | 16 MiB | `df8083a54296b8c151917c5333e1c85f014a2a66` | What the finished **app** asks you for at runtime and verifies. Not a build input. |
+| Decompressed ROM | 32 MiB | `6ea0ed71032ce08fc2745f412d84936382197494` | The **build** input, and the hash CI checks. |
 
 Follow the build instructions for the
 [Mystical Ninja Starring Goemon Decompilation Project](https://github.com/klorfmorf/mnsg)
-to generate the decompressed ROM, then copy it to the **repository root** and
-name it **`mnsg.z64`** (this is the path `mnsg.toml` and `aspMain.toml` expect).
+to generate the decompressed ROM from your cart dump, then copy the **decompressed**
+file to the **repository root** and name it **`mnsg.z64`** (this is the path
+`mnsg.toml` and `aspMain.toml` expect).
+
+Putting the 16 MiB cart dump there instead will not work — the recompiler expects the
+decompressed image.
 
 ## 4. Generate the C sources (host)
 
