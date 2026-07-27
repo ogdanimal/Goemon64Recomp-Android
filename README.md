@@ -16,7 +16,7 @@ The APK does not include the game. You'll need your own legally obtained ROM.
 
 1. Install the APK and open the app.
 2. On first launch, you'll be asked to pick your ROM file — use the file picker, it gets copied into the app's own storage.
-3. Pair a controller. **The game is controller-only** — there is no touchscreen control scheme, so you'll need a physical or Bluetooth gamepad.
+3. Make sure you have a gamepad. **The game is controller-only** — there is no touchscreen control scheme. A handheld's built-in controls work as-is; on a phone, pair a physical or Bluetooth pad first.
 4. Press Start.
 
 **Requirements:** Android 9.0+, a 64-bit (`arm64-v8a`) device, and a Vulkan-capable GPU. This covers effectively any phone or handheld from the last several years. Tested primarily on Snapdragon/Adreno handhelds (Retroid Pocket 5, AYN Thor).
