@@ -24,3 +24,141 @@ ignored = [
 func = "func_80038210_38E10"
 vram = 0x80038290
 value = 0x00E3082A # sltu $at, $a3, $v1 -> slt $at, $a3, $v1
+
+# Impact battles (file_13) render inside the N64 4:3 safe area even in widescreen.
+# They do NOT take the Camera-struct scissor that patches/anime.c widens -- file_13
+# emits its own gDPSetScissor from func_801D2178_5FD558, which picks a hardcoded
+# default rect (10,14)-(310,224) when D_8020EED0->0x2C0 is zero and then CLAMPS
+# x to [10,310] and y to [14,224]. Because the clamp runs on both branches,
+# writing the custom-rect fields from a patch cannot widen it -- the bounds
+# themselves have to move. Measured on device before the change: the rendered
+# image occupied exactly x 10..310, y 14..224 of the (already widescreen)
+# framebuffer, i.e. a uniform inset border on all four sides.
+#
+# These 24 edits move the default rect and both clamp bounds to the full frame.
+# The sltiu comparisons appear TWICE each because the compiler duplicated the
+# next comparison into a branch-likely delay slot; both copies must agree.
+#
+# UNCONDITIONAL: an instruction patch cannot read the aspect-ratio setting, so
+# 4:3 also loses the safe-area inset. Accepted deliberately -- there is no
+# overscan on a modern panel.
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D21C0
+value = 0x24040000 # li $a0, 10 -> 0    default scissor ulx
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D21C4
+value = 0x24050000 # li $a1, 14 -> 0    default scissor uly
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D21C8
+value = 0x24060140 # li $a2, 310 -> 320 default scissor lrx
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D21CC
+value = 0x240700F0 # li $a3, 224 -> 240 default scissor lry
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D21D0
+value = 0x2C810000 # sltiu $at,$a0,10 -> 0    (lower clamp never fires)
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D21DC
+value = 0x24040000 # li $a0, 10 -> 0
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D21E0
+value = 0x2C810141 # sltiu $at,$a0,311 -> 321 (upper clamp allows 320)
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D21EC
+value = 0x24040140 # li $a0, 310 -> 320
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D21F0
+value = 0x2CA10000 # sltiu $at,$a1,14 -> 0
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D21FC
+value = 0x24050000 # li $a1, 14 -> 0
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D2200
+value = 0x2CA100F1 # sltiu $at,$a1,225 -> 241
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D220C
+value = 0x240500F0 # li $a1, 224 -> 240
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D2208
+value = 0x2CC10000 # sltiu $at,$a2,10 -> 0    (delay-slot copy)
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D2210
+value = 0x2CC10000 # sltiu $at,$a2,10 -> 0    (fall-through copy)
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D221C
+value = 0x24060000 # li $a2, 10 -> 0
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D2218
+value = 0x2CC10141 # sltiu $at,$a2,311 -> 321 (delay-slot copy)
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D2220
+value = 0x2CC10141 # sltiu $at,$a2,311 -> 321 (fall-through copy)
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D222C
+value = 0x24060140 # li $a2, 310 -> 320
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D2228
+value = 0x2CE10000 # sltiu $at,$a3,14 -> 0    (delay-slot copy)
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D2230
+value = 0x2CE10000 # sltiu $at,$a3,14 -> 0    (fall-through copy)
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D223C
+value = 0x24070000 # li $a3, 14 -> 0
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D2238
+value = 0x2CE100F1 # sltiu $at,$a3,225 -> 241 (delay-slot copy)
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D2240
+value = 0x2CE100F1 # sltiu $at,$a3,225 -> 241 (fall-through copy)
+
+[[patches.instruction]]
+func = "func_801D2178_5FD558"
+vram = 0x801D224C
+value = 0x240700F0 # li $a3, 224 -> 240
