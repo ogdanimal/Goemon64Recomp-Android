@@ -37,3 +37,4 @@ recomp_notify_saved = 0x8F000080;
 recomp_get_camera_zoom_held = 0x8F000084;
 recomp_get_attack_while_moving_enabled = 0x8F000088;
 recomp_is_config_menu_open = 0x8F00008C;
+recomp_set_field_engine_active = 0x8F000090;

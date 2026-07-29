@@ -212,10 +212,28 @@ static s32 autosave_is_safe(void) {
         return false;
     }
 
-    // Restrict to the main 3D field/town engine (.file_11). The stage type in
-    // this game is "which module occupies the slot at 0x801CB460", so the Impact
-    // battle, sidescroller and minigame engines are excluded by requiring
-    // file_11 to be the loaded one.
+    // Intended to restrict to the main 3D field/town engine (.file_11): the
+    // stage type in this game is "which module occupies the slot at
+    // 0x801CB460", so the Impact battle, sidescroller and minigame engines
+    // should be excluded by requiring file_11 to be the loaded one.
+    //
+    // THIS GUARD DOES NOT DO THAT -- it is VACUOUS, and it is also off by one
+    // (2026-07-29, review finding M8, settled statically against the ROM rather
+    // than by the device probe that was planned).
+    //
+    // D_80054ACC_556CC[] is the CONSTANT per-file VRAM layout table that
+    // func_80001C00_2800 reads for any file id whatsoever (see required.c); it
+    // is not a loaded-module indicator. Every engine entry in it is a non-zero
+    // literal in rodata -- entry [11] reads 0x8020D2A0..0x8023B450 -- so
+    // `.start == 0` can never be true and nothing is excluded. Separately, the
+    // table is indexed file_id - 1, so file_11 is entry [10], not [11].
+    //
+    // The working check is the engine's own loaded-overlay registry:
+    // func_800141C4_14DC4(11) returns the load address if file_11 is resident
+    // and -1 if it is not. patches/camera.c's acam_field_engine_loaded() does
+    // exactly that. Left unchanged here on purpose: switching it over would
+    // start refusing autosaves in modes that currently accept them, which is a
+    // behaviour change that wants its own device pass.
     if (D_80054ACC_556CC[11].start == 0) {
         return false;
     }

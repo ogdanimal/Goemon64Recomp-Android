@@ -742,6 +742,13 @@ bool controller_button_state(int32_t input_id) {
 static std::atomic_bool right_analog_suppressed = false;
 static std::atomic<int16_t> analog_cam_yaw = 0;
 
+// Whether the main 3D field engine is the overlay currently resident in slot A,
+// as reported by update_analog_camera every frame. Defaults TRUE so that the
+// window between process start and the first patch tick behaves exactly as it
+// did before this signal existed (analog-camera mode masks N64 R) rather than
+// briefly unmasking it.
+static std::atomic_bool field_engine_active = true;
+
 float controller_axis_state(int32_t input_id, bool allow_suppression) {
     // 64-bit abs: input_id comes from controls.json, so a hand-edited INT32_MIN
     // would make abs(int) UB. The lower bound also rejects input_id 0 (-> axis
@@ -984,6 +991,14 @@ bool recomp::get_camera_zoom_held() {
 
 void recomp::set_right_analog_suppressed(bool suppressed) {
     right_analog_suppressed.store(suppressed);
+}
+
+void recomp::set_field_engine_active(bool active) {
+    field_engine_active.store(active);
+}
+
+bool recomp::get_field_engine_active() {
+    return field_engine_active.load();
 }
 
 void recomp::set_analog_cam_yaw(int16_t yaw) {

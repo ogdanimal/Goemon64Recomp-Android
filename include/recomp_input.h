@@ -192,6 +192,14 @@ namespace recomp {
     void apply_joystick_deadzone(float x_in, float y_in, float* x_out, float* y_out);
     void set_right_analog_suppressed(bool suppressed);
 
+    // Whether the main 3D field engine -- the overlay the analog camera lives
+    // in -- is the module currently resident in the slot at 0x801CB460.
+    // Reported by the patches each frame; scopes the N64 R mask below so the
+    // alternate modes that share that slot (Impact battles, the sidescroller,
+    // the minigames) keep their own use of R.
+    void set_field_engine_active(bool active);
+    bool get_field_engine_active();
+
     // R3 (right-stick click): analog-camera recenter. Raw held state; the
     // consumer edge-detects it.
     bool get_camera_recenter_pressed();

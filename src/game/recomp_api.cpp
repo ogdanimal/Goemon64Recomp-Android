@@ -262,6 +262,12 @@ extern "C" void recomp_set_right_analog_suppressed(uint8_t* rdram, recomp_contex
     recomp::set_right_analog_suppressed(suppressed);
 }
 
+extern "C" void recomp_set_field_engine_active(uint8_t* rdram, recomp_context* ctx) {
+    s32 active = _arg<0, s32>(rdram, ctx);
+
+    recomp::set_field_engine_active(active);
+}
+
 extern "C" void recomp_set_analog_cam_yaw(uint8_t* rdram, recomp_context* ctx) {
     s32 yaw = _arg<0, s32>(rdram, ctx);
 

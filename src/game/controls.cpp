@@ -207,7 +207,19 @@ bool recomp::get_n64_input(int controller_num, uint16_t* buttons_out, float* x_o
     // NOTE: this also removes N64 R from the button word the autosave L+R+Z combo
     // reads, so that combo reads the R part from the physical trigger instead
     // (recomp_get_camera_zoom_held) and is unaffected -- see docs/autosave.md.
-    if (goemon64::get_analog_cam_mode() == goemon64::AnalogCamMode::On) {
+    //
+    // SCOPED TO THE FIELD ENGINE. Both reasons for the mask -- native R
+    // hijacking the C-buttons into the game's camera control, and its R+C zoom
+    // fighting the analog zoom -- are properties of the main 3D field/town
+    // engine, which is the only place the analog camera exists at all. The
+    // self-contained alternate modes that share that overlay slot bind the
+    // controller themselves: in an Impact battle R is the Hook Chain, and a
+    // mode-global mask simply deleted it. get_field_engine_active() is the
+    // patches' per-frame report of which overlay is resident (see
+    // update_analog_camera); it is true whenever the analog camera could
+    // actually be doing something, so the shipped zoom behaviour is unchanged.
+    if (goemon64::get_analog_cam_mode() == goemon64::AnalogCamMode::On &&
+        recomp::get_field_engine_active()) {
         constexpr size_t r_index =
             (size_t)GameInput::R - (size_t)GameInput::N64_BUTTON_START;
         cur_buttons = (uint16_t)(cur_buttons & ~n64_button_values[r_index]);

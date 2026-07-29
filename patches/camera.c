@@ -31,6 +31,57 @@
 // at 0x800C7DB0: +0xC magnitude, +0x10/+0x14 planar components.)
 #define ACAM_MOVE_PTR ((u32*)0x8020CA2C)
 
+// File id of the main 3D field/town engine — the overlay that occupies the
+// slot at VRAM 0x801CB460 during normal gameplay. Several self-contained
+// alternate modes share that same slot (the Impact giant-robot battles, the
+// sidescroller, the minigames); each is a separate overlay with its own state
+// machine and its own controller bindings.
+//
+// Proven from the ROM, not assumed. D_80054ACC_556CC[] is indexed file_id - 1,
+// so this is entry [10]: VRAM 0x801CB460–0x8020D2A0, file rom addr
+// D_800573D8_57FD8[10] = 0x587370. That base is exactly
+// func_801CE4D0_58A3E0's rom offset 0x58A3E0 minus its 0x3070 offset into the
+// slot — i.e. the movement resolver the analog camera hooks lives in this
+// overlay. So do the rest of its hook points and globals
+// (func_801CE3F0_58A300, the player-pos node at 0x801FC60C, the stick record
+// at 0x8020CA2C), all of which fall inside the same range.
+#define ACAM_FIELD_ENGINE_FILE_ID 11
+
+// Is the field engine the module currently resident in that slot?
+//
+// func_800141C4_14DC4 is the engine's own loaded-overlay lookup: a linear scan
+// of the live {u16 file_id; u32 vram_addr} registry at 0x80167FC0. It returns
+// the load address for a resident file, 0 for file id 0, and -1 for a file
+// that is not currently loaded — so "resident" is "neither 0 nor -1".
+//
+// This is deliberately NOT the D_80054ACC_556CC[].start test that
+// patches/autosave.c uses. That table is the CONSTANT per-file VRAM layout
+// which func_80001C00_2800 reads for any file id whatsoever; every engine
+// entry in it is a non-zero literal baked into rodata, so testing .start
+// against 0 can never fail. See the note at that guard.
+//
+// THE IMPACT BATTLES ARE file_13, PROVEN — so they do evict file_11 from the
+// slot and this test does discriminate them. The proof is already in the tree:
+// patches/impact_block_fix.s patches func_801DD218_6085F8 and
+// func_801DD134_608514, and back-solving each one's rom suffix against its
+// offset into the slot (0x6085F8 - (0x801DD218 - 0x801CB460), and likewise for
+// the other) gives module rom base 0x5F6840 for both — which is exactly
+// D_800573D8_57FD8[12], i.e. file id 13. The same arithmetic on that patch's
+// D_8020EED0_63A2B0 lands on 0x5F6840 too, and on the analog camera's own
+// func_801CE4D0_58A3E0 lands on 0x587370 = entry [10] = file id 11. Two
+// different overlays, one VRAM slot.
+static s32 acam_field_engine_loaded(void) {
+    u32 addr = (u32)func_800141C4_14DC4(ACAM_FIELD_ENGINE_FILE_ID);
+    return (addr != 0u) && (addr != 0xFFFFFFFFu);
+}
+
+// Engine-detection diagnostic. Logs which of the overlays that share slot A is
+// resident, whenever that changes. Left in behind its #if because a wrong
+// answer here would be SILENT — the R mask would just keep swallowing Hook
+// Chain, indistinguishable from the fix not being present at all. Flip to 1 to
+// identify the overlay behind any other mode (the sidescroller, the minigames).
+#define ACAM_ENGINE_DIAG 0
+
 // Current map id. The engine's area-change commit (func_8000B364) copies this
 // halfword to the previous-map slot 0x800C7ABC, then installs the pending
 // destination from 0x800C7CA0 — so a change here IS an area transition, one
@@ -174,6 +225,48 @@ void update_analog_camera(void) {
 
     // Silence the right stick's C-button mapping only while active.
     recomp_set_right_analog_suppressed(enabled);
+
+    // Report whether the analog camera's own engine is the one currently
+    // running, so the host can scope its N64 R mask to it. The mask exists to
+    // stop native R hijacking the C-buttons into the game's camera control (and
+    // its R+C zoom fighting the analog zoom) — concerns that only exist in the
+    // field engine. In an Impact battle R is the Hook Chain, and masking it
+    // there just deletes the input.
+    //
+    // Reported unconditionally, ABOVE the enabled/gameplay early-return below,
+    // so the host never reads a value that went stale while the feature was off
+    // or during a load. This runs from func_800012FC_1EFC, a base-exe function
+    // that ticks every frame no matter which overlay is resident.
+    //
+    // acam_in_gameplay() is NOT usable for this: *0x8020CA2C is only ever
+    // written (never cleared) by the field engine's own func_801CC4C0_5883D0,
+    // so after a module swap it reads stale-but-plausible — it is really a
+    // ".file_11 has run at least once" flag, and it stays true throughout an
+    // Impact battle.
+    s32 field_engine = acam_field_engine_loaded();
+    recomp_set_field_engine_active(field_engine);
+
+#if ACAM_ENGINE_DIAG
+    {
+        // The overlays that share slot A (0x801CB460), by file id.
+        static const u32 slot_a_ids[] = { 11, 13, 14, 15, 16, 20, 22, 23 };
+        static s32 acam_prev_engine = -1;
+        s32 resident = 0;
+        s32 i;
+        for (i = 0; i < (s32)(sizeof(slot_a_ids) / sizeof(slot_a_ids[0])); i++) {
+            u32 a = (u32)func_800141C4_14DC4(slot_a_ids[i]);
+            if (a != 0u && a != 0xFFFFFFFFu) {
+                resident = (s32)slot_a_ids[i];
+                break;
+            }
+        }
+        if (resident != acam_prev_engine) {
+            acam_prev_engine = resident;
+            recomp_printf("[acamE] slot-A overlay now file_%d (field=%d map=%d)\n",
+                          resident, field_engine, (s32)*ACAM_MAP_ID);
+        }
+    }
+#endif
 
     // Area-transition reset. The held azimuth (g_acam_dir_* plus accumulated
     // yaw) belongs to the area it was captured in; each area sets its own
