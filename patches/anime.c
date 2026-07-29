@@ -238,19 +238,46 @@ RECOMP_PATCH s32 func_80016C44_17844(Object *object)
             if (recomp_get_target_aspect_ratio(original_aspect_ratio) != original_aspect_ratio) {
                 memcpy(&g_widescreen_camera, (Camera *)aptr, sizeof(Camera));
 
-                if (g_widescreen_camera.scissor_ulx == 8) {
+                // @recomp THRESHOLDS, not exact equality -- this is what makes
+                // Impact battles widescreen (2026-07-29).
+                //
+                // Every camera in the game funnels through this case, Impact
+                // battles included (func_80017D8C_1898C has exactly two callers,
+                // this function and func_80016AA4_176A4, and the latter is only
+                // ever called from here). But the engines do NOT agree on the
+                // 4:3 safe-area rect they scissor to:
+                //   field engine (file_11):  8, 16 .. 312, 224
+                //   Impact       (file_13): 10, 14 .. 310, 224
+                // Impact's own setup, func_801D1F58_5FD338, CLAMPS the rect to
+                // x in [10,310] and y in [14,224]. So `ulx == 8`, `uly == 16`
+                // and `lrx == 312` were not merely unmatched, they were
+                // UNREACHABLE -- the clamp forbids those values. Only
+                // `lry == 224` ever fired, which pushed Impact's bottom edge to
+                // 240 while its horizontal bounds stayed 4:3: a partial, lopsided
+                // rewrite rather than a no-op.
+                //
+                // Thresholds cover both rects and are tolerant of whatever value
+                // the caller passes within Impact's clamp range, which matters
+                // because the clamp bounds are proven but the exact runtime
+                // values are not. They are a strict superset of the old exact
+                // tests (8<=10, 16<=16, 312>=310, 224>=224), so the field engine
+                // is unchanged on the values it actually produces.
+                //
+                // A deliberately narrow scissor is NOT caught: a letterbox band
+                // moves uly down and lry up, away from both thresholds.
+                if (g_widescreen_camera.scissor_ulx <= 10) {
                     g_widescreen_camera.scissor_ulx = 0;
                 }
 
-                if (g_widescreen_camera.scissor_uly == 16) {
+                if (g_widescreen_camera.scissor_uly <= 16) {
                     g_widescreen_camera.scissor_uly = 0;
                 }
 
-                if (g_widescreen_camera.scissor_lrx == 312) {
+                if (g_widescreen_camera.scissor_lrx >= 310) {
                     g_widescreen_camera.scissor_lrx = 320;
                 }
 
-                if (g_widescreen_camera.scissor_lry == 224) {
+                if (g_widescreen_camera.scissor_lry >= 224) {
                     g_widescreen_camera.scissor_lry = 240;
                 }
 
