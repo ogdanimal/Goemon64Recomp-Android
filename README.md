@@ -27,6 +27,8 @@ The APK does not include the game. You'll need your own legally obtained ROM.
 |---|---|
 | Game closes itself a few seconds after starting | Known bug in some Qualcomm/Adreno drivers. Go to **Settings → Graphics → Framebuffer Effects** and turn it off, *or* load an alternate driver (see [GPU Driver](#gpu-driver) below). |
 | White screen, textures missing | Fixed as of `1.0.3` — update to the latest release. |
+| Hook Chain (R) does nothing in Impact battles | Fixed as of `1.0.6` — update to the latest release. Analog Camera was reserving R everywhere, including the mech battles where the game needs it. |
+| Black border around the edges during Impact battles | Fixed as of `1.0.6` — update to the latest release. |
 | Some controller buttons do nothing, and don't respond when rebinding | Android doesn't recognize your pad's exact model. Fixed for DualSense Edge on Android 12 and earlier as of `1.0.4`; for anything else, [open an issue](../../issues) with your pad model and Android version. |
 | Still stuck | [Open an issue](../../issues) with your device model and Android version. |
 
@@ -44,7 +46,7 @@ The default gamepad layout (Xbox-style face buttons). Everything is remappable i
 | Y | C-Left | Weapon swap |
 | Right Bumper | C-Down | Change character |
 | Left Trigger | Z | Crouch |
-| Right Trigger | R | Camera control (zoom modifier when Analog Camera is on) |
+| Right Trigger | R | Camera control (zoom modifier when Analog Camera is on; still the Hook Chain in Impact battles) |
 | Left Bumper | L | Unused by the game (free for mods) |
 | D-Pad ↑ ↓ ← → | C-Up / C-Down / C-Left / C-Right | Magic / Character / Weapon / Map |
 | Left stick | Analog stick | Move |
@@ -59,7 +61,7 @@ The right stick and D-Pad both cover the C-buttons, so with Analog Camera on, th
 
 Everything below is opt-in and lives in the in-game settings menu.
 
-- **Analog Camera** — free-look with the right stick. Hold **R** + push the stick to zoom. Per-axis invert and sensitivity settings included. Click **R3** to hand control back to the game.
+- **Analog Camera** — free-look with the right stick. Hold **R** + push the stick to zoom. Per-axis invert and sensitivity settings included. Click **R3** to hand control back to the game. R is only reserved during normal exploration, so Impact battles keep the Hook Chain.
 - **Swap Characters While Moving** — swap (C-Down) without stopping first. Doesn't speed up the swap itself, just removes the need to stand still.
 - **Attack While Moving** — keep moving through a ground attack instead of rooting in place. Purely cosmetic; Goemon's chain pipe is unaffected since it anchors to a fixed point.
 - **Autosave** — saves through the game's own save system (so it's an ordinary save, not a separate slot). **Back up your save before enabling this** — it overwrites your existing file. Manual save: **L + R + Z** during normal gameplay.
