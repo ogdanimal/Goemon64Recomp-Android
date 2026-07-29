@@ -28,7 +28,7 @@ The APK does not include the game. You'll need your own legally obtained ROM.
 | Game closes itself a few seconds after starting | Known bug in some Qualcomm/Adreno drivers. Go to **Settings → Graphics → Framebuffer Effects** and turn it off, *or* load an alternate driver (see [GPU Driver](#gpu-driver) below). |
 | White screen, textures missing | Fixed as of `1.0.3` — update to the latest release. |
 | Hook Chain (R) does nothing in Impact battles | Fixed as of `1.0.6` — update to the latest release. Analog Camera was reserving R everywhere, including the mech battles where the game needs it. |
-| Black border around the edges during Impact battles | Fixed as of `1.0.6` — update to the latest release. |
+| Black border around the edges during Impact battles | Fixed as of `1.0.6` — update to the latest release. Impact battles now use the full screen. This works well, but it reveals image the original developers never expected to be on-screen, and only a couple of fights have been checked — if something at the edges looks clearly wrong, [please report it](../../issues). |
 | Some controller buttons do nothing, and don't respond when rebinding | Android doesn't recognize your pad's exact model. Fixed for DualSense Edge on Android 12 and earlier as of `1.0.4`; for anything else, [open an issue](../../issues) with your pad model and Android version. |
 | Still stuck | [Open an issue](../../issues) with your device model and Android version. |
 
