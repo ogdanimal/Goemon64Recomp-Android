@@ -46,6 +46,9 @@
                         The save that is already here is kept alongside it as a <b>.pre-import.bak</b> file, so an import can be undone by renaming that file back.
                         <br />
                         <br />
+                        The file is checked before anything is replaced: it must be the right size and actually contain Goemon save data. A save from a different emulator can be the same size without being the same format, and one of those is refused rather than imported.
+                        <br />
+                        <br />
                         <b>Only possible before the game starts.</b> Once it is running the game holds your save in memory and writes it back out as it goes, so a file swapped underneath it would be overwritten.
                     </p>
                     <p data-if="cur_config_index == -1">

@@ -1,9 +1,12 @@
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <vector>
 
 #include "ui_saves.h"
 
@@ -59,6 +62,66 @@ std::filesystem::path save_file_path() {
     // path and is empty until init_saving() runs, which by rule 1 above is
     // exactly when this feature is not allowed to act.
     return ultramodern::get_save_file_path_for(u8"", game_entry().game_id);
+}
+
+// Goemon's own save-block layout, from the save routine
+// func_80214D58_5D0228 and the CRC helper func_80023A1C_2461C. The file is a
+// 0x100-byte header block followed by SLOT_COUNT fixed-size slots, and each
+// slot begins with a big-endian CRC over the 0x304 bytes of game data that
+// follow it.
+//
+// The header is deliberately NOT checked. Only its first 0x10 bytes are real --
+// the rest is uninitialised stack the write routine leaks -- and the game's own
+// loader ignores a bad header CRC rather than rejecting the file, so requiring
+// one here would be stricter than the game itself.
+constexpr size_t save_header_size = 0x100;
+constexpr size_t save_slot_size = 0x500;
+constexpr size_t save_slot_data_len = 0x304;
+constexpr size_t save_slot_count = 3;
+
+// CRC-32/BZIP2: init 0xFFFFFFFF, polynomial 0x04C11DB7, MSB-first, no
+// reflection, final complement. Confirmed against real save files rather than
+// taken from the description -- slots verified byte-for-byte.
+uint32_t save_crc32(const uint8_t* data, size_t len) {
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = 0; i < len; i++) {
+        crc ^= static_cast<uint32_t>(data[i]) << 24;
+        for (int bit = 0; bit < 8; bit++) {
+            crc = (crc & 0x80000000u) ? ((crc << 1) ^ 0x04C11DB7u) : (crc << 1);
+        }
+    }
+    return ~crc;
+}
+
+// True if any save slot's stored CRC matches its own data.
+//
+// ANY rather than ALL, deliberately. A slot the player has never used is left
+// as zeroes and cannot validate, so demanding all three would reject most real
+// save files -- both of the ones this was developed against have an untouched
+// third slot. One good slot is also exactly the condition for the file being
+// worth importing at all: a file with none has nothing to load.
+//
+// The point of this check is that size alone does not distinguish a save from
+// any other file that happens to be the same length, and a save from a
+// different emulator can be the right size without being the right bytes.
+// Such a file would otherwise import "successfully" and then not appear in the
+// game, with the real save already moved aside.
+bool contains_save_data(const std::vector<uint8_t>& bytes) {
+    for (size_t slot = 0; slot < save_slot_count; slot++) {
+        const size_t offset = save_header_size + slot * save_slot_size;
+        if (offset + 4 + save_slot_data_len > bytes.size()) {
+            break;
+        }
+        const uint8_t* block = bytes.data() + offset;
+        const uint32_t stored = (static_cast<uint32_t>(block[0]) << 24)
+                              | (static_cast<uint32_t>(block[1]) << 16)
+                              | (static_cast<uint32_t>(block[2]) << 8)
+                              |  static_cast<uint32_t>(block[3]);
+        if (stored == save_crc32(block + 4, save_slot_data_len)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 std::string human_size(uintmax_t bytes) {
@@ -159,6 +222,25 @@ ImportOutcome import_save(const std::filesystem::path& source) {
     if (size != expected) {
         return { false, "That file is " + human_size(size) + ". A save file for this game is "
                         + human_size(expected) + ", so this is not one." };
+    }
+
+    // Read the header and slot region only: the slots live in the first 0x1000
+    // bytes and nothing after them is structured.
+    std::vector<uint8_t> head(save_header_size + save_slot_count * save_slot_size);
+    {
+        std::ifstream in(source, std::ios::binary);
+        if (!in.good()) {
+            return { false, "Could not open that file." };
+        }
+        in.read(reinterpret_cast<char*>(head.data()), static_cast<std::streamsize>(head.size()));
+        if (in.gcount() != static_cast<std::streamsize>(head.size())) {
+            return { false, "Could not read that file." };
+        }
+    }
+    if (!contains_save_data(head)) {
+        return { false, "That file is the right size but does not hold Goemon save data. "
+                        "A save from a different emulator can be the same size without being "
+                        "the same format." };
     }
 
     const std::filesystem::path destination = save_file_path();
