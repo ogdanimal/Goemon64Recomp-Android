@@ -281,6 +281,7 @@ set (SOURCES
     ${CMAKE_SOURCE_DIR}/src/ui/ui_saved_indicator.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/ui_config_sub_menu.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/ui_gpu_driver.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/ui_saves.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/ui_color_hack.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/ui_rml_hacks.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/ui_elements.cpp

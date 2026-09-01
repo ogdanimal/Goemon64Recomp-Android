@@ -1,0 +1,58 @@
+<template name="config-menu__saves">
+    <head>
+    </head>
+    <body>
+        <form class="config__form">
+            <div class="config__hz-wrapper">
+                <!-- Options -->
+                <div class="config__wrapper" data-event-mouseout="set_cur_config_index(-1)">
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(0)">
+                        <label class="config-option__title">Import a save</label>
+                        <div class="config-option__list">
+                            <button
+                                class="button button--secondary"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                data-attrif-disabled="!saves_importable"
+                                onclick="saves_import"
+                                id="saves_import_button"
+                                style="nav-up: #tab_saves;"
+                            >
+                                <div class="button__label">Choose a save file</div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Not focusable: this is what someone reads back to us when
+                         something has gone wrong with saving, so it should always
+                         be visible rather than only when a row happens to be
+                         selected. -->
+                    <div class="config-option">
+                        <label class="config-option__title">Save file</label>
+                        <p>{{saves_detail}}</p>
+                        <p>{{saves_path}}</p>
+                    </div>
+
+                    <div class="config-option" data-if="saves_message != ''">
+                        <p>{{saves_message}}</p>
+                    </div>
+                </div>
+                <!-- Descriptions -->
+                <div class="config__wrapper">
+                    <p data-if="cur_config_index == 0">
+                        Replaces this app's save file with one you already have — from another device, another Goemon 64 port, or a backup you made.
+                        <br />
+                        <br />
+                        The save that is already here is kept alongside it as a <b>.pre-import.bak</b> file, so an import can be undone by renaming that file back.
+                        <br />
+                        <br />
+                        <b>Only possible before the game starts.</b> Once it is running the game holds your save in memory and writes it back out as it goes, so a file swapped underneath it would be overwritten.
+                    </p>
+                    <p data-if="cur_config_index == -1">
+                        Copying a save file into place by hand is awkward on Android: it lives in a folder most file managers will not open, and getting it slightly wrong can stop the game saving at all. Importing it here avoids that — the app copies the file itself, so it lands in the right place under the right name.
+                    </p>
+                </div>
+            </div>
+        </form>
+    </body>
+</template>

@@ -66,6 +66,7 @@ namespace recompui {
         Sound,
         Mods,
         Cheats,
+        Saves,
         Debug,
         // Last on purpose: like Debug it is conditional (Android, and only in a
         // build that can load a user-supplied Vulkan driver), and a hidden tab in
@@ -87,6 +88,10 @@ namespace recompui {
     // confirmed one as having survived once the renderer has proved it is alive.
     // A no-op unless a driver could be loaded at all. Render thread, once per frame.
     void tick_gpu_driver();
+
+    // Keeps the Saves tab's import availability in step with whether the game
+    // has started. Render thread, once per frame.
+    void tick_saves();
 
     void set_config_tab(ConfigTab tab);
     int config_tab_to_index(ConfigTab tab);

@@ -14,6 +14,7 @@
 
 #include "core/ui_context.h"
 #include "ui_gpu_driver.h"
+#include "ui_saves.h"
 
 ultramodern::renderer::GraphicsConfig new_options;
 Rml::DataModelHandle nav_help_model_handle;
@@ -40,10 +41,12 @@ int recompui::config_tab_to_index(recompui::ConfigTab tab) {
         return 4;
     case recompui::ConfigTab::Cheats:
         return 5;
-    case recompui::ConfigTab::Debug:
+    case recompui::ConfigTab::Saves:
         return 6;
-    case recompui::ConfigTab::Driver:
+    case recompui::ConfigTab::Debug:
         return 7;
+    case recompui::ConfigTab::Driver:
+        return 8;
     default:
         assert(false && "Unknown config tab.");
         return 0;
@@ -818,6 +821,7 @@ public:
             });
 
         recompui::register_gpu_driver_events(listener);
+        recompui::register_saves_events(listener);
     }
 
     void bind_config_list_events(Rml::DataModelConstructor &constructor) {
@@ -1272,6 +1276,7 @@ public:
         make_cheats_bindings(context);
         make_debug_bindings(context);
         recompui::make_gpu_driver_bindings(context);
+        recompui::make_saves_bindings(context);
     }
 };
 

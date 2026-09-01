@@ -583,6 +583,7 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
     // mechanism, not a courtesy, so it must not be pushed behind anything.
     recompui::pump_file_dialogs();
     recompui::tick_gpu_driver();
+    recompui::tick_saves();
 
     // Runs before the launcher check below so an expiring toast updates
     // is_any_context_shown() first and can't suppress the launcher for a frame.
