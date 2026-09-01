@@ -29,6 +29,8 @@ The APK does not include the game. You'll need your own legally obtained ROM.
 | White screen, textures missing | Fixed as of `1.0.3` — update to the latest release. |
 | Hook Chain (R) does nothing in Impact battles | Fixed as of `1.0.6` — update to the latest release. Analog Camera was reserving R everywhere, including the mech battles where the game needs it. |
 | Black border around the edges during Impact battles | Fixed as of `1.0.6` — update to the latest release. Impact battles now use the full screen. This works well, but it reveals image the original developers never expected to be on-screen, and only a couple of fights have been checked — if something at the edges looks clearly wrong, [please report it](../../issues). |
+| "Failed to write to the save file" | As of `1.0.7` the message names the exact file it tried to write and what the system said about it, which usually points at the cause. If it isn't obvious, [open an issue](../../issues) with that text. |
+| Want to bring a save over from another device | **Settings → Saves → Import** as of `1.0.7` — no adb or file manager needed. See [Importing a Save](#importing-a-save). |
 | Some controller buttons do nothing, and don't respond when rebinding | Android doesn't recognize your pad's exact model. Fixed for DualSense Edge on Android 12 and earlier as of `1.0.4`; for anything else, [open an issue](../../issues) with your pad model and Android version. |
 | Still stuck | [Open an issue](../../issues) with your device model and Android version. |
 
@@ -68,7 +70,18 @@ Everything below is opt-in and lives in the in-game settings menu.
 - **Cheats** — Infinite Health, Infinite Money, Infinite Lives. These write into your save at area transitions; turning a cheat off doesn't undo what it already did.
 - **Restart Game** — restart to the title screen or back to this app's launcher, without closing the app.
 - **Higher internal resolutions** — 3x/4x/6x/8x, beyond the console's native tiers.
+- **Import a save** — see below.
 - **GPU Driver** — see below.
+
+### Importing a Save
+
+<a id="importing-a-save"></a>
+
+**Settings → Saves** brings in a save file you already have — from another device, another Goemon 64 port, or a backup. It opens the system file picker and the app copies the file into place itself, so you don't need adb or a file manager that can reach `Android/data`.
+
+The file is checked before anything is replaced: it has to be the right size *and* actually contain Goemon save data, so a save for a different game, or a flash dump from another emulator that happens to be the same size, is refused rather than imported. Whatever save was already there is kept alongside the new one as a `.pre-import.bak` file, so an import can be undone by renaming that file back.
+
+Importing is only possible before you start the game. Once it's running the game holds your save in memory and writes it back out as it goes, so a file swapped underneath it would be overwritten.
 
 ### GPU Driver
 
@@ -108,7 +121,7 @@ The package's own `minApi` field doesn't flag the T29 case — all three declare
 
 ## ROM and Storage
 
-This app is not an emulator and doesn't include copyrighted game assets. On first launch, the ROM you select is verified and copied into the app's private storage — no manual folder setup or legacy storage permissions required. Saves and settings live in the same app-scoped location.
+This app is not an emulator and doesn't include copyrighted game assets. On first launch, the ROM you select is verified and copied into the app's private storage — no manual folder setup or legacy storage permissions required. Saves and settings live in the same app-scoped location. That location is awkward to reach by hand on modern Android, which is why moving a save in is done through [Importing a Save](#importing-a-save) rather than by copying files around.
 
 ## Building
 
