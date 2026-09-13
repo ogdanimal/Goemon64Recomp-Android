@@ -279,6 +279,8 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["autosave_mode"] = goemon64::get_autosave_mode();
     config_json["camera_invert_mode"] = goemon64::get_camera_invert_mode();
     config_json["analog_cam_mode"] = goemon64::get_analog_cam_mode();
+    config_json["touch_controls_mode"] = goemon64::get_touch_controls_mode();
+    config_json["touch_stick_sensitivity"] = goemon64::get_touch_stick_sensitivity();
     config_json["analog_camera_invert_mode"] = goemon64::get_analog_camera_invert_mode();
     config_json["analog_cam_sensitivity_x"] = goemon64::get_analog_cam_sensitivity_x();
     config_json["analog_cam_sensitivity_y"] = goemon64::get_analog_cam_sensitivity_y();
@@ -302,6 +304,10 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     goemon64::set_autosave_mode(from_or_default(config_json, "autosave_mode", goemon64::AutosaveMode::Off));
     goemon64::set_camera_invert_mode(from_or_default(config_json, "camera_invert_mode", goemon64::CameraInvertMode::InvertY));
     goemon64::set_analog_cam_mode(from_or_default(config_json, "analog_cam_mode", goemon64::AnalogCamMode::Off));
+    goemon64::set_touch_controls_mode(from_or_default(config_json, "touch_controls_mode", goemon64::TouchControlsMode::Auto));
+    // 50 rather than 100: a linear stick is measurably too twitchy to walk with on a
+    // phone-sized overlay, so the shipped default already bends the response.
+    goemon64::set_touch_stick_sensitivity(from_or_default(config_json, "touch_stick_sensitivity", 50));
     goemon64::set_analog_camera_invert_mode(from_or_default(config_json, "analog_camera_invert_mode", goemon64::CameraInvertMode::InvertNone));
     goemon64::set_analog_cam_sensitivity_x(from_or_default(config_json, "analog_cam_sensitivity_x", 50));
     goemon64::set_analog_cam_sensitivity_y(from_or_default(config_json, "analog_cam_sensitivity_y", 50));

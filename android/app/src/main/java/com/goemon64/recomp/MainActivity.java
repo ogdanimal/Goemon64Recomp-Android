@@ -3,8 +3,13 @@ package com.goemon64.recomp;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
+
+import com.goemon64.recomp.touch.TouchOverlayController;
 
 import org.libsdl.app.SDLActivity;
 
@@ -55,6 +60,12 @@ public class MainActivity extends SDLActivity {
     // fast-resume path never trips this. volatile: main-thread only, but paired
     // with sGameRunning for clarity.
     private static volatile boolean sNativeInitedThisProcess = false;
+
+    /**
+     * The on-screen N64 controls, drawn over SDL's surface. Null only in the early
+     * bail-out paths of onCreate, which finish the activity before any UI exists.
+     */
+    private TouchOverlayController touchOverlay;
 
     // Must match goemon64::RestartTarget in include/goemon_support.h.
     private static final int RESTART_NONE = 0;
@@ -142,6 +153,16 @@ public class MainActivity extends SDLActivity {
         sGameRunning = true;
 
         super.onCreate(savedInstanceState);
+
+        // On-screen controls, added after super.onCreate() because that is what builds
+        // SDL's layout. Adding to that same layout, after its SurfaceView, is what puts
+        // the pad on top of the picture: the surface sets no Z-order override, so it
+        // composites below the window's ordinary views.
+        View content = getContentView();
+        if (content instanceof ViewGroup) {
+            touchOverlay = new TouchOverlayController(this);
+            touchOverlay.attachTo((ViewGroup) content);
+        }
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
@@ -384,11 +405,55 @@ public class MainActivity extends SDLActivity {
     protected void onResume() {
         super.onResume();
         hideSystemUI();
+        if (touchOverlay != null) {
+            touchOverlay.onResume();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        // Before super, so anything held on the overlay is released while the native
+        // side is still listening -- otherwise a button held at the moment the app was
+        // backgrounded stays held when it returns.
+        if (touchOverlay != null) {
+            touchOverlay.onPause();
+        }
+        super.onPause();
+    }
+
+    /**
+     * Gamepad sniffing for the overlay's auto-hide.
+     *
+     * <p>Both dispatch hooks only look, and always delegate: SDL owns the real
+     * handling of these events, and the overlay's interest in them is limited to
+     * noticing that a physical pad exists so it can get off the screen. Doing this
+     * here rather than in the view is deliberate -- the view sits above SDL's surface
+     * and must not compete with it for key or motion events.
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (touchOverlay != null) {
+            touchOverlay.noteInputEvent(event);
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        if (touchOverlay != null) {
+            touchOverlay.noteInputEvent(event);
+        }
+        return super.dispatchGenericMotionEvent(event);
     }
 
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        if (!hasFocus && touchOverlay != null) {
+            // Losing focus without pausing (a notification shade, a permission dialog)
+            // still means fingers have left the glass.
+            touchOverlay.view().release();
+        }
         // Immersive flags set in onCreate()/onResume() run before the window
         // first gains focus, so Android drops them and the status/navigation
         // bars stay visible on launch. Re-apply once we actually have focus
@@ -486,6 +551,20 @@ public class MainActivity extends SDLActivity {
         intent.putExtra(EXTRA_AUTOSTART, autostart);
         intent.putExtra(RestartActivity.EXTRA_KILL_PID, android.os.Process.myPid());
         startActivity(intent);
+    }
+
+    /**
+     * Put the on-screen controls into layout-edit mode, from the game's settings menu.
+     *
+     * <p>Called from native code (android_glue.cpp) on the render thread, so the work
+     * is posted to the UI thread by the controller. Named to match the
+     * {@code GetMethodID} lookup in nativeInit -- renaming this silently breaks the
+     * menu button, since a missing method id is tolerated rather than fatal.
+     */
+    void requestTouchLayoutEditor() {
+        if (touchOverlay != null) {
+            touchOverlay.requestEditorFromNative();
+        }
     }
 
     // Implemented in android_glue.cpp.

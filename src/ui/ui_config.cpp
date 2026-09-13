@@ -14,6 +14,9 @@
 
 #include "core/ui_context.h"
 #include "ui_gpu_driver.h"
+#if defined(__ANDROID__)
+#include "goemon_support.h"
+#endif
 #include "ui_saves.h"
 
 ultramodern::renderer::GraphicsConfig new_options;
@@ -369,6 +372,8 @@ struct ControlOptionsContext {
     std::atomic<goemon64::AutosaveMode> autosave_mode;
     std::atomic<goemon64::CameraInvertMode> camera_invert_mode;
     std::atomic<goemon64::AnalogCamMode> analog_cam_mode;
+    std::atomic<goemon64::TouchControlsMode> touch_controls_mode;
+    std::atomic<int> touch_stick_sensitivity; // 0 to 100, lower = finer near centre
     std::atomic<goemon64::CameraInvertMode> analog_camera_invert_mode;
     std::atomic<int> analog_cam_sensitivity_x; // 0 to 100, 50 = default rate
     std::atomic<int> analog_cam_sensitivity_y; // 0 to 100, 50 = default rate
@@ -377,6 +382,15 @@ struct ControlOptionsContext {
 };
 
 ControlOptionsContext control_options_context;
+
+// Whether on-screen controls exist on this platform. A plain bool rather than a
+// compile-time constant in the RML, because RmlUi data bindings need something to
+// point at.
+#if defined(__ANDROID__)
+bool touch_supported = true;
+#else
+bool touch_supported = false;
+#endif
 
 int recomp::get_rumble_strength() {
     return control_options_context.rumble_strength;
@@ -487,6 +501,28 @@ void goemon64::set_analog_cam_mode(goemon64::AnalogCamMode mode) {
     control_options_context.analog_cam_mode = mode;
     if (general_model_handle) {
         general_model_handle.DirtyVariable("analog_cam_mode");
+    }
+}
+
+goemon64::TouchControlsMode goemon64::get_touch_controls_mode() {
+    return control_options_context.touch_controls_mode;
+}
+
+void goemon64::set_touch_controls_mode(goemon64::TouchControlsMode mode) {
+    control_options_context.touch_controls_mode = mode;
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("touch_controls_mode");
+    }
+}
+
+int goemon64::get_touch_stick_sensitivity() {
+    return control_options_context.touch_stick_sensitivity;
+}
+
+void goemon64::set_touch_stick_sensitivity(int value) {
+    control_options_context.touch_stick_sensitivity = std::clamp(value, 0, 100);
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("touch_stick_sensitivity");
     }
 }
 
@@ -821,6 +857,20 @@ public:
             });
 
         recompui::register_gpu_driver_events(listener);
+
+#if defined(__ANDROID__)
+        // Hands off to the Android side, which puts the live overlay into edit mode
+        // over the running game. The editor is deliberately the real overlay rather
+        // than a mock: the only question it answers is "can my thumb reach that",
+        // and a mock at a different size, without the game behind it, cannot answer
+        // that. Closes the menu first for the same reason -- you cannot judge a
+        // layout you cannot see.
+        recompui::register_event(listener, "touch_edit_layout",
+            [](const std::string& /*param*/, Rml::Event& /*event*/) {
+                recompui::hide_all_contexts();
+                goemon64::request_touch_layout_editor();
+            });
+#endif
         recompui::register_saves_events(listener);
     }
 
@@ -1194,6 +1244,15 @@ public:
         bind_atomic_option(constructor, "autosave_mode", &control_options_context.autosave_mode);
         bind_atomic_option(constructor, "camera_invert_mode", &control_options_context.camera_invert_mode);
         bind_atomic_option(constructor, "analog_cam_mode", &control_options_context.analog_cam_mode);
+        bind_atomic_option(constructor, "touch_controls_mode", &control_options_context.touch_controls_mode);
+        // Gates the Touch tab, the same way driver_supported gates the GPU Driver
+        // tab. The tab's only action -- touch_edit_layout -- is registered inside
+        // #if defined(__ANDROID__), so without this a desktop build would show a tab
+        // whose button resolves to no listener and silently does nothing, next to a
+        // setting that drives nothing.
+        constructor.Bind("touch_supported", &touch_supported);
+        bind_atomic(constructor, general_model_handle, "touch_stick_sensitivity",
+                    &control_options_context.touch_stick_sensitivity);
         bind_atomic_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
         bind_atomic(constructor, general_model_handle, "analog_cam_sensitivity_x", &control_options_context.analog_cam_sensitivity_x);
         bind_atomic(constructor, general_model_handle, "analog_cam_sensitivity_y", &control_options_context.analog_cam_sensitivity_y);

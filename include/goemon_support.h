@@ -41,6 +41,10 @@ namespace goemon64 {
     };
     void request_restart(RestartTarget target);
 
+    // Ask the Android layer to put the on-screen controls into layout-edit mode over
+    // the running game. No-op off Android, and harmless if the activity has gone.
+    void request_touch_layout_editor();
+
     // True when MainActivity was launched with the auto-start extra set, i.e.
     // this process is the "restart to title screen" half of a restart and should
     // boot the game rather than stopping at the launcher.

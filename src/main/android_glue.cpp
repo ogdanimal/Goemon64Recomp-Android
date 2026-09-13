@@ -127,6 +127,7 @@ namespace {
     jclass g_activity_class = nullptr;
     jmethodID g_mid_request_open_document = nullptr;
     jmethodID g_mid_request_driver_import = nullptr;
+    jmethodID g_mid_request_touch_editor = nullptr;
     jmethodID g_mid_gpu_state = nullptr;
     jmethodID g_mid_gpu_select = nullptr;
     jmethodID g_mid_gpu_remove = nullptr;
@@ -421,6 +422,14 @@ namespace goemon64 {
     }
 }
 
+void goemon64::request_touch_layout_editor() {
+    // Fire-and-forget: the editor is a UI mode on the Android side and reports
+    // nothing back, so unlike the driver import there is no answer to wait for.
+    // call_java_void tolerates a null activity or method id, which is what makes
+    // this safe to call from the config menu during shutdown.
+    call_java_void(g_mid_request_touch_editor, "requestTouchLayoutEditor");
+}
+
 extern "C" {
 
 JNIEXPORT void JNICALL
@@ -436,6 +445,7 @@ Java_com_goemon64_recomp_MainActivity_nativeInit(JNIEnv* env, jobject thiz, jstr
     env->DeleteLocalRef(local_class);
     g_mid_request_open_document = env->GetMethodID(g_activity_class, "requestOpenDocument", "(Z)V");
     g_mid_request_driver_import = env->GetMethodID(g_activity_class, "requestDriverImport", "()V");
+    g_mid_request_touch_editor = env->GetMethodID(g_activity_class, "requestTouchLayoutEditor", "()V");
     g_mid_gpu_state = env->GetMethodID(g_activity_class, "gpuDriverStateJson", "()Ljava/lang/String;");
     g_mid_gpu_select = env->GetMethodID(g_activity_class, "gpuDriverSelect", "(Ljava/lang/String;)V");
     g_mid_gpu_remove = env->GetMethodID(g_activity_class, "gpuDriverRemove", "(Ljava/lang/String;)V");

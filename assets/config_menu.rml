@@ -27,6 +27,7 @@
 	<link type="text/template" href="config_menu/controls.rml" />
 	<link type="text/template" href="config_menu/graphics.rml" />
 	<link type="text/template" href="config_menu/sound.rml" />
+	<link type="text/template" href="config_menu/touch.rml" />
 	<link type="text/template" href="config_menu/mods.rml" />
 	<link type="text/template" href="config_menu/cheats.rml" />
 	<link type="text/template" href="config_menu/saves.rml" />
@@ -106,6 +107,16 @@
 						</tab>
 						<panel class="config" data-model="driver_model">
 							<template src="config-menu__driver" />
+						</panel>
+						<!-- Appended after the driver tab for the same reason it is
+						     last: config_tab_to_index hands out fixed indices, so a
+						     new tab must not shift the existing ones. -->
+						<tab class="tab" data-model="general_model" data-if="touch_supported" id="tab_touch">
+							<div>Touch</div>
+							<div class="tab__indicator"></div>
+						</tab>
+						<panel class="config" data-model="general_model">
+							<template src="config-menu__touch" />
 						</panel>
 					</tabset>
 					<div class="config__icon-buttons">

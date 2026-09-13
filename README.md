@@ -16,10 +16,10 @@ The APK does not include the game. You'll need your own legally obtained ROM.
 
 1. Install the APK and open the app.
 2. On first launch, you'll be asked to pick your ROM file — use the file picker, it gets copied into the app's own storage.
-3. Make sure you have a gamepad. **The game is controller-only** — there is no touchscreen control scheme. A handheld's built-in controls work as-is; on a phone, pair a physical or Bluetooth pad first.
+3. Play with whatever you have. A handheld's built-in controls work as-is, and a physical or Bluetooth pad works on a phone. If there is no gamepad, **on-screen controls** appear automatically — see [On-Screen Controls](#on-screen-controls) below.
 4. Press Start.
 
-**Requirements:** Android 9.0+, a 64-bit (`arm64-v8a`) device, and a Vulkan-capable GPU. This covers effectively any phone or handheld from the last several years. Tested primarily on Snapdragon/Adreno handhelds (Retroid Pocket 5, AYN Thor).
+**Requirements:** Android 9.0+, a 64-bit (`arm64-v8a`) device, and a Vulkan-capable GPU. A gamepad is recommended but no longer required. This covers effectively any phone or handheld from the last several years. Tested primarily on Snapdragon/Adreno handhelds (Retroid Pocket 5, AYN Thor).
 
 ## Something's Wrong — Quick Fixes
 
@@ -35,6 +35,29 @@ The APK does not include the game. You'll need your own legally obtained ROM.
 | Still stuck | [Open an issue](../../issues) with your device model and Android version. |
 
 More detail on each of these is in [Troubleshooting Details](#troubleshooting-details) below.
+
+## On-Screen Controls
+
+On a device with no gamepad, a full N64 pad is drawn over the game: analog stick under
+the left thumb, A and B under the right with the C-buttons above them, L/Z/R along the
+top edge, and Start in the middle.
+
+By default it **hides as soon as a gamepad is used** and comes back the next time you
+touch the screen, so a handheld with real sticks never sees it and a phone never has to
+go looking for a setting.
+
+Whether it appears at all is under **Settings → Touch → On-Screen Controls**
+(Auto / On / Off), along with **Edit Layout**, which lets you drag the controls
+wherever your hands actually want them, over the running game.
+
+**Long-press the ☰ handle** for size, opacity and vibration. A short tap on ☰ opens
+the game's settings menu (☰ is the on-screen stand-in for Select).
+
+The on-screen buttons go through the same bindings as a physical controller, so
+anything you remap in **Settings → Controls** moves them too, and they work alongside a
+real pad rather than instead of it.
+
+Full detail, and how to work on the layout: [docs/touch-controls.md](docs/touch-controls.md).
 
 ## Default Controls
 

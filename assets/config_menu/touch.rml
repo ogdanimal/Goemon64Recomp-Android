@@ -1,0 +1,126 @@
+<!-- On-screen (touch) controls.
+
+     Its own tab rather than more rows on General, for a reason that only shows up on
+     a touchscreen: this menu's option list does not scroll by drag -- a swipe is
+     delivered as a hover, not a scroll -- so anything below the fold is unreachable
+     for a player with no gamepad. General is already full to its last pixel, and the
+     overlay hides while the menu is open, so there is no on-screen D-pad to navigate
+     with either. A tab is always visible and always tappable.
+
+     Bound to general_model, which is where touch_controls_mode lives, so this needs
+     no model plumbing of its own. -->
+<template name="config-menu__touch">
+    <head>
+    </head>
+    <body>
+        <form class="config__form">
+            <div class="config__hz-wrapper">
+                <!-- Options -->
+                <div class="config__wrapper" data-event-mouseout="set_cur_config_index(-1)">
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(14)">
+                        <label class="config-option__title">On-Screen Controls</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(14)"
+                                name="touch_controls_mode"
+                                data-checked="touch_controls_mode"
+                                value="Auto"
+                                id="touch_auto"
+                                style="nav-up: #tab_touch; nav-down: #touch_stick_input"
+                            />
+                            <label class="config-option__tab-label" for="touch_auto">Auto</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(14)"
+                                name="touch_controls_mode"
+                                data-checked="touch_controls_mode"
+                                value="On"
+                                id="touch_on"
+                                style="nav-up: #tab_touch; nav-down: #touch_stick_input"
+                            />
+                            <label class="config-option__tab-label" for="touch_on">On</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(14)"
+                                name="touch_controls_mode"
+                                data-checked="touch_controls_mode"
+                                value="Off"
+                                id="touch_off"
+                                style="nav-up: #tab_touch; nav-down: #touch_stick_input"
+                            />
+                            <label class="config-option__tab-label" for="touch_off">Off</label>
+                        </div>
+                    </div>
+
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(16)">
+                        <label class="config-option__title">Stick Sensitivity</label>
+                        <div class="config-option__range-wrapper config-option__list">
+                            <label class="config-option__range-label">{{touch_stick_sensitivity}}%</label>
+                            <input
+                                class="nav-vert"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(16)"
+                                id="touch_stick_input"
+                                type="range"
+                                min="0"
+                                max="100"
+                                style="flex: 1; margin: 0dp; nav-up: #touch_auto; nav-down: #touch_edit_button"
+                                data-value="touch_stick_sensitivity"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(15)">
+                        <label class="config-option__title">Layout</label>
+                        <div class="config-option__list">
+                            <button
+                                class="button button--secondary"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(15)"
+                                onclick="touch_edit_layout"
+                                id="touch_edit_button"
+                                style="nav-up: #touch_stick_input;"
+                            >Edit Layout</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Descriptions -->
+                <div class="config__wrapper">
+                    <p data-if="cur_config_index == 14">
+                        Draws a full N64 controller on the touchscreen, so the game can be played without a gamepad.
+                        <br/>
+                        <br/>
+                        <b>Auto</b> shows it until a gamepad is used, then hides it until you touch the screen again — a handheld with real sticks never sees it, and a phone never has to come looking for this setting. <b>On</b> always draws it. <b>Off</b> never does, which is how the app behaved before on-screen controls existed.
+                        <br/>
+                        <br/>
+                        The on-screen buttons go through the same bindings as a physical controller, so anything you remap under <b>Controls</b> moves them too, and they work alongside a real pad rather than instead of it.
+                    </p>
+                    <p data-if="cur_config_index == 16">
+                        How directly the stick follows your thumb.
+                        <br/>
+                        <br/>
+                        <b>100%</b> is linear: the tilt sent is simply how far your thumb sits from the centre. That is the twitchy end — the stick is only about 9&nbsp;mm across, so a linear response squeezes the whole walking range into roughly 4.5&nbsp;mm and slow movement is very hard to hold.
+                        <br/>
+                        <br/>
+                        <b>Lower values</b> bend the response so movement near the centre tilts less, while the rim still reaches full tilt. You get the walking range back without losing any top speed. <b>50% is the default.</b>
+                    </p>
+                    <p data-if="cur_config_index == 15">
+                        Closes this menu and lets you drag the controls wherever your hands want them, over the running game.
+                        <br/>
+                        <br/>
+                        Press <b>Done</b> when the layout suits you, or <b>Reset</b> to put everything back. The layout is saved on this device.
+                        <br/>
+                        <br/>
+                        <b>Long-press the ☰ button</b> during play to reach size, opacity and vibration.
+                    </p>
+                </div>
+            </div>
+        </form>
+    </body>
+</template>

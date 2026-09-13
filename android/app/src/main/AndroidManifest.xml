@@ -5,6 +5,12 @@
     <!-- ROM is chosen via SAF and copied into app-scoped storage; no legacy
          storage permissions needed. -->
 
+    <!-- Haptic feedback for the on-screen controls. A normal permission, granted at
+         install with no runtime prompt. Without it Vibrator.vibrate() throws
+         SecurityException, and since the buzz fires on every on-screen button press
+         that is an instant crash the first time the player touches A. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <uses-feature android:name="android.hardware.vulkan.version"
         android:version="0x400003" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />

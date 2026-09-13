@@ -12,6 +12,7 @@
 #if defined(__ANDROID__)
 #include "SDL_syswm.h"
 #include "goemon_render.h"
+#include "goemon_touch.h"
 #endif
 #include "promptfont.h"
 #include "GamepadMotion.hpp"
@@ -734,6 +735,15 @@ bool controller_button_state(int32_t input_id) {
             }
         }
 
+#if defined(__ANDROID__)
+        // The on-screen controls are merged here, at the same point every
+        // physical pad arrives, so they inherit the whole binding system instead
+        // of needing a parallel one (see goemon_touch.h). OR, not override: a
+        // player holding a button on the overlay and another on a real pad gets
+        // both, exactly as two physical pads already behave.
+        ret |= goemon64::touch::button_held(input_id);
+#endif
+
         return ret;
     }
     return false;
@@ -775,6 +785,24 @@ float controller_axis_state(int32_t input_id, bool allow_suppression) {
                 ret += std::clamp(cur_val, 0.0f, 1.0f);
             }
         }
+
+#if defined(__ANDROID__)
+        // Same merge as controller_button_state, and it obeys the same right-stick
+        // suppression: the overlay can drive the C-buttons through the right stick,
+        // so an overlay press must be silenced wherever a physical stick would be,
+        // or analog-camera mode would leak C inputs the physical path filters out.
+        {
+            float touch_val = goemon64::touch::axis_value(static_cast<int>(axis));
+            if (negative_range) {
+                touch_val = -touch_val;
+            }
+            if (allow_suppression && right_analog_suppressed.load() &&
+                (axis == SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_RIGHTX || axis == SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_RIGHTY)) {
+                touch_val = 0;
+            }
+            ret += std::clamp(touch_val, 0.0f, 1.0f);
+        }
+#endif
 
         return std::clamp(ret, 0.0f, 1.0f);
     }
