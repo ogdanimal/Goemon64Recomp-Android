@@ -12,6 +12,12 @@ phone can play, without changing anything for a handheld that already has sticks
 - **Settings:** the Touch tab also has **Stick Sensitivity** and **Edit Layout**.
   Long-press the ☰ handle for size, opacity and vibration. A short tap on ☰ opens
   the game's own menu (it is the on-screen stand-in for Select).
+- **Reaching the tab:** Touch is the last tab, and with the GPU Driver tab present
+  the row is wider than the menu, so it scrolls sideways. Drag the row with a
+  finger; a controller scrolls it automatically as focus moves. RmlUi 6.0 has no
+  drag-scrolling of its own, so this is `TabStripDragScroller` in
+  `src/ui/ui_config.cpp`; a drag swallows the click that ends it, so dragging never
+  switches tabs.
 
 ---
 
@@ -108,6 +114,8 @@ makes the on-screen C cluster behave the same either way.
 | `src/main/android_touch.cpp` | Virtual pad state + JNI entry points |
 | `include/goemon_touch.h` | The API `input.cpp` reads |
 | `src/game/input.cpp` | The merge into the physical-pad path |
+| `src/ui/ui_state.cpp` | Publishes the per-frame menu-open snapshot the overlay polls (`is_context_capturing_input_snapshot`), so the poll never waits on `ui_state_mutex` |
+| `src/ui/ui_config.cpp` | The Touch tab's bindings, and `TabStripDragScroller` for the scrolling tab row |
 
 ### The SDL constants are duplicated
 

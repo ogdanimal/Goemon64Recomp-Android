@@ -48,7 +48,8 @@ go looking for a setting.
 
 Whether it appears at all is under **Settings → Touch → On-Screen Controls**
 (Auto / On / Off), along with **Edit Layout**, which lets you drag the controls
-wherever your hands actually want them, over the running game.
+wherever your hands actually want them, over the running game. Touch is the last
+tab; if it is off the edge of the screen, drag the row of tabs sideways to reach it.
 
 **Long-press the ☰ handle** for size, opacity and vibration. A short tap on ☰ opens
 the game's settings menu (☰ is the on-screen stand-in for Select).
