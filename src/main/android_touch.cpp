@@ -196,16 +196,6 @@ Java_com_goemon64_recomp_touch_NativeTouch_nativeClearState(JNIEnv* /*env*/, jcl
     goemon64::touch::clear_state();
 }
 
-// Whether a menu that blocks game input is on screen -- the in-app launcher, the
-// config menu, a modal prompt.
-//
-// The overlay polls this instead of being told. A push would mean an upcall from
-// whichever thread happened to change the UI state, with a cached JavaVM, a
-// per-thread AttachCurrentThread, and a global class reference to keep alive across
-// the activity being recreated. A poll a few times a second costs a single atomic
-// read through JNI and cannot leak, deadlock, or fire into a dead activity -- and
-// the deadline it has to meet is a human noticing the pad is still drawn, which is
-// nowhere near tight enough to justify the alternative.
 JNIEXPORT void JNICALL
 Java_com_goemon64_recomp_touch_NativeTouch_nativeRequestMenuToggle(JNIEnv* /*env*/, jclass /*clazz*/) {
     goemon64::touch::request_menu_toggle();
@@ -230,9 +220,27 @@ Java_com_goemon64_recomp_touch_NativeTouch_nativeGetStickSensitivity(JNIEnv* /*e
     return goemon64::get_touch_stick_sensitivity();
 }
 
+// Whether a menu that blocks game input is on screen -- the in-app launcher, the
+// config menu, a modal prompt.
+//
+// The overlay polls this instead of being told. A push would mean an upcall from
+// whichever thread happened to change the UI state, with a cached JavaVM, a
+// per-thread AttachCurrentThread, and a global class reference to keep alive across
+// the activity being recreated. A poll a few times a second cannot leak, deadlock, or
+// fire into a dead activity -- and the deadline it has to meet is a human noticing
+// the pad is still drawn, which is nowhere near tight enough to justify the
+// alternative.
+//
+// It reads the per-frame snapshot, NOT recompui::is_context_capturing_input(). That
+// one takes ui_state_mutex, which the render thread holds for the whole UI pass of
+// every frame -- and this runs on Android's main thread. Waiting there would stall
+// touch handling behind the UI, and worse, would freeze the app outright if the
+// render thread raised an error dialog while holding the mutex:
+// SDL_ShowSimpleMessageBox waits for the main thread to show and dismiss the dialog,
+// and the main thread would be waiting for the mutex.
 JNIEXPORT jboolean JNICALL
 Java_com_goemon64_recomp_touch_NativeTouch_nativeIsMenuOpen(JNIEnv* /*env*/, jclass /*clazz*/) {
-    return recompui::is_context_capturing_input() ? JNI_TRUE : JNI_FALSE;
+    return recompui::is_context_capturing_input_snapshot() ? JNI_TRUE : JNI_FALSE;
 }
 
 } // extern "C"

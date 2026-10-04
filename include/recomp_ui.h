@@ -51,6 +51,12 @@ namespace recompui {
     void hide_all_contexts();
     bool is_context_shown(ContextId context);
     bool is_context_capturing_input();
+    // is_context_capturing_input() as of the end of the last UI frame, read without
+    // taking ui_state_mutex. For callers that must never block on the render thread
+    // -- above all Android's main thread, which also has to show the dialog behind
+    // SDL_ShowSimpleMessageBox while the render thread waits on it holding the
+    // mutex. At most one frame stale.
+    bool is_context_capturing_input_snapshot();
     bool is_context_capturing_mouse();
     bool is_any_context_shown();
     ContextId try_close_current_context();

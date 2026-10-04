@@ -4,6 +4,7 @@
 #else
 #include <SDL2/SDL_video.h>
 #endif
+#include <atomic>
 #include <chrono>
 
 #include "rt64_render_hooks.h"
@@ -437,6 +438,7 @@ public:
 
 std::unique_ptr<UIState> ui_state;
 std::recursive_mutex ui_state_mutex{};
+std::atomic<bool> context_capturing_input_snapshot{ false };
 
 // TODO make this not be global
 extern SDL_Window* window;
@@ -825,6 +827,10 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
         ui_state->context->Render();
         ui_state->render_interface.end(command_list, swap_chain_framebuffer);
     }
+
+    // Published once per frame, after this frame's events have opened or closed
+    // whatever they were going to, for is_context_capturing_input_snapshot().
+    context_capturing_input_snapshot.store(recompui::is_context_capturing_input(), std::memory_order_relaxed);
 }
 
 void deinit_hook() {
@@ -903,6 +909,10 @@ bool recompui::is_context_capturing_input() {
     }
 
     return ui_state->is_context_capturing_input();
+}
+
+bool recompui::is_context_capturing_input_snapshot() {
+    return context_capturing_input_snapshot.load(std::memory_order_relaxed);
 }
 
 bool recompui::is_context_capturing_mouse() {

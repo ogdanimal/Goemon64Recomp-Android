@@ -416,10 +416,11 @@ public class TouchOverlayView extends View {
     /**
      * Start counting a long press on the settings handle.
      *
-     * <p>The press is delivered to the game as normal while the timer runs; it is
-     * only if the timer completes that the press is taken back. That ordering is
-     * what lets a tap stay instant — the common action is not made to wait for the
-     * rare one.
+     * <p>Nothing is sent to the game while the timer runs. If the finger lifts first
+     * it was a tap, and the menu toggle is sent then ({@link #pulseMenu}); if the
+     * timer completes, the overlay's own settings open instead and the game never
+     * sees a press. See {@link #menuPointerId} for why the handle cannot fire on
+     * contact the way every other control does.
      */
     private void armLongPress(int pointerId, float x, float y) {
         menuPointerId = pointerId;

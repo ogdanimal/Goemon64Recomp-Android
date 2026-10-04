@@ -126,6 +126,19 @@ the wrong thing.
 - **The stick has no floating mode.** The base is fixed. A "recentre where the thumb
   lands" option is a common preference and is not implemented.
 - **The editor moves and resizes controls, but does not rotate or reshape them.**
+- **The labels assume the default bindings.** The on-screen "A" sends the controller's
+  A button, not N64 A, so it means whatever **Settings → Controls** has bound to that
+  button. With the stock bindings every label is right; after a remap, the labels can
+  be wrong.
+- **There is no right stick.** Analog Camera mode is driven by the right stick, and
+  its recentre by R3, so neither can be used from the touchscreen alone. The C
+  diamond still works in that mode, because it emits D-pad rather than right-stick
+  input.
+- **A very short tap can be missed.** The overlay reports what is held right now and
+  the game samples it once per input poll, so a press that starts and ends between
+  two polls is never seen. A finger is normally down long enough; a synthetic
+  `adb shell input tap` is not. Holding each press for a minimum time would close
+  this. (Inferred from the design and seen with `adb`, not seen with a finger.)
 - **No per-orientation layouts.** The app is landscape-locked
   (`android:screenOrientation="landscape"`), so there is only one to store. If that
   lock is ever lifted, layouts would need storing per orientation.
