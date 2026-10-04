@@ -30,6 +30,7 @@ The APK does not include the game. You'll need your own legally obtained ROM.
 | Hook Chain (R) does nothing in Impact battles | Fixed as of `1.0.6` — update to the latest release. Analog Camera was reserving R everywhere, including the mech battles where the game needs it. |
 | Black border around the edges during Impact battles | Fixed as of `1.0.6` — update to the latest release. Impact battles now use the full screen. This works well, but it reveals image the original developers never expected to be on-screen, and only a couple of fights have been checked — if something at the edges looks clearly wrong, [please report it](../../issues). |
 | "Failed to write to the save file" | As of `1.0.7` the message names the exact file it tried to write and what the system said about it, which usually points at the cause. If it isn't obvious, [open an issue](../../issues) with that text. |
+| No gamepad, want to play on a phone | On-screen touch controls appear automatically as of `1.0.8`. See [On-Screen Controls](#on-screen-controls). |
 | Want to bring a save over from another device | **Settings → Saves → Import** as of `1.0.7` — no adb or file manager needed. See [Importing a Save](#importing-a-save). |
 | Some controller buttons do nothing, and don't respond when rebinding | Android doesn't recognize your pad's exact model. Fixed for DualSense Edge on Android 12 and earlier as of `1.0.4`; for anything else, [open an issue](../../issues) with your pad model and Android version. |
 | Still stuck | [Open an issue](../../issues) with your device model and Android version. |
@@ -38,8 +39,8 @@ More detail on each of these is in [Troubleshooting Details](#troubleshooting-de
 
 ## On-Screen Controls
 
-*Contributed by [@epic-ship-it](https://github.com/epic-ship-it) in
-[#25](https://github.com/ogdanimal/Goemon64Recomp-Android/pull/25).*
+*Added in `1.0.8`, contributed by [@epic-ship-it](https://github.com/epic-ship-it)
+in [#25](https://github.com/ogdanimal/Goemon64Recomp-Android/pull/25).*
 
 On a device with no gamepad, a full N64 pad is drawn over the game: analog stick under
 the left thumb, A and B under the right with the C-buttons above them, L/Z/R along the
