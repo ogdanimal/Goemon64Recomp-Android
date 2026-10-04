@@ -38,6 +38,9 @@ More detail on each of these is in [Troubleshooting Details](#troubleshooting-de
 
 ## On-Screen Controls
 
+*Contributed by [@epic-ship-it](https://github.com/epic-ship-it) in
+[#25](https://github.com/ogdanimal/Goemon64Recomp-Android/pull/25).*
+
 On a device with no gamepad, a full N64 pad is drawn over the game: analog stick under
 the left thumb, A and B under the right with the C-buttons above them, L/Z/R along the
 top edge, and Start in the middle.
@@ -47,9 +50,11 @@ touch the screen, so a handheld with real sticks never sees it and a phone never
 go looking for a setting.
 
 Whether it appears at all is under **Settings → Touch → On-Screen Controls**
-(Auto / On / Off), along with **Edit Layout**, which lets you drag the controls
-wherever your hands actually want them, over the running game. Touch is the last
-tab; if it is off the edge of the screen, drag the row of tabs sideways to reach it.
+(Auto / On / Off). The same tab has **Stick Sensitivity**, which softens the stick
+near its centre so slow walking is easy to hold on a small screen without losing
+top speed, and **Edit Layout**, which lets you drag the controls wherever your
+hands actually want them, over the running game. Touch is the last tab; if it is
+off the edge of the screen, drag the row of tabs sideways to reach it.
 
 **Long-press the ☰ handle** for size, opacity and vibration. A short tap on ☰ opens
 the game's settings menu (☰ is the on-screen stand-in for Select).
@@ -163,6 +168,7 @@ See **[BUILDING.md](BUILDING.md)** for the full step-by-step build (host tooling
 
 - [Goemon 64: Recompiled](https://github.com/klorfmorf/Goemon64Recomp) contributors
 - [@linkzenic](https://github.com/linkzenic) — [Zelda64Recomp-Android](https://github.com/linkzenic/Zelda64Recomp-Android), whose Android port paved the way for this one
+- [@epic-ship-it](https://github.com/epic-ship-it) — the [on-screen touch controls](#on-screen-controls) ([#25](https://github.com/ogdanimal/Goemon64Recomp-Android/pull/25))
 - [N64: Recompiled](https://github.com/Mr-Wiseguy/N64Recomp) contributors
 - [RT64](https://github.com/rt64/rt64) contributors
 - [Zelda64Recomp](https://github.com/Zelda64Recomp/Zelda64Recomp), the base the upstream project builds on
