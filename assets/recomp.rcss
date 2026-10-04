@@ -493,11 +493,25 @@ scrollbarhorizontal sliderbar {
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
+  /* Stop short of .config__icon-buttons (three 53.8dp buttons with 8dp margins
+     either side), and scroll sideways once the tabs no longer fit. Dragging is
+     handled in ui_config.cpp (TabStripDragScroller); RmlUi itself only scrolls
+     on the wheel or the bar. */
+  margin-right: 216dp;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.tabs tabs scrollbarhorizontal, .tabs tabs scrollbarhorizontal slidertrack, .tabs tabs scrollbarhorizontal sliderbar {
+  height: 4dp;
 }
 
 .tab {
   display: block;
   position: relative;
+  /* Keep each tab its natural width so the strip overflows and scrolls, rather
+     than squeezing labels until they wrap ("GPU Driver" onto two lines). */
+  flex: 0 0 auto;
+  white-space: nowrap;
   margin: 0;
   padding: 20dp 24dp;
   opacity: 0.9;

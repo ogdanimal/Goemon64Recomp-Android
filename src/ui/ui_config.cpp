@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 
 #include "recomp_ui.h"
 #include "recomp_input.h"
@@ -14,9 +15,6 @@
 
 #include "core/ui_context.h"
 #include "ui_gpu_driver.h"
-#if defined(__ANDROID__)
-#include "goemon_support.h"
-#endif
 #include "ui_saves.h"
 
 ultramodern::renderer::GraphicsConfig new_options;
@@ -736,10 +734,97 @@ Rml::Element* recompui::get_child_by_tag(Rml::Element* parent, const std::string
     return nullptr;
 }
 
+// Lets the tab strip be dragged sideways.
+//
+// The strip scrolls horizontally because the tabs no longer fit beside the icon
+// buttons, and RmlUi 6.0 only scrolls on the wheel or the scrollbar -- a touch
+// swipe arrives (via SDL's touch-to-mouse emulation) as a press and a move, which
+// RmlUi treats as hover. So the drag is done here: press anywhere on the strip,
+// move past a small threshold, and the strip follows the finger.
+//
+// The click that ends a drag is swallowed, so dragging never switches tabs. A tap
+// that stays under the threshold is an ordinary click and selects the tab as before.
+class TabStripDragScroller : public Rml::EventListener {
+public:
+    void attach(Rml::Element* tabs) {
+        strip = tabs;
+        // Capture phase on the strip: the click has to be stopped before it reaches
+        // the tab, and before the tabset's default action, which is what switches tabs.
+        strip->AddEventListener(Rml::EventId::Mousedown, this, true);
+        strip->AddEventListener(Rml::EventId::Click, this, true);
+        // Move and release are taken on the whole document, so a drag that leaves the
+        // strip's bounds keeps scrolling and still ends cleanly.
+        Rml::ElementDocument* doc = strip->GetOwnerDocument();
+        doc->AddEventListener(Rml::EventId::Mousemove, this, true);
+        doc->AddEventListener(Rml::EventId::Mouseup, this, true);
+    }
+
+    void ProcessEvent(Rml::Event& event) override {
+        switch (event.GetId()) {
+            case Rml::EventId::Mousedown:
+                if (event.GetParameter<int>("button", -1) == 0) {
+                    pressed = true;
+                    dragged = false;
+                    press_x = event.GetParameter<float>("mouse_x", 0.0f);
+                    press_scroll = strip->GetScrollLeft();
+                }
+                break;
+            case Rml::EventId::Mousemove:
+                if (pressed) {
+                    float dx = event.GetParameter<float>("mouse_x", press_x) - press_x;
+                    if (!dragged && std::fabs(dx) > drag_threshold_px()) {
+                        dragged = true;
+                    }
+                    if (dragged) {
+                        strip->SetScrollLeft(press_scroll - dx);
+                    }
+                }
+                break;
+            case Rml::EventId::Mouseup:
+                // dragged is left set: the click for this release is dispatched after
+                // the mouseup, and it is what clears the flag.
+                pressed = false;
+                break;
+            case Rml::EventId::Click:
+                if (dragged) {
+                    dragged = false;
+                    event.StopPropagation();
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+private:
+    float drag_threshold_px() const {
+        Rml::Context* context = strip->GetContext();
+        float ratio = context != nullptr ? context->GetDensityIndependentPixelRatio() : 1.0f;
+        return 12.0f * ratio;
+    }
+
+    Rml::Element* strip = nullptr;
+    bool pressed = false;
+    bool dragged = false;
+    float press_x = 0.0f;
+    float press_scroll = 0.0f;
+};
+
 class ConfigTabsetListener : public Rml::EventListener {
     void ProcessEvent(Rml::Event& event) override {
         if (event.GetId() == Rml::EventId::Tabchange) {
             int tab_index = event.GetParameter<int>("tab_index", 0);
+            // The strip scrolls, so a tab chosen by controller, by the shoulder
+            // buttons or from code may be off the edge. Bring it into view.
+            // Controller focus already does this for the tab it lands on; this
+            // covers every other way the active tab changes.
+            {
+                Rml::Element* tabs = recompui::get_child_by_tag(recompui::get_config_tabset(), "tabs");
+                if (tabs != nullptr && tab_index >= 0 && tab_index < tabs->GetNumChildren()) {
+                    tabs->GetChild(tab_index)->ScrollIntoView(
+                        Rml::ScrollIntoViewOptions{Rml::ScrollAlignment::Nearest, Rml::ScrollAlignment::Nearest});
+                }
+            }
             bool in_mod_tab = (tab_index == recompui::config_tab_to_index(recompui::ConfigTab::Mods));
             if (in_mod_tab) {
                 recompui::set_config_tabset_mod_nav();
@@ -761,6 +846,7 @@ class ConfigTabsetListener : public Rml::EventListener {
 class ConfigMenu : public recompui::MenuController {
 private:
     ConfigTabsetListener config_tabset_listener;
+    TabStripDragScroller tab_strip_scroller;
 public:
     ConfigMenu() {
 
@@ -771,7 +857,11 @@ public:
     void load_document() override {
 		config_context = recompui::create_context(goemon64::get_asset_path("config_menu.rml"));
         recompui::update_mod_list(false);
-        recompui::get_config_tabset()->AddEventListener(Rml::EventId::Tabchange, &config_tabset_listener);
+        Rml::ElementTabSet* tabset = recompui::get_config_tabset();
+        tabset->AddEventListener(Rml::EventId::Tabchange, &config_tabset_listener);
+        if (Rml::Element* tabs = recompui::get_child_by_tag(tabset, "tabs")) {
+            tab_strip_scroller.attach(tabs);
+        }
     }
     void register_events(recompui::UiEventListenerInstancer& listener) override {
         recompui::register_event(listener, "apply_options",
