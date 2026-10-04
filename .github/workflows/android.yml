@@ -137,6 +137,12 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        # The default is 'tools platform-tools', and the legacy 'tools' package no
+        # longer exists on current cmdline-tools (sdkmanager: "Failed to find package
+        # 'tools'", first seen 2026-10-04). Nothing here uses it: the NDK and CMake
+        # come from the next step and the build is Gradle.
+        with:
+          packages: platform-tools
 
       - name: Install pinned NDK + CMake
         run: |
