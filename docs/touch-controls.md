@@ -91,9 +91,21 @@ makes the on-screen C cluster behave the same either way.
 - **The ☰ handle is click-on-release**, alone among the controls. A tap opens the
   game's menu and a long press opens the overlay's settings, and those are only
   distinguishable once the finger lifts. Every other control fires on contact.
-- **The pad hides for menus**, polled from `recompui::is_context_capturing_input()`,
-  and stops consuming touches entirely so SDL's touch-to-mouse emulation can drive the
+- **The pad hides for menus**, polled from
+  `recompui::is_context_capturing_input_snapshot()` — a per-frame atomic, never the
+  `ui_state_mutex`-guarded call, because the poll runs on Android's main thread — and
+  stops consuming touches entirely so SDL's touch-to-mouse emulation can drive the
   RmlUi menu underneath.
+- **A tap is never shorter than one game input poll.** The game samples input once
+  per poll and the overlay reports what is held right now, so a tap that started and
+  ended between two polls used to be lost. `android_touch.cpp` now records every
+  button that goes down and hands it to the next poll (`latch_for_poll`, called from
+  `recomp::poll_inputs`), so it reads as held for that one poll even if the finger
+  has lifted. Only rising edges are recorded: a press still down at the poll, and its
+  release, are unaffected. Not a fixed minimum hold, which would lengthen presses
+  that did not need it and merge rapid taps. Measured on the RP5 with
+  `adb shell input tap` (a press of a few ms) on the save-select screens: 1 of 12
+  taps registered before, 16 of 16 after.
 - **Sizes scale off `TouchLayout.sizingUnit()`** — the height of the widest 16:9 box
   that fits. Sizing off height alone oversizes buttons on a 4:3 screen until they
   collide; off width alone they balloon on a 21:9.
@@ -142,11 +154,6 @@ the wrong thing.
   its recentre by R3, so neither can be used from the touchscreen alone. The C
   diamond still works in that mode, because it emits D-pad rather than right-stick
   input.
-- **A very short tap can be missed.** The overlay reports what is held right now and
-  the game samples it once per input poll, so a press that starts and ends between
-  two polls is never seen. A finger is normally down long enough; a synthetic
-  `adb shell input tap` is not. Holding each press for a minimum time would close
-  this. (Inferred from the design and seen with `adb`, not seen with a finger.)
 - **No per-orientation layouts.** The app is landscape-locked
   (`android:screenOrientation="landscape"`), so there is only one to store. If that
   lock is ever lifted, layouts would need storing per orientation.

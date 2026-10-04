@@ -64,12 +64,42 @@ namespace {
 
     std::atomic<uint32_t> touch_buttons{ 0 };
     std::array<std::atomic<float>, goemon64::touch::axis_count> touch_axes{};
+
+    // SHORT-PRESS LATCH. The game samples input once per poll
+    // (osContStartReadData -> recomp::poll_inputs, then a read of every binding),
+    // and the overlay reports what is held right now. So a tap that starts and ends
+    // between two polls was never seen at all -- a quick finger could miss, and a
+    // synthetic `adb shell input tap` missed every time.
+    //
+    // Fix: every button that goes DOWN is recorded in pending_press_buttons until
+    // the next poll takes it (latch_for_poll), and for that one poll it reads as
+    // held even if the finger has already lifted. Only rising edges are recorded,
+    // so a press that is still down at the poll is unaffected and its release is
+    // seen on time; the only press that changes is one that would otherwise have
+    // been lost, and it is stretched to exactly one poll, not by a fixed time.
+    // A fixed minimum hold was the alternative and was rejected: it lengthens
+    // presses that did not need it and merges rapid taps (mashing attack).
+    //
+    // Z and R arrive as trigger axes rather than buttons, so they get the same
+    // treatment, tracked as a bit per axis index.
+    std::atomic<uint32_t> pending_press_buttons{ 0 };
+    std::atomic<uint32_t> poll_press_buttons{ 0 };
+    std::atomic<uint32_t> pending_press_triggers{ 0 };
+    std::atomic<uint32_t> poll_press_triggers{ 0 };
+
+    bool is_trigger_axis(int axis) {
+        return axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT || axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT;
+    }
 }
 
 namespace goemon64 {
     namespace touch {
         void set_state(uint32_t button_mask, const float* axes, int axis_len) {
-            touch_buttons.store(button_mask, std::memory_order_relaxed);
+            uint32_t previous = touch_buttons.exchange(button_mask, std::memory_order_relaxed);
+            uint32_t pressed = button_mask & ~previous;
+            if (pressed != 0) {
+                pending_press_buttons.fetch_or(pressed, std::memory_order_relaxed);
+            }
 
             const int count = std::min(axis_len, static_cast<int>(touch_axes.size()));
             for (int i = 0; i < count; i++) {
@@ -80,7 +110,11 @@ namespace goemon64 {
                 if (!(value == value)) { // NaN
                     value = 0.0f;
                 }
-                touch_axes[i].store(std::clamp(value, -1.0f, 1.0f), std::memory_order_relaxed);
+                value = std::clamp(value, -1.0f, 1.0f);
+                float previous_value = touch_axes[i].exchange(value, std::memory_order_relaxed);
+                if (is_trigger_axis(i) && previous_value <= 0.0f && value > 0.0f) {
+                    pending_press_triggers.fetch_or(1u << i, std::memory_order_relaxed);
+                }
             }
             // A short array means "the rest are neutral", not "leave them alone" --
             // otherwise a shrinking payload would strand a stuck axis.
@@ -89,8 +123,24 @@ namespace goemon64 {
             }
         }
 
+        void latch_for_poll() {
+            // Hand this poll every press made since the last one, and start
+            // collecting afresh. A press that arrives while the game is part-way
+            // through reading lands in the pending set and is taken by the next poll.
+            poll_press_buttons.store(pending_press_buttons.exchange(0, std::memory_order_relaxed),
+                std::memory_order_relaxed);
+            poll_press_triggers.store(pending_press_triggers.exchange(0, std::memory_order_relaxed),
+                std::memory_order_relaxed);
+        }
+
         void clear_state() {
             touch_buttons.store(0, std::memory_order_relaxed);
+            // Drop latched taps too: the overlay is being hidden or the app is going
+            // away, and a tap from before that must not be delivered after it.
+            pending_press_buttons.store(0, std::memory_order_relaxed);
+            poll_press_buttons.store(0, std::memory_order_relaxed);
+            pending_press_triggers.store(0, std::memory_order_relaxed);
+            poll_press_triggers.store(0, std::memory_order_relaxed);
             for (auto& axis : touch_axes) {
                 axis.store(0.0f, std::memory_order_relaxed);
             }
@@ -100,7 +150,9 @@ namespace goemon64 {
             if (sdl_button < 0 || sdl_button >= button_count) {
                 return false;
             }
-            return (touch_buttons.load(std::memory_order_relaxed) & (1u << sdl_button)) != 0;
+            uint32_t held = touch_buttons.load(std::memory_order_relaxed) |
+                poll_press_buttons.load(std::memory_order_relaxed);
+            return (held & (1u << sdl_button)) != 0;
         }
 
         void request_menu_toggle() {
@@ -153,7 +205,14 @@ namespace goemon64 {
             if (sdl_axis < 0 || sdl_axis >= axis_count) {
                 return 0.0f;
             }
-            return touch_axes[sdl_axis].load(std::memory_order_relaxed);
+            float value = touch_axes[sdl_axis].load(std::memory_order_relaxed);
+            if (is_trigger_axis(sdl_axis) &&
+                (poll_press_triggers.load(std::memory_order_relaxed) & (1u << sdl_axis)) != 0) {
+                // A trigger tap this poll: report it fully pulled, as the overlay does
+                // for a held trigger.
+                value = std::max(value, 1.0f);
+            }
+            return value;
         }
     }
 }

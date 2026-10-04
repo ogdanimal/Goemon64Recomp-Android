@@ -47,6 +47,12 @@ namespace goemon64 {
         // the moment the overlay disappeared would stay held forever.
         void clear_state();
 
+        // Called once per game input poll (from recomp::poll_inputs), before the
+        // game reads its bindings. Makes every press since the previous poll read
+        // as held for this poll, so a tap shorter than the gap between polls is
+        // still seen once. See the short-press latch in android_touch.cpp.
+        void latch_for_poll();
+
         // Ask the UI to open/close the config menu, as the on-screen settings handle.
         // Queues a real controller-button event rather than setting a bit, because the
         // menu toggle is event-driven while gameplay input is polled; see the

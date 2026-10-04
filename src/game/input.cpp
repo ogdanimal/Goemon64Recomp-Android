@@ -655,6 +655,12 @@ void recomp::poll_inputs() {
         InputState.mouse_delta = InputState.pending_mouse_delta;
         InputState.pending_mouse_delta = { 0.0f, 0.0f };
     }
+
+#if defined(__ANDROID__)
+    // Same per-poll handover for the on-screen controls: presses made since the
+    // last poll, including ones already released, are delivered to this one.
+    goemon64::touch::latch_for_poll();
+#endif
     
     // Quicksaving is disabled for now and will likely have more limited functionality
     // when restored, rather than allowing saving and loading at any point in time.
